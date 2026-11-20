@@ -44,6 +44,12 @@ namespace
 using test_support::require;
 namespace fs = std::filesystem;
 
+// A copied path may reserve more characters than its length, depending on the STL.
+size_t pathAllocationSize(const std::string &path)
+{
+    return std::string(path).capacity() + 1;
+}
+
 void exerciseDeepJsonCleanup()
 {
     nlohmann::json nested = 1;
@@ -66,7 +72,7 @@ void exerciseReferenceFailures(const std::string &name, const std::string &path,
 {
     AssetReference<T> owner(load(path));
     auto *original = owner.get();
-    targetSize = path.size() + 1;
+    targetSize = pathAllocationSize(path);
     auto failCopy = [&](auto &&action, long budget = 0) {
         injected = false;
         failAfter = budget;
@@ -119,7 +125,7 @@ void exerciseReferenceFailures(const std::string &name, const std::string &path,
 template <typename T, typename Load>
 void exerciseLoad(const std::string &name, const std::string &path, Load load)
 {
-    targetSize = path.size() + 1;
+    targetSize = pathAllocationSize(path);
     allocations = 0;
     countEnabled = true;
     auto *sample = load(path);
@@ -168,7 +174,7 @@ void exerciseExisting(const std::string &name, const std::string &basePath, cons
     for (int i = 0; i < 3; ++i)
     {
         const auto alias = "assets/" + std::string(150 + i, '/') + suffix;
-        targetSize = alias.size() + 1;
+        targetSize = pathAllocationSize(alias);
         injected = false;
         failAfter = 0;
         T *result = nullptr;
@@ -233,12 +239,12 @@ void exerciseNestedPublication(platformator::Runtime &runtime, const fs::path &r
     std::cout << "nested publication failures and release verified\n";
 }
 
-void exerciseScenePreparation(platformator::Runtime &runtime, const fs::path &scenePath, size_t requestSize)
+void exerciseScenePreparation(platformator::Runtime &runtime, const fs::path &scenePath, const std::string &request)
 {
     Scene scene(scenePath.string());
     auto &manager = platformator_detail::RuntimeAccess::gameManager();
     auto *existing = runtime.createGameObject()->setName("still-live");
-    targetSize = requestSize + 1;
+    targetSize = pathAllocationSize(request);
     allocations = 0;
     {
         SceneBuildContext context(manager);
@@ -319,7 +325,7 @@ int main()
             exerciseExisting<AudioWrapper>("audio", audioPath, "audio/missing.wav", [&](const auto &path) { return runtime.loadAudio(path); });
             exerciseExisting<AnimationClip>("animation", animationPath, "animations/missing.animset", [&](const auto &path) { return runtime.loadAnimationClip(path); });
             exerciseNestedPublication(runtime, root, source / "textures/missing.png");
-            exerciseScenePreparation(runtime, scenePath, texturePath.size());
+            exerciseScenePreparation(runtime, scenePath, texturePath);
             const std::string longName(80, 'x');
             const auto texture = root / "textures" / (longName + ".png");
             const auto audio = root / "audio" / (longName + ".wav");

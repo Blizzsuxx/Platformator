@@ -65,7 +65,11 @@ void Scene::saveScene(const std::vector<GameObject *> &gameObjects) const
     {
         auto candidate = destination;
         candidate += ".tmp." + std::to_string(sequence.fetch_add(1, std::memory_order_relaxed));
-        auto *file = std::fopen(candidate.string().c_str(), "wbx");
+#if defined(_WIN32)
+        auto *file = ::_wfopen(candidate.c_str(), L"wbx");
+#else
+        auto *file = std::fopen(candidate.c_str(), "wbx");
+#endif
         if (file)
         {
             temporary.path = std::move(candidate);

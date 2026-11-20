@@ -108,15 +108,23 @@ struct AssetRequestAliases
     {
         // Keep small tables for normal churn; shrink geometrically after large peaks.
         if (map.bucket_count() <= 64 || map.size() >= map.bucket_count() / 4) return;
-        if (map.empty())
-        {
-            Map empty;
-            map.swap(empty);
-            return;
-        }
         try
         {
+#if defined(_MSVC_STL_VERSION)
+            // MSVC's rehash only grows the bucket array. Reserve a smaller table
+            // before transferring nodes so allocation failure leaves the old table intact.
+            Map compact(map.size() * 2);
+            compact.merge(map);
+            map.swap(compact);
+#else
+            if (map.empty())
+            {
+                Map empty;
+                map.swap(empty);
+                return;
+            }
             map.rehash(map.size() * 2);
+#endif
         }
         catch (...)
         {

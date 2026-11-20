@@ -221,10 +221,21 @@ int main()
         write(blocked / "marker", Json("keep"));
         failure([&] { runtime.saveScene(blocked.string()); });
         require(read(blocked / "marker") == "\"keep\"", "Replace failure must preserve its prior destination");
-        const auto longPath = directory / (std::string(249, 'a') + ".scene");
+        auto longPathDirectory = directory;
+#if defined(_WIN32)
+        // Allow the fixture to reach the component-length limit even under MAX_PATH.
+        const std::wstring native = longPathDirectory.make_preferred().native();
+        if (!native.starts_with(LR"(\\?\)"))
+            longPathDirectory = native.starts_with(LR"(\\)")
+                ? LR"(\\?\UNC\)" + native.substr(2) : LR"(\\?\)" + native;
+#endif
+        const auto longPath = longPathDirectory / (std::string(249, 'a') + ".scene");
         write(longPath, Json("original"));
-        failure([&] { runtime.saveScene(longPath.string()); });
+        const auto stageError = failure([&] { runtime.saveScene(longPath.string()); });
+        require(stageError.find("Cannot create scene temporary file") != std::string::npos,
+                "The long filename fixture must reach temporary file creation");
         require(read(longPath) == "\"original\"", "Temporary file creation failure must preserve the destination");
+        std::filesystem::remove(longPath);
         bool callbackRejected = false;
         runtime.simulateFrameWithCustomCallback(dt, [&](double) {
             try

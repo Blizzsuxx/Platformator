@@ -187,6 +187,16 @@ int wmain(int argc, wchar_t **argv)
                 return 5;
         return 0;
     }
+    if (mode == L"check-no-console")
+    {
+        DWORD processId = 0;
+        const DWORD consoleProcesses = ::GetConsoleProcessList(&processId, 1);
+        if (consoleProcesses == 0 || (consoleProcesses == 1 && processId == ::GetCurrentProcessId()))
+            return 0;
+        const auto message = "console processes: " + std::to_string(consoleProcesses) + "\n";
+        write_all(standardOutput, message.data(), message.size());
+        return 44;
+    }
     if (mode == L"session")
         return probe_session_channels(argc, argv);
     if (mode == L"large")

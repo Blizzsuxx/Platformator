@@ -1525,8 +1525,7 @@ std::string rename_behavior_source(std::string_view source, std::string_view old
     }
     if (!oldHeader.empty())
     {
-        static const std::regex includePattern(R"re(^[ \t]*#[ \t]*include[ \t]*"([^"\r\n]+)")re",
-                                               std::regex::ECMAScript | std::regex::multiline);
+        static const std::regex includePattern(R"re((?:^|\n)[ \t]*#[ \t]*include[ \t]*"([^"\r\n]+)")re");
         for (std::sregex_iterator it(literals.begin(), literals.end(), includePattern), end; it != end; ++it)
         {
             const auto &match = *it;

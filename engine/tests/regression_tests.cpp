@@ -11,6 +11,7 @@
 #include <fstream>
 #include <functional>
 #include <iostream>
+#include <numbers>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -1877,7 +1878,7 @@ void testColliderOffsetAffectsGeometry()
     require((boxCenter - Eigen::Vector2f(210.0f, 115.0f)).squaredNorm() <= 1e-6f,
             "Collider offset regression expected an unrotated box collider to shift by its offset.");
 
-    boxObject->setRotation(static_cast<float>(M_PI_2));
+    boxObject->setRotation(std::numbers::pi_v<float> / 2.0f);
     boxCollider->prepareSync();
 
     boxCenter = Eigen::Vector2f::Zero();

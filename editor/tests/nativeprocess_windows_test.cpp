@@ -13,6 +13,7 @@
 #include <chrono>
 #include <cstdint>
 #include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <iterator>
 #include <string>
@@ -136,6 +137,58 @@ void test_wide_argv_and_working_directory(const std::filesystem::path &root)
                 capture.output.find("arg:雪\n") != std::string::npos &&
                 capture.output.find("cwd:" + path_to_utf8(directory)) != std::string::npos,
             "Windows argv quoting, UTF-8 conversion, and working directory should round-trip");
+}
+
+class ScopedWindowsEnvironment
+{
+  public:
+    ScopedWindowsEnvironment(const wchar_t *name, const std::wstring &value) : name_(name)
+    {
+        const DWORD size = ::GetEnvironmentVariableW(name_, nullptr, 0);
+        if (size != 0)
+        {
+            previous_.resize(size);
+            previous_.resize(::GetEnvironmentVariableW(name_, previous_.data(), size));
+            wasSet_ = true;
+        }
+        require(::SetEnvironmentVariableW(name_, value.c_str()), "test environment variable must be set");
+    }
+    ~ScopedWindowsEnvironment()
+    {
+        ::SetEnvironmentVariableW(name_, wasSet_ ? previous_.c_str() : nullptr);
+    }
+    ScopedWindowsEnvironment(const ScopedWindowsEnvironment &) = delete;
+    ScopedWindowsEnvironment &operator=(const ScopedWindowsEnvironment &) = delete;
+
+  private:
+    const wchar_t *name_;
+    std::wstring previous_;
+    bool wasSet_ = false;
+};
+
+void test_path_lookup_and_console_isolation(const std::filesystem::path &root)
+{
+    const auto tools = root / std::filesystem::path(u8"tools; 雪");
+    std::filesystem::create_directories(tools);
+    auto request = fixture_request({"check-no-console"}, root);
+    const auto &fixture = request.argv.front();
+    const std::filesystem::path fixturePath(std::u8string(fixture.begin(), fixture.end()));
+    std::filesystem::copy_file(fixturePath, tools / "platformator-test-tool.exe");
+    std::ofstream(tools / "platformator-test-tool.cmd") << "@exit /b 9\n";
+    const ScopedWindowsEnvironment path(L"PATH",
+        L"\"" + tools.filename().native() + L"\";" + fixturePath.parent_path().native());
+    const ScopedWindowsEnvironment extensions(L"PATHEXT", L".CMD;.EXE");
+    request.argv.front() = "platformator-test-tool";
+
+    ProcessService process;
+    Capture capture;
+    const bool started = process.start(std::move(request), 1208,
+                                       capture.on_output(), capture.on_completion());
+    require(started, "extensionless tool on PATH must launch: " + capture.result.error);
+    pump_until(process, capture);
+    require(capture.result.launched && capture.result.exitCode == 0,
+            "PATH lookup must launch the executable without a shared console (exit " +
+                std::to_string(capture.result.exitCode) + "): " + capture.result.error + capture.output);
 }
 
 void test_restricted_handles_and_setup_failures(const std::filesystem::path &root)
@@ -318,6 +371,7 @@ int main()
     {
         TemporaryDirectory temporary;
         test_wide_argv_and_working_directory(temporary.path());
+        test_path_lookup_and_console_isolation(temporary.path());
         test_restricted_handles_and_setup_failures(temporary.path());
         test_job_owns_descendants_and_stop_is_bounded(temporary.path());
         test_inherited_session_channels(temporary.path());

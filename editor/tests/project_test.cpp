@@ -599,6 +599,91 @@ void test_folder_scans_recover_from_capacity_pressure()
                 "folder-arrow scans rejected at capacity must retry and eventually complete");
 }
 
+void check_directory_alias_canonical_updates(ProjectPanelFrames &frames, ProjectPanel &panel,
+                                             DocumentSession &document, EditCommandService &commands,
+                                             ProjectScanService &scans, const ProjectSnapshot &project,
+                                             const std::filesystem::path &aliasTree,
+                                             const std::filesystem::path &canonicalTree,
+                                             const std::filesystem::path &unrelatedImage)
+{
+    const auto &assetRoot = project.assetRoot;
+    const auto nested = canonicalTree / "nested";
+    ProjectPanelTestProbe::select_directory(panel, project.assetRoot, aliasTree / "nested");
+    settle_panel(frames, panel, document, commands, scans, 5);
+    require(ProjectPanelTestProbe::canonical_root(panel, aliasTree) == canonicalTree &&
+                ProjectPanelTestProbe::canonical_root(panel, aliasTree / "nested") == nested &&
+                ProjectPanelTestProbe::listing_contains(panel, aliasTree / "nested",
+                                                        aliasTree / "nested" / "old.scene"),
+            "real nested Project frames must cache logical alias-folder listings and canonical roots");
+    ProjectPanelTestProbe::select_entry(panel, unrelatedImage);
+    const auto movedTree = assetRoot / "moved-tree-target";
+    auto aliasRename = project_change(ProjectGeneration{project.generation},
+                                      ProjectChangeKind::Renamed, movedTree, true);
+    auto &event = aliasRename.events.front();
+    event.oldPath = canonicalTree;
+    event.affectedPaths.push_back(canonicalTree);
+    event.affectedPaths.push_back(movedTree);
+    std::filesystem::rename(canonicalTree, movedTree);
+    std::ofstream(movedTree / "nested" / "renamed.scene") << "renamed";
+    panel.apply_changes(aliasRename);
+    require(!ProjectPanelTestProbe::canonical_root(panel, aliasTree).empty() &&
+                !ProjectPanelTestProbe::listing_loaded(panel, aliasTree) &&
+                !ProjectPanelTestProbe::listing_loaded(panel, aliasTree / "nested") &&
+                ProjectPanelTestProbe::selected_entry_is(panel, unrelatedImage),
+            "canonical ancestor rename must invalidate both cached alias listings and preserve unrelated selection");
+    std::filesystem::remove(aliasTree);
+    std::filesystem::create_directory_symlink(movedTree, aliasTree);
+    panel.apply_changes(project_change(ProjectGeneration{project.generation},
+                                       ProjectChangeKind::Modified, aliasTree, true));
+    settle_panel(frames, panel, document, commands, scans, 5);
+    require(ProjectPanelTestProbe::canonical_root(panel, aliasTree) == movedTree,
+            std::string("retargeting a directory alias must adopt its new canonical root: ") +
+                ProjectPanelTestProbe::listing_status(panel, aliasTree));
+    require(ProjectPanelTestProbe::canonical_root(panel, aliasTree / "nested") == movedTree / "nested",
+            "retargeting a directory alias must adopt the nested canonical root");
+    require(ProjectPanelTestProbe::listing_contains(panel, aliasTree / "nested",
+                                                    aliasTree / "nested" / "renamed.scene"),
+            "retargeting a directory alias must refresh its nested logical listing");
+    require(ProjectPanelTestProbe::selected_entry_is(panel, unrelatedImage),
+            "retargeting an alias must preserve unrelated Project selection");
+
+    std::filesystem::remove_all(movedTree);
+    panel.apply_changes(project_change(ProjectGeneration{project.generation},
+                                       ProjectChangeKind::Removed, movedTree, true));
+    (void)frames.draw(panel, document, commands);
+    scans.wait_for_idle();
+    require(ProjectPanelTestProbe::listing_contains(panel, aliasTree / "nested",
+                                                    aliasTree / "nested" / "renamed.scene"),
+            "a broken canonical ancestor must retain the last complete alias listing while unavailable");
+
+    const auto repairedNested = movedTree / "nested";
+    std::filesystem::create_directories(repairedNested);
+    std::ofstream(repairedNested / "repaired.scene") << "repaired";
+    panel.apply_changes(project_change(ProjectGeneration{project.generation},
+                                       ProjectChangeKind::Added, movedTree, true));
+    settle_panel(frames, panel, document, commands, scans, 5);
+    require(ProjectPanelTestProbe::listing_contains(panel, aliasTree / "nested",
+                                                    aliasTree / "nested" / "repaired.scene") &&
+                !ProjectPanelTestProbe::listing_contains(panel, aliasTree / "nested",
+                                                         aliasTree / "nested" / "renamed.scene") &&
+                ProjectPanelTestProbe::selected_entry_is(panel, unrelatedImage),
+            "recreating a canonical ancestor must repair the broken alias and replace stale nested contents");
+
+    const auto alternateTree = assetRoot / "alternate-tree-target";
+    std::filesystem::create_directories(alternateTree / "nested");
+    std::ofstream(alternateTree / "nested" / "retargeted.scene") << "retargeted";
+    std::filesystem::remove(aliasTree);
+    std::filesystem::create_directory_symlink(alternateTree, aliasTree);
+    panel.apply_changes(project_change(ProjectGeneration{project.generation},
+                                       ProjectChangeKind::Modified, aliasTree, true));
+    settle_panel(frames, panel, document, commands, scans, 5);
+    require(ProjectPanelTestProbe::canonical_root(panel, aliasTree) == alternateTree,
+            "a retargeted alias root must adopt its new canonical presentation root");
+    require(ProjectPanelTestProbe::listing_contains(panel, aliasTree / "nested",
+                                                    aliasTree / "nested" / "retargeted.scene"),
+            "a retargeted alias must refresh its nested logical listing");
+}
+
 void test_project_panel_alias_presentation_invalidation()
 {
     TestEnvironment environment;
@@ -739,79 +824,8 @@ void test_project_panel_alias_presentation_invalidation()
                 std::to_string(changedWork[static_cast<std::size_t>(work::Counter::TextureUploads)]) + ")");
 #endif
 
-    ProjectPanelTestProbe::select_directory(panel, project.assetRoot, aliasTree / "nested");
-    settle_panel(frames, panel, document, commands, scans, 5);
-    require(ProjectPanelTestProbe::canonical_root(panel, aliasTree) == canonicalTree &&
-                ProjectPanelTestProbe::canonical_root(panel, aliasTree / "nested") == nested &&
-                ProjectPanelTestProbe::listing_contains(panel, aliasTree / "nested",
-                                                        aliasTree / "nested" / "old.scene"),
-            "real nested Project frames must cache logical alias-folder listings and canonical roots");
-    ProjectPanelTestProbe::select_entry(panel, unrelatedImage);
-    const auto movedTree = assetRoot / "moved-tree-target";
-    const auto aliasRename = ProjectChangeBatch{
-        .projectGeneration = ProjectGeneration{project.generation},
-        .events = {ProjectChangeEvent{.kind = ProjectChangeKind::Renamed, .path = movedTree,
-            .oldPath = canonicalTree, .affectedPaths = {canonicalTree, movedTree}, .directory = true,
-            .projectGeneration = ProjectGeneration{project.generation}}}};
-    std::filesystem::rename(canonicalTree, movedTree);
-    std::ofstream(movedTree / "nested" / "renamed.scene") << "renamed";
-    panel.apply_changes(aliasRename);
-    require(!ProjectPanelTestProbe::canonical_root(panel, aliasTree).empty() &&
-                !ProjectPanelTestProbe::listing_loaded(panel, aliasTree) &&
-                !ProjectPanelTestProbe::listing_loaded(panel, aliasTree / "nested") &&
-                ProjectPanelTestProbe::selected_entry_is(panel, unrelatedImage),
-            "canonical ancestor rename must invalidate both cached alias listings and preserve unrelated selection");
-    std::filesystem::remove(aliasTree);
-    std::filesystem::create_directory_symlink(movedTree, aliasTree);
-    panel.apply_changes(project_change(ProjectGeneration{project.generation},
-                                       ProjectChangeKind::Modified, aliasTree, true));
-    settle_panel(frames, panel, document, commands, scans, 5);
-    require(ProjectPanelTestProbe::canonical_root(panel, aliasTree) == movedTree,
-            std::string("retargeting a directory alias must adopt its new canonical root: ") +
-                ProjectPanelTestProbe::listing_status(panel, aliasTree));
-    require(ProjectPanelTestProbe::canonical_root(panel, aliasTree / "nested") == movedTree / "nested",
-            "retargeting a directory alias must adopt the nested canonical root");
-    require(ProjectPanelTestProbe::listing_contains(panel, aliasTree / "nested",
-                                                    aliasTree / "nested" / "renamed.scene"),
-            "retargeting a directory alias must refresh its nested logical listing");
-    require(ProjectPanelTestProbe::selected_entry_is(panel, unrelatedImage),
-            "retargeting an alias must preserve unrelated Project selection");
-
-    std::filesystem::remove_all(movedTree);
-    panel.apply_changes(project_change(ProjectGeneration{project.generation},
-                                       ProjectChangeKind::Removed, movedTree, true));
-    (void)frames.draw(panel, document, commands);
-    scans.wait_for_idle();
-    require(ProjectPanelTestProbe::listing_contains(panel, aliasTree / "nested",
-                                                    aliasTree / "nested" / "renamed.scene"),
-            "a broken canonical ancestor must retain the last complete alias listing while unavailable");
-
-    const auto repairedNested = movedTree / "nested";
-    std::filesystem::create_directories(repairedNested);
-    std::ofstream(repairedNested / "repaired.scene") << "repaired";
-    panel.apply_changes(project_change(ProjectGeneration{project.generation},
-                                       ProjectChangeKind::Added, movedTree, true));
-    settle_panel(frames, panel, document, commands, scans, 5);
-    require(ProjectPanelTestProbe::listing_contains(panel, aliasTree / "nested",
-                                                    aliasTree / "nested" / "repaired.scene") &&
-                !ProjectPanelTestProbe::listing_contains(panel, aliasTree / "nested",
-                                                         aliasTree / "nested" / "renamed.scene") &&
-                ProjectPanelTestProbe::selected_entry_is(panel, unrelatedImage),
-            "recreating a canonical ancestor must repair the broken alias and replace stale nested contents");
-
-    const auto alternateTree = assetRoot / "alternate-tree-target";
-    std::filesystem::create_directories(alternateTree / "nested");
-    std::ofstream(alternateTree / "nested" / "retargeted.scene") << "retargeted";
-    std::filesystem::remove(aliasTree);
-    std::filesystem::create_directory_symlink(alternateTree, aliasTree);
-    panel.apply_changes(project_change(ProjectGeneration{project.generation},
-                                       ProjectChangeKind::Modified, aliasTree, true));
-    settle_panel(frames, panel, document, commands, scans, 5);
-    require(ProjectPanelTestProbe::canonical_root(panel, aliasTree) == alternateTree,
-            "a retargeted alias root must adopt its new canonical presentation root");
-    require(ProjectPanelTestProbe::listing_contains(panel, aliasTree / "nested",
-                                                    aliasTree / "nested" / "retargeted.scene"),
-            "a retargeted alias must refresh its nested logical listing");
+    check_directory_alias_canonical_updates(frames, panel, document, commands, scans, project,
+                                            aliasTree, canonicalTree, unrelatedImage);
     require(ProjectPanelTestProbe::selected_entry_is(panel, unrelatedImage) &&
                 document.root == documentBeforeChange &&
                 document.valueRevision == documentRevisionBeforeChange &&

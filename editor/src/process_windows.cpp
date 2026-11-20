@@ -196,6 +196,87 @@ std::wstring quote_windows_argument(std::wstring_view argument)
     return result;
 }
 
+std::wstring windows_environment(const wchar_t *name)
+{
+    DWORD capacity = ::GetEnvironmentVariableW(name, nullptr, 0);
+    while (capacity != 0)
+    {
+        std::wstring value(capacity, L'\0');
+        const DWORD length = ::GetEnvironmentVariableW(name, value.data(), capacity);
+        if (length < capacity)
+        {
+            value.resize(length);
+            return value;
+        }
+        capacity = length;
+    }
+    return {};
+}
+
+std::vector<std::wstring_view> environment_entries(std::wstring_view value)
+{
+    std::vector<std::wstring_view> entries;
+    std::size_t start = 0;
+    bool quoted = false;
+    for (std::size_t i = 0; i <= value.size(); ++i)
+    {
+        if (i < value.size() && value[i] == L'"')
+            quoted = !quoted;
+        if (i != value.size() && (value[i] != L';' || quoted))
+            continue;
+        auto entry = value.substr(start, i - start);
+        if (entry.size() >= 2 && entry.front() == L'"' && entry.back() == L'"')
+            entry = entry.substr(1, entry.size() - 2);
+        if (!entry.empty())
+            entries.push_back(entry);
+        start = i + 1;
+    }
+    return entries;
+}
+
+std::filesystem::path find_executable(const std::filesystem::path &requested,
+                                     const std::filesystem::path &workingDirectory)
+{
+    const bool explicitPath = requested.has_parent_path() || requested.has_root_path();
+    if (explicitPath && requested.has_extension())
+        return (workingDirectory / requested).lexically_normal();
+
+    auto extensions = windows_environment(L"PATHEXT");
+    if (extensions.empty())
+        extensions = L".COM;.EXE";
+    const auto suffixes = environment_entries(extensions);
+    auto find_candidate = [&](std::filesystem::path candidate) {
+        candidate = (workingDirectory / candidate).lexically_normal();
+        DWORD binaryType = 0;
+        if (::GetBinaryTypeW(candidate.c_str(), &binaryType))
+            return candidate;
+        if (!candidate.has_extension())
+        {
+            for (const auto suffix : suffixes)
+            {
+                if (suffix.front() != L'.' || suffix.find_first_of(L"/\\:") != std::wstring_view::npos)
+                    continue;
+                auto withExtension = candidate;
+                withExtension += suffix;
+                if (::GetBinaryTypeW(withExtension.c_str(), &binaryType))
+                    return withExtension;
+            }
+        }
+        return std::filesystem::path{};
+    };
+    if (explicitPath)
+        return find_candidate(requested);
+
+    const auto paths = windows_environment(L"PATH");
+    for (const auto entry : environment_entries(paths))
+    {
+        auto candidate = find_candidate(std::filesystem::path(entry) / requested);
+        if (!candidate.empty())
+            return candidate;
+    }
+    return {};
+}
+
 bool make_command_line(const std::vector<std::string> &arguments,
                        std::wstring &commandLine, std::wstring &application,
                        const std::filesystem::path &workingDirectory,
@@ -224,19 +305,13 @@ bool make_command_line(const std::vector<std::string> &arguments,
         wideArguments.push_back(std::move(wide));
     }
 
-    application = wideArguments.front();
-    std::filesystem::path applicationPath(application);
-    if (applicationPath.has_parent_path() && applicationPath.is_relative())
+    const auto executable = find_executable(wideArguments.front(), workingDirectory);
+    if (executable.empty())
     {
-        std::error_code filesystemError;
-        const auto absolute = std::filesystem::absolute(workingDirectory / applicationPath, filesystemError);
-        if (filesystemError)
-        {
-            error = "could not resolve process executable path: " + filesystemError.message();
-            return false;
-        }
-        application = absolute.native();
+        error = "could not find Windows executable '" + arguments.front() + "'";
+        return false;
     }
+    application = executable.native();
 
     for (const auto &argument : wideArguments)
     {
@@ -577,7 +652,8 @@ class WindowsNativeProcess final : public NativeProcess
 
         PROCESS_INFORMATION processInfo{};
         std::wstring workingDirectory = request.workingDirectory.native();
-        const DWORD flags = CREATE_SUSPENDED | EXTENDED_STARTUPINFO_PRESENT | CREATE_UNICODE_ENVIRONMENT;
+        const DWORD flags = CREATE_SUSPENDED | EXTENDED_STARTUPINFO_PRESENT | CREATE_UNICODE_ENVIRONMENT |
+                            CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP;
         if (!::CreateProcessW(application.c_str(), commandLine.data(), nullptr, nullptr, TRUE, flags,
                               nullptr, workingDirectory.c_str(), &startup.StartupInfo, &processInfo))
         {

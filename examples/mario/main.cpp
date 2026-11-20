@@ -3,5 +3,5 @@
 
 int main(int argc, char *args[])
 {
-    return platformator::run(argc, args, "assets/scenes/mario_example.scene");
+    return platformator::run(argc, args, "assets/scenes/level1.scene");
 }

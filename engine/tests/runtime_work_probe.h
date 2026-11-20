@@ -33,6 +33,9 @@ struct WorkCounters
     size_t contactTransitionChecks = 0;
     size_t contactEventRecords = 0;
     size_t solverRefreshPairs = 0;
+    size_t solverIslandJobs = 0;
+    size_t solverLargestIslandJob = 0;
+    size_t solverOrderedBatchDispatches = 0;
     size_t forceBodies = 0;
     size_t movingBodies = 0;
     size_t sleepBodies = 0;

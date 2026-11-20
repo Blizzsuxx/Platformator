@@ -1,0 +1,6 @@
+{
+  "command": "env PLATFORMATOR_IMPLEMENTATION_MODE=parity PLATFORMATOR_IMPLEMENTATION_PROFILE=/home/user/Projects/Platformator/docs/physics-parallelism/evidence/implementation/solver-islands/parity.profile.csv PLATFORMATOR_AUDIT_PILES=1 taskset -c 0,2,4,6,8,10 /home/user/Projects/Platformator/build/parallel-physics-implementation/islands-runner --asset-root /home/user/Projects/Platformator/build/benchmark/assets --workers 6 --seed 0 --dt 0.008333333333333333 --warmup-frames 120 --measure-frames 360 --validate-invariants --scenario rigid_body_container --box-count 63 --circle-count 62",
+  "binary_sha256": "ebdd1de1ed261a689364d31c53cb76249d9e5231116c4b03f3586af615aae8b4",
+  "exact_parallel_replays": 9,
+  "physical_invariants": true
+}

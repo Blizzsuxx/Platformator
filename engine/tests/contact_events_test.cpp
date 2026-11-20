@@ -108,6 +108,11 @@ std::vector<std::string> transitions(size_t workers, int recipients)
     physics->handlePendingPhysicsEvents(dt);
     require(aCounts.enters == (recipients > 0 ? 128 : 0) && bCounts.enters == (recipients > 1 ? 128 : 0),
             "Pair generation differs from endpoint delivery");
+    for (int i = 0; i < 128; ++i)
+        targets[i]->setPosition({float(i) * 20 + 1, 2});
+    physics->checkForCollisions();
+    require(physics->getPendingPhysicsEvents().empty() && physics->getContactPairs().size() == 128,
+            "Recomputed trigger overlaps retain contact membership without transition events");
     // Movement leaves AABB candidates overlapping but separates circle geometry.
     for (int i = 0; i < 128; ++i)
         targets[i]->setPosition({float(i) * 20 + 3, 3});

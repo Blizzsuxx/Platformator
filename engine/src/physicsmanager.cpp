@@ -19,6 +19,11 @@
 #include <stdexcept>
 #include <tuple>
 
+namespace
+{
+constexpr size_t parallelSolverBatchSize = 128;
+}
+
 PhysicsManager::PhysicsManager()
     : registeredBodies(), colliderComponents(), pendingPhysicsEvents(), grid(this),
       gravityVector(GRAVITY_VECTOR_X, GRAVITY_VECTOR_Y), gravityVectorNormalized(gravityVector.normalized())
@@ -285,7 +290,6 @@ void PhysicsManager::narrowPhase()
     {
         for (auto *pair : pendingPairs)
         {
-
             processNarrowPhasePair(pair);
         }
     }
@@ -299,16 +303,19 @@ void PhysicsManager::narrowPhase()
     {
         PLATFORMATOR_WORK_ADD(geometryPairs, pair->resultTestedGeometry ? 1 : 0);
         PLATFORMATOR_WORK_ADD(contactTransitionChecks, 1);
-        if (pair->resultHadContact && !pair->getCollision())
+        auto *collision = pair->getCollision();
+        const bool hasContact = collision != nullptr;
+        if (pair->resultHadContact != hasContact)
         {
-
-            addPendingPhysicsEvent(makePhysicsEvent(PhysicsEvent::COLLISION_EXIT, pair, nullptr));
+            const auto type = hasContact ? PhysicsEvent::COLLISION_ENTER : PhysicsEvent::COLLISION_EXIT;
+            addPendingPhysicsEvent(makePhysicsEvent(type, pair, collision));
         }
-
-        if (!pair->resultHadContact && pair->getCollision())
+        else if (pair->solverIndex == SIZE_MAX && !pair->contributedSupportBodyA && !pair->contributedSupportBodyB &&
+                 (pair->contactIndex != SIZE_MAX) == hasContact)
         {
-            addPendingPhysicsEvent(
-                makePhysicsEvent(PhysicsEvent::COLLISION_ENTER, pair, pair->getCollision()));
+            // A surviving trigger is already live after the geometry pass and can neither support nor solve.
+            if (!hasContact || pair->getObjectA()->getIsTrigger() || pair->getObjectB()->getIsTrigger())
+                continue;
         }
 
         reconcilePairSupport(pair);
@@ -401,13 +408,7 @@ void PhysicsManager::resolveCollisions(double timeDelta)
         }
     }
 
-    for (int iteration = 0; iteration < COLLISION_SOLVER_ITERATIONS; iteration++)
-    {
-        for (const SolverConstraint &constraint : solverConstraints)
-        {
-            resolveCollision(constraint);
-        }
-    }
+    solveConstraintIterations();
 
     reconcileChangedBodies();
     updateSleepingStates(timeDelta);
@@ -415,6 +416,236 @@ void PhysicsManager::resolveCollisions(double timeDelta)
 #if PLATFORMATOR_ENABLE_BENCHMARKS
     PLATFORMATOR_BENCH_SET_COUNTER(AwakeDynamicBodyCount, countAwakeDynamicBodies());
 #endif
+}
+
+void PhysicsManager::solveConstraintIterations()
+{
+    // For small batches, the serial loop is cheaper than building and dispatching islands.
+    constexpr size_t parallelConstraintThreshold = 256;
+    constexpr size_t orderedConstraintThreshold = 512;
+    if (solverConstraints.size() >= parallelConstraintThreshold &&
+        tbb::global_control::active_value(tbb::global_control::max_allowed_parallelism) > 1 &&
+        tbb::this_task_arena::max_concurrency() > 1 && prepareSolverIslands())
+    {
+        if (largestSolverIsland <= solverConstraints.size() / 2)
+        {
+            solveIslands();
+            return;
+        }
+        if (largestSolverIsland >= orderedConstraintThreshold && prepareOrderedSolverBatches())
+        {
+            solveOrderedBatches();
+            return;
+        }
+    }
+
+    solveConstraintsSerial();
+}
+
+void PhysicsManager::solveConstraintsSerial()
+{
+    for (size_t iteration = 0; iteration < COLLISION_SOLVER_ITERATIONS; ++iteration)
+    {
+        for (const SolverConstraint &constraint : solverConstraints)
+        {
+            resolveCollision(constraint);
+        }
+    }
+}
+
+bool PhysicsManager::prepareSolverIslands()
+{
+    // Two endpoints per constraint give an upper bound on the bodies this graph can touch.
+    sparseSolverBodies = registeredBodies.size() / 4 > solverConstraints.size();
+    if (sparseSolverBodies)
+    {
+        // Clear the previous markers before resizing. Registered slots may have been reassigned.
+        for (const auto &[a, b] : solverEndpoints)
+        {
+            if (a != SIZE_MAX)
+                solverBodyNodes[a].rank = 0;
+            if (b != SIZE_MAX)
+                solverBodyNodes[b].rank = 0;
+        }
+    }
+    solverBodyNodes.resize(registeredBodies.size());
+    if (!sparseSolverBodies)
+    {
+        for (size_t i = 0; i < solverBodyNodes.size(); ++i)
+            solverBodyNodes[i] = {i, 0, SIZE_MAX};
+    }
+    solverEndpoints.clear();
+    solverEndpoints.reserve(solverConstraints.size());
+    solverIslandCount = 0;
+    largestSolverIsland = 0;
+
+    // Match applySolverImpulse after preparation. Sleeping, static, and kinematic bodies can be shared reads.
+    // A writable body still awaiting registration cannot be indexed by this schedule.
+    const auto getWritableIndex = [&](const Rigidbody *body, size_t &index) {
+        index = SIZE_MAX;
+        if (body->getBodyType() != DYNAMIC || body->getIsSleeping())
+            return true;
+        index = body->getPhysicsManagerIndex();
+        return index < registeredBodies.size() && registeredBodies[index] == body;
+    };
+    const auto rootFor = [&](size_t index) {
+        while (solverBodyNodes[index].parent != index)
+        {
+            solverBodyNodes[index].parent = solverBodyNodes[solverBodyNodes[index].parent].parent;
+            index = solverBodyNodes[index].parent;
+        }
+        return index;
+    };
+    for (const auto &constraint : solverConstraints)
+    {
+        size_t a, b;
+        if (!getWritableIndex(constraint.rbA, a) || !getWritableIndex(constraint.rbB, b))
+            return false;
+        solverEndpoints.emplace_back(a, b);
+        if (sparseSolverBodies)
+        {
+            // Use a nonzero rank to mark every initialized endpoint, including singleton roots.
+            if (a != SIZE_MAX && solverBodyNodes[a].rank == 0)
+                solverBodyNodes[a] = {a, 1, SIZE_MAX};
+            if (b != SIZE_MAX && solverBodyNodes[b].rank == 0)
+                solverBodyNodes[b] = {b, 1, SIZE_MAX};
+        }
+        if (a == SIZE_MAX || b == SIZE_MAX)
+            continue;
+
+        a = rootFor(a);
+        b = rootFor(b);
+        if (a == b)
+            continue;
+        if (solverBodyNodes[a].rank < solverBodyNodes[b].rank)
+            std::swap(a, b);
+        solverBodyNodes[b].parent = a;
+        if (solverBodyNodes[a].rank == solverBodyNodes[b].rank)
+            ++solverBodyNodes[a].rank;
+    }
+
+    size_t readOnlyIsland = SIZE_MAX;
+    for (size_t i = 0; i < solverEndpoints.size(); ++i)
+    {
+        const auto [a, b] = solverEndpoints[i];
+        const size_t body = a != SIZE_MAX ? a : b;
+        auto &island = body != SIZE_MAX ? solverBodyNodes[rootFor(body)].island : readOnlyIsland;
+        if (island == SIZE_MAX)
+        {
+            island = solverIslandCount++;
+            if (island == solverIslands.size())
+                solverIslands.emplace_back();
+            solverIslands[island].clear();
+        }
+        auto &order = solverIslands[island];
+        order.push_back(i);
+        largestSolverIsland = std::max(largestSolverIsland, order.size());
+    }
+    return true;
+}
+
+void PhysicsManager::solveIslands()
+{
+    const auto workers = std::min(tbb::global_control::active_value(tbb::global_control::max_allowed_parallelism),
+                                  static_cast<size_t>(tbb::this_task_arena::max_concurrency()));
+    const size_t target = std::max(size_t{1}, solverConstraints.size() / workers / 4);
+    solverIslandJobEnds.clear();
+    size_t jobSize = 0;
+    for (size_t island = 0; island < solverIslandCount; ++island)
+    {
+        const size_t count = solverIslands[island].size();
+        if (jobSize != 0 && jobSize + count > target)
+        {
+            solverIslandJobEnds.push_back(island);
+            jobSize = 0;
+        }
+        jobSize += count;
+        PLATFORMATOR_WORK_SET(solverLargestIslandJob, std::max(platformator_test::work.solverLargestIslandJob, jobSize));
+    }
+    solverIslandJobEnds.push_back(solverIslandCount);
+    PLATFORMATOR_WORK_ADD(solverIslandJobs, solverIslandJobEnds.size());
+
+    // A simulation step must finish applying impulses even if the caller's task group is cancelled.
+    tbb::task_group_context context(tbb::task_group_context::isolated);
+    tbb::parallel_for(size_t{0}, solverIslandJobEnds.size(), [&](size_t job) {
+        const size_t begin = job == 0 ? 0 : solverIslandJobEnds[job - 1];
+        for (size_t island = begin; island < solverIslandJobEnds[job]; ++island)
+        {
+            for (size_t iteration = 0; iteration < COLLISION_SOLVER_ITERATIONS; ++iteration)
+                for (size_t index : solverIslands[island])
+                    resolveCollision(solverConstraints[index]);
+        }
+    }, context);
+}
+
+bool PhysicsManager::prepareOrderedSolverBatches()
+{
+    if (sparseSolverBodies)
+    {
+        solverBodyNextBatch.resize(registeredBodies.size());
+        for (const auto &[a, b] : solverEndpoints)
+        {
+            if (a != SIZE_MAX)
+                solverBodyNextBatch[a] = 0;
+            if (b != SIZE_MAX)
+                solverBodyNextBatch[b] = 0;
+        }
+    }
+    else
+    {
+        solverBodyNextBatch.assign(registeredBodies.size(), 0);
+    }
+    solverBatchCount = 0;
+    for (size_t i = 0; i < solverEndpoints.size(); ++i)
+    {
+        const auto [a, b] = solverEndpoints[i];
+        // Each writable body must see its incident constraints in their original order.
+        const size_t batch = std::max(a != SIZE_MAX ? solverBodyNextBatch[a] : 0,
+                                      b != SIZE_MAX ? solverBodyNextBatch[b] : 0);
+        if (a != SIZE_MAX)
+            solverBodyNextBatch[a] = batch + 1;
+        if (b != SIZE_MAX)
+            solverBodyNextBatch[b] = batch + 1;
+        if (batch == solverBatchCount)
+        {
+            if (batch == solverBatches.size())
+                solverBatches.emplace_back();
+            solverBatches[batch].clear();
+            ++solverBatchCount;
+        }
+        solverBatches[batch].push_back(i);
+    }
+
+    size_t parallelConstraints = 0;
+    for (size_t batch = 0; batch < solverBatchCount; ++batch)
+        if (solverBatches[batch].size() >= parallelSolverBatchSize)
+            parallelConstraints += solverBatches[batch].size();
+    return parallelConstraints >= solverConstraints.size() / 2;
+}
+
+void PhysicsManager::solveOrderedBatches()
+{
+    PLATFORMATOR_WORK_ADD(solverOrderedBatchDispatches, 1);
+    tbb::task_group_context context(tbb::task_group_context::isolated);
+    for (size_t iteration = 0; iteration < COLLISION_SOLVER_ITERATIONS; ++iteration)
+    {
+        for (size_t batch = 0; batch < solverBatchCount; ++batch)
+        {
+            const auto &order = solverBatches[batch];
+            if (order.size() < parallelSolverBatchSize)
+            {
+                for (size_t index : order)
+                    resolveCollision(solverConstraints[index]);
+            }
+            else
+            {
+                tbb::parallel_for(tbb::blocked_range<size_t>(0, order.size(), 32), [&](const auto &range) {
+                    for (size_t i = range.begin(); i != range.end(); ++i)
+                        resolveCollision(solverConstraints[order[i]]);
+                }, context);
+            }
+        }
+    }
 }
 
 bool PhysicsManager::preStepCollision(Collision *collision, float inverseTimeDelta, SolverConstraint &outConstraint)
@@ -580,8 +811,6 @@ void PhysicsManager::resolveCollision(const SolverConstraint &constraint)
         }
     }
 
-    // TODO: paralelize this
-    // or not
     for (uint8_t i = 0; i < constraint.pointCount; ++i)
     {
         const Eigen::Vector2f &rA = constraint.rA[i];

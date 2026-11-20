@@ -1,0 +1,38 @@
+{
+  "complete": false,
+  "binary_sha256": "a78230cad87df2dc933be3dcd1482286e6c6bc5bd4f050ef14bbfc71e27d55f7",
+  "fixture_sha256": "1a2e7d85c9f38b249a33a494dfaa7d281c33b7d77350a8c25d56afb5d8e51368",
+  "build_commands": [
+    "cd /home/user/Projects/Platformator/build/benchmark && /usr/bin/c++ -I/home/user/Projects/Platformator/engine/src -I/home/user/Projects/Platformator/docs/physics-parallelism/tools -DPLATFORMATOR_ENABLE_BENCHMARK_ORDER_MODES=1 -DPLATFORMATOR_ENABLE_EDITOR_SESSION=1 -DPLATFORMATOR_ENABLE_WORK_PROBES=0 -I/home/user/Projects/Platformator/engine/src -I/home/user/Projects/Platformator/engine/tests -I/home/user/Projects/Platformator/build/benchmark/engine/generated -I/home/user/Projects/Platformator/engine/include -I/home/user/Projects/Platformator/build/benchmark/vendored/SDL3-3.4.18/include-revision -I/home/user/Projects/Platformator/vendored/SDL3-3.4.18/include -I/home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.4/include -I/home/user/Projects/Platformator/vendored/SDL3_image-3.4.8/include -I/home/user/Projects/Platformator/vendored/eigen-5.0.1 -I/home/user/Projects/Platformator/vendored/oneTBB-2022.3.0/src/tbb/../../include -I/home/user/Projects/Platformator/vendored/json -O3 -DNDEBUG -std=c++20 -fPIE -o /home/user/Projects/Platformator/build/parallel-physics-implementation/reproduction-iw8nooa6/benchmark_main.o -c /home/user/Projects/Platformator/build/parallel-physics-implementation/reproduction-iw8nooa6/benchmark_main.cpp",
+    "cd /home/user/Projects/Platformator/build/benchmark && /usr/bin/c++ -I/home/user/Projects/Platformator/engine/src -I/home/user/Projects/Platformator/docs/physics-parallelism/tools -DPLATFORMATOR_ENABLE_BENCHMARK_ORDER_MODES=1 -DPLATFORMATOR_ENABLE_EDITOR_SESSION=1 -DPLATFORMATOR_ENABLE_WORK_PROBES=0 -I/home/user/Projects/Platformator/engine/include -I/home/user/Projects/Platformator/engine/src -I/home/user/Projects/Platformator/build/benchmark/engine/generated -I/home/user/Projects/Platformator/build/benchmark/vendored/SDL3-3.4.18/include-revision -I/home/user/Projects/Platformator/vendored/SDL3-3.4.18/include -I/home/user/Projects/Platformator/vendored/SDL3_mixer-3.2.4/include -I/home/user/Projects/Platformator/vendored/SDL3_image-3.4.8/include -I/home/user/Projects/Platformator/vendored/eigen-5.0.1 -I/home/user/Projects/Platformator/vendored/oneTBB-2022.3.0/src/tbb/../../include -I/home/user/Projects/Platformator/vendored/json -O3 -DNDEBUG -std=c++20 -fPIC -o /home/user/Projects/Platformator/build/parallel-physics-implementation/reproduction-iw8nooa6/gamemanager.o -c /home/user/Projects/Platformator/build/parallel-physics-implementation/reproduction-iw8nooa6/gamemanager.cpp",
+    "cd /home/user/Projects/Platformator/build/benchmark && /usr/bin/c++ -O3 -DNDEBUG /home/user/Projects/Platformator/build/parallel-physics-implementation/reproduction-iw8nooa6/benchmark_main.o -o /home/user/Projects/Platformator/build/parallel-physics-implementation/transform-runner -Wl,-rpath,/home/user/Projects/Platformator/build/benchmark:/home/user/Projects/Platformator/build/benchmark/gnu_16.2_cxx20_64_release /home/user/Projects/Platformator/build/parallel-physics-implementation/reproduction-iw8nooa6/gamemanager.o libplatformator.a libSDL3_mixer.so.0.2.4 libSDL3_image.so.0.4.8 libSDL3.so.0.4.18 gnu_16.2_cxx20_64_release/libtbb.so.12.17"
+  ],
+  "workers": 6,
+  "hierarchy": {
+    "roots": 128,
+    "branches_per_root": 4,
+    "sprites_per_branch": 8,
+    "colliders": 128
+  },
+  "warmup": 5,
+  "measured": 30,
+  "repetitions": 3,
+  "budget": {
+    "seconds": 600,
+    "output_mib": 50
+  },
+  "runs": [
+    {
+      "mode": "current",
+      "trial": 0,
+      "raw": "current-0.csv",
+      "command": "env SDL_AUDIODRIVER=dummy SDL_VIDEODRIVER=dummy SDL_RENDER_DRIVER=software PLATFORMATOR_RENDER_CULLING_MODE=cached-linear PLATFORMATOR_IMPLEMENTATION_TRANSFORMS=current taskset -c 0,2,4,6,8,10 /home/user/Projects/Platformator/build/parallel-physics-implementation/transform-runner /home/user/Projects/Platformator/build/benchmark/assets /home/user/Projects/Platformator/docs/physics-parallelism/evidence/implementation/transform-sync/current-0.csv"
+    }
+  ],
+  "failure": "CalledProcessError(1, ['taskset', '-c', '0,2,4,6,8,10', '/home/user/Projects/Platformator/build/parallel-physics-implementation/transform-runner', '/home/user/Projects/Platformator/build/benchmark/assets', '/home/user/Projects/Platformator/docs/physics-parallelism/evidence/implementation/transform-sync/current-0.csv'])",
+  "diagnosis": {
+    "fixture": "Texture was loaded as textures/black_square.png. Runtime assets use paths prefixed with assets/.",
+    "correction": "The fixture now uses assets/textures/black_square.png. The staged prototype also explicitly captures references to the owner's scratch vectors.",
+    "timing": "The first run stopped during setup. No transform timing comparison was recorded or retried."
+  }
+}

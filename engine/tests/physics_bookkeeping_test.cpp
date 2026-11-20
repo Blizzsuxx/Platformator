@@ -2,8 +2,16 @@
 #include "physicsmanager.h"
 #include "runtimeaccess.h"
 #include "test_support.h"
+#if PLATFORMATOR_ENABLE_WORK_PROBES
+#include "runtime_work_probe.h"
+#endif
+#include <algorithm>
+#include <array>
+#include <bit>
 #include <iostream>
 #include <oneapi/tbb/global_control.h>
+#include <oneapi/tbb/task_arena.h>
+#include <oneapi/tbb/task_group.h>
 #include <platformator/boxcollider.h>
 #include <platformator/rigidbody.h>
 #include <unordered_set>
@@ -314,6 +322,208 @@ void sleepTransitionsAndGroups(size_t workers)
                 "One moving connected member resets the whole group's quiet time");
     }
 }
+
+std::vector<std::array<uint32_t, 3>> solveAgainstSharedKinematicFloor(size_t workers)
+{
+    tbb::global_control concurrency(tbb::global_control::max_allowed_parallelism, workers);
+    platformator::Runtime runtime(physicsOnly());
+    constexpr int bodyCount = 384;
+    auto *floor = runtime.createGameObject()
+                      ->setPosition({float(bodyCount * 10), 9.5f})
+                      ->addComponent<BoxCollider>(float(bodyCount * 20 + 20), 10)
+                      ->addComponent<Rigidbody>(KINEMATIC, false);
+    floor->getComponent<Rigidbody>()->setVelocity({12, 0});
+    std::vector<Rigidbody *> bodies;
+    for (int i = 0; i < bodyCount; ++i)
+    {
+        auto *object = runtime.createGameObject()
+                           ->setPosition({float(i * 20), 0})
+                           ->addComponent<BoxCollider>(10, 10)
+                           ->addComponent<Rigidbody>(DYNAMIC, true);
+        auto *body = object->getComponent<Rigidbody>();
+        body->setVelocity({float(i % 5), 15})->setAngularVelocity(float(i % 3));
+        bodies.push_back(body);
+    }
+    runtime.simulateFrame(dt);
+
+    auto *physics = platformator_detail::RuntimeAccess::physicsManager();
+    require(physics->getContactPairs().size() == bodyCount, "Each dynamic body contacts the shared kinematic floor");
+    std::vector<std::array<uint32_t, 3>> state;
+    for (const auto *body : bodies)
+    {
+        const auto &v = body->getVelocity();
+        require(v.y() < 0, "The shared floor actually resolves each contact");
+        state.push_back(std::bit_cast<std::array<uint32_t, 3>>(
+            std::array{v.x(), v.y(), body->getAngularVelocity()}));
+    }
+    return state;
+}
+
+struct SolverResult
+{
+    std::vector<std::array<uint32_t, 3>> motion;
+    std::vector<std::array<uint32_t, 7>> contacts;
+    bool operator==(const SolverResult &) const = default;
+};
+
+SolverResult captureSolverResult(const PhysicsManager &physics, const std::vector<Rigidbody *> &bodies)
+{
+    SolverResult result;
+    for (const auto *body : bodies)
+    {
+        const auto &v = body->getVelocity();
+        result.motion.push_back(std::bit_cast<std::array<uint32_t, 3>>(
+            std::array{v.x(), v.y(), body->getAngularVelocity()}));
+    }
+    for (const auto *pair : physics.getContactPairs())
+    {
+        const auto &points = pair->getCollision()->getContactPoints();
+        require(points.count <= 2, "Each pair has at most two contact points");
+        const auto a = pair->getObjectA()->getId(), b = pair->getObjectB()->getId();
+        std::array<uint32_t, 7> contact{uint32_t(std::min(a, b)), uint32_t(std::max(a, b)), uint32_t(points.count)};
+        for (size_t i = 0; i < points.count; ++i)
+        {
+            contact[3 + 2 * i] = std::bit_cast<uint32_t>(points.points[i].accumulatedNormalImpulse);
+            contact[4 + 2 * i] = std::bit_cast<uint32_t>(points.points[i].accumulatedTangentImpulse);
+        }
+        result.contacts.push_back(contact);
+    }
+    std::sort(result.contacts.begin(), result.contacts.end());
+    return result;
+}
+
+Rigidbody *addSolverBox(platformator::Runtime &runtime, float x, float y, float width, BodyType type)
+{
+    return runtime.createGameObject()
+        ->setPosition({x, y})
+        ->addComponent<BoxCollider>(width, 10.f)
+        ->addComponent<Rigidbody>(type, false)
+        ->getComponent<Rigidbody>();
+}
+
+SolverResult solveWithCancelledCaller(size_t workers, bool cancel)
+{
+    tbb::global_control concurrency(tbb::global_control::max_allowed_parallelism, workers);
+    platformator::Runtime runtime(physicsOnly());
+    constexpr int count = 128;
+    for (float y : {-9.5f, 9.5f})
+        addSolverBox(runtime, count * 10.f, y, count * 20.f + 20, STATIC);
+    std::vector<Rigidbody *> bodies;
+    for (int i = 0; i < count; ++i)
+        bodies.push_back(addSolverBox(runtime, i * 20.f, 0, 10, DYNAMIC)->setVelocity({0, 15}));
+
+    auto &physics = *platformator_detail::RuntimeAccess::physicsManager();
+    physics.checkForCollisions();
+    require(physics.getContactPairs().size() == count * 2, "Cancellation fixture starts with 256 cached contacts");
+    require(physics.getGrid().getPendingNarrowPhasePairs()->empty(), "Narrow phase needs no worker batch");
+
+    tbb::task_group caller;
+    const auto status = caller.run_and_wait([&] {
+        runtime.simulateFrameWithCustomCallback(dt, [&](double) {
+            if (cancel)
+                caller.cancel();
+        });
+    });
+    require(status == (cancel ? tbb::canceled : tbb::complete), "The outer task reports its own cancellation");
+    require(bodies.front()->getVelocity().y() < 0, "The simulation still applies contact impulses");
+    return captureSolverResult(physics, bodies);
+}
+
+std::vector<SolverResult> solveConnectedColumns(size_t workers, bool sparse = false)
+{
+    tbb::global_control concurrency(tbb::global_control::max_allowed_parallelism, workers);
+    platformator::Runtime runtime(physicsOnly());
+    constexpr int columns = 144;
+    addSolverBox(runtime, columns * 10.f, -9.5f, columns * 20.f + 20, STATIC);
+    std::vector<Rigidbody *> bodies;
+    for (int column = 0; column < columns; ++column)
+        for (int row = 0; row < 4; ++row)
+            bodies.push_back(addSolverBox(runtime, column * 20.f, row * 9.5f, 10, DYNAMIC)
+                                 ->setVelocity({float(column % 5), float(10 + row)}));
+    // The cap connects all columns after their independent constraints have entered the solver.
+    bodies.push_back(addSolverBox(runtime, columns * 10.f, 38.f, columns * 20.f + 20, DYNAMIC));
+    if (sparse)
+        for (int i = 0; i < 3000; ++i)
+            runtime.createGameObject()->addComponent<Rigidbody>(STATIC, false);
+
+    auto &physics = *platformator_detail::RuntimeAccess::physicsManager();
+    physics.checkForCollisions();
+    require(physics.getContactPairs().size() == columns * 5, "The cap connects all four-body columns");
+#if PLATFORMATOR_ENABLE_WORK_PROBES
+    platformator_test::work.solverOrderedBatchDispatches = 0;
+#endif
+    std::vector<SolverResult> results;
+    for (int step = 0; step < 2; ++step)
+    {
+        physics.applyPhysics(dt);
+        // Cancel only around the solver to exercise the ordered-batch context in isolation.
+        tbb::task_group caller;
+        require(caller.run_and_wait([&] {
+                    caller.cancel();
+                    physics.resolveCollisions(dt);
+                }) == tbb::canceled,
+                "The enclosing task was cancelled");
+        results.push_back(captureSolverResult(physics, bodies));
+    }
+#if PLATFORMATOR_ENABLE_WORK_PROBES
+    if (workers > 1 && tbb::this_task_arena::max_concurrency() > 1)
+        require(platformator_test::work.solverOrderedBatchDispatches == 2, "Both steps exercise ordered batches");
+#endif
+    return results;
+}
+
+std::vector<SolverResult> solveUnbalancedIslands(size_t workers)
+{
+    tbb::global_control concurrency(tbb::global_control::max_allowed_parallelism, workers);
+    platformator::Runtime runtime(physicsOnly());
+    auto addStaticBody = [&] { return runtime.createGameObject()->addComponent<Rigidbody>(STATIC, false); };
+    auto *firstFiller = addStaticBody();
+    addSolverBox(runtime, 0, 9.5f, 10, STATIC);
+    std::vector<Rigidbody *> bodies{addSolverBox(runtime, 0, 0, 10, DYNAMIC)};
+    for (int count : {128, 127})
+    {
+        const float origin = count == 128 ? 100.f : 4000.f;
+        for (int i = 0; i < count; ++i)
+            bodies.push_back(addSolverBox(runtime, origin + i * 20.f, 0, 10, DYNAMIC));
+        bodies.push_back(addSolverBox(runtime, origin + count * 10.f, 9.5f, count * 20.f + 20, DYNAMIC));
+    }
+
+    auto &physics = *platformator_detail::RuntimeAccess::physicsManager();
+    std::vector<SolverResult> results;
+    const auto step = [&] {
+        for (auto *body : bodies)
+            body->setVelocity({0, body->getGameObject()->getY() == 0 ? 15.f : 0.f});
+        physics.checkForCollisions();
+        require(physics.getContactPairs().size() == 256, "Expected islands with 1, 128, and 127 constraints");
+#if PLATFORMATOR_ENABLE_WORK_PROBES
+        platformator_test::work.solverIslandJobs = 0;
+        platformator_test::work.solverLargestIslandJob = 0;
+#endif
+        physics.resolveCollisions(dt);
+#if PLATFORMATOR_ENABLE_WORK_PROBES
+        if (workers > 1 && tbb::this_task_arena::max_concurrency() > 1)
+            require(platformator_test::work.solverIslandJobs == 3 &&
+                        platformator_test::work.solverLargestIslandJob == 128,
+                    "The two expensive islands go into separate jobs");
+#endif
+        results.push_back(captureSolverResult(physics, bodies));
+    };
+    step();
+    std::vector<GameObject *> fillers;
+    for (int i = 0; i < 1200; ++i)
+        fillers.push_back(addStaticBody());
+    step();
+    // Swap removal can reassign a previously initialized registered-body slot.
+    auto *rail = bodies.back()->getGameObject();
+    rail->removeComponent(RIGID_BODY);
+    bodies.back() = rail->addComponent<Rigidbody>(DYNAMIC, false)->getComponent<Rigidbody>();
+    firstFiller->destroy();
+    step();
+    for (auto *filler : fillers)
+        filler->destroy();
+    step();
+    return results;
+}
 } // namespace
 
 int main()
@@ -331,6 +541,16 @@ int main()
             sameValuesAndWakeThresholds(workers);
             sleepTransitionsAndGroups(workers);
         }
+        const auto serial = solveAgainstSharedKinematicFloor(1);
+        require(serial == solveAgainstSharedKinematicFloor(6),
+                "Solving independent contacts in parallel preserves velocities exactly");
+        require(solveWithCancelledCaller(1, false) == solveWithCancelledCaller(6, true),
+                "Caller cancellation preserves solver velocities and cached impulses");
+        const auto connectedSerial = solveConnectedColumns(1);
+        require(connectedSerial == solveConnectedColumns(6) && connectedSerial == solveConnectedColumns(6, true),
+                "Dense and sparse ordered batches preserve serial velocities and cached impulses");
+        require(solveUnbalancedIslands(1) == solveUnbalancedIslands(6),
+                "Dense and sparse job setup preserve serial outputs across registered slot changes");
         std::cout << "[PASS] physics bookkeeping contracts\n";
         return 0;
     }

@@ -1096,29 +1096,23 @@ std::vector<SemanticNode> InspectorPanel::semantic_nodes(const DocumentSession &
             const auto behaviors = component.find("behaviors");
             if (behaviors == component.end() || !behaviors->is_array())
                 break;
-            const std::optional<std::size_t> visibleBehaviorOrdinal = behaviors->empty()
-                ? std::nullopt
-                : (selection.componentId == componentId && selection.behaviorOrdinal &&
-                   *selection.behaviorOrdinal < behaviors->size()
-                    ? selection.behaviorOrdinal : std::optional<std::size_t>{0});
             for (std::size_t ordinal = 0; ordinal < behaviors->size() &&
                  nodes.size() < maximumNodes; ++ordinal)
             {
                 const auto &behavior = (*behaviors)[ordinal];
+                const bool expanded = behaviorFields_.behavior_expanded(document, componentId, ordinal);
                 const std::string nodeId = componentNodeId + "/behavior/" +
                     std::to_string(ordinal);
                 SemanticNode behaviorNode;
                 behaviorNode.id = nodeId;
                 behaviorNode.parentId = componentNodeId;
-                behaviorNode.role = SemanticRole::ListItem;
+                behaviorNode.role = SemanticRole::Group;
                 behaviorNode.name = behavior.is_object()
                     ? behavior.value("type", std::string("Behavior"))
                     : std::string("Behavior ") + std::to_string(ordinal + 1);
-                behaviorNode.value = "Behavior " + std::to_string(ordinal + 1);
                 behaviorNode.visible = true;
-                behaviorNode.selected = selection.behaviorOrdinal == ordinal;
-                behaviorNode.focused = behaviorNode.selected && selection.componentId == componentId &&
-                    selection.focusedPanel == FocusedPanel::Behaviors;
+                behaviorNode.expanded = expanded;
+                behaviorNode.focused = semanticFocusNode_ == nodeId;
                 behaviorNode.actions = {"activate"};
                 nodes.push_back(std::move(behaviorNode));
                 semanticTargets_.emplace(nodeId, SemanticTarget{objectId, componentId,
@@ -1163,7 +1157,7 @@ std::vector<SemanticNode> InspectorPanel::semantic_nodes(const DocumentSession &
                     fieldNode.parentId = nodeId;
                     fieldNode.name = field.value("label", fieldName);
                     fieldNode.value = semantic_value_text(value);
-                    fieldNode.visible = visibleBehaviorOrdinal == ordinal;
+                    fieldNode.visible = expanded;
                     fieldNode.selected = semanticFocusNode_ && *semanticFocusNode_ == fieldId;
                     fieldNode.focused = fieldNode.selected &&
                         selection.componentId == componentId &&
@@ -1308,15 +1302,22 @@ bool InspectorPanel::dispatch_semantic_action(DocumentSession &document,
     {
     case SemanticOperation::Reveal:
         selection.set(document, next);
-        if (semanticTarget.behaviorOrdinal)
-            searchQuery_ = semanticTarget.fieldPath;
+        if (semanticTarget.behaviorOrdinal && semanticTarget.componentId)
+            reveal_behavior(semanticTarget.objectId, *semanticTarget.componentId,
+                            *semanticTarget.behaviorOrdinal, "/" + semanticTarget.fieldPath);
         else
             reveal_field(semanticTarget.objectId, semanticTarget.componentId,
                          semanticTarget.fieldPath);
         break;
     case SemanticOperation::SelectComponent:
-    case SemanticOperation::SelectBehavior:
         selection.set(document, std::move(next));
+        break;
+    case SemanticOperation::SelectBehavior:
+        if (!semanticTarget.componentId || !semanticTarget.behaviorOrdinal)
+            return false;
+        selection.set(document, std::move(next));
+        reveal_behavior(semanticTarget.objectId, *semanticTarget.componentId,
+                        *semanticTarget.behaviorOrdinal, {});
         break;
     case SemanticOperation::CopySettings:
     case SemanticOperation::PasteSettings:
@@ -1416,6 +1417,16 @@ bool InspectorPanel::dispatch_semantic_action(DocumentSession &document,
     return true;
 }
 
+void InspectorPanel::reveal_behavior(int objectId, int componentId, std::size_t ordinal, std::string fieldPath)
+{
+    behaviorFields_.reveal_field(objectId, componentId, ordinal, std::move(fieldPath));
+    revealObjectId_ = objectId;
+    revealComponentId_ = componentId;
+    revealPath_.clear();
+    behaviorRevealPending_ = true;
+    searchQuery_.clear();
+}
+
 void InspectorPanel::reveal_field(int objectId, std::optional<int> componentId,
                                  std::string fieldPath)
 {
@@ -1432,13 +1443,7 @@ void InspectorPanel::reveal_field(int objectId, std::optional<int> componentId,
                                                 ordinalText.data() + ordinalText.size(), ordinal);
             if (parsed.ec == std::errc{} && parsed.ptr == ordinalText.data() + ordinalText.size())
             {
-                behaviorFields_.reveal_field(objectId, *componentId, ordinal,
-                    "/" + fieldPath.substr(close + 2));
-                revealObjectId_ = objectId;
-                revealComponentId_ = componentId;
-                revealPath_.clear();
-                behaviorRevealPending_ = true;
-                searchQuery_.clear();
+                reveal_behavior(objectId, *componentId, ordinal, "/" + fieldPath.substr(close + 2));
                 return;
             }
         }
@@ -2591,22 +2596,8 @@ void InspectorPanel::draw_common_compact_transform(
     ImGui::TextUnformatted("Transform");
 
     ImGui::SameLine(ImGui::GetWindowContentRegionMax().x - buttonWidth);
-    const ImVec2 btnPos = ImGui::GetCursorScreenPos();
-    const bool menuClicked = ImGui::InvisibleButton("##common_transform_menu", ImVec2(buttonWidth, headerFrameHeight));
-    const bool btnHovered = ImGui::IsItemHovered();
-    const bool btnActive = ImGui::IsItemActive();
-    const ImU32 iconColor = btnActive ? ImGui::GetColorU32(ImGuiCol_HeaderActive)
-                         : (btnHovered ? ImGui::GetColorU32(ImGuiCol_Text)
-                                       : ImGui::GetColorU32(ImGuiCol_TextDisabled));
-    const float iconSize = 12.0f * uiScale;
-    draw_editor_icon(EditorIcon::MoreVertical, ImGui::GetWindowDrawList(),
-                     ImVec2(btnPos.x + (buttonWidth - iconSize) * 0.5f,
-                            btnPos.y + (headerFrameHeight - iconSize) * 0.5f),
-                     iconSize, iconColor);
-    if (menuClicked)
-        ImGui::OpenPopup("CommonTransformContextMenu");
 
-    if (ImGui::BeginPopupContextItem("CommonTransformContextMenu"))
+    if (begin_more_menu("##common_transform_menu", "CommonTransformContextMenu", {buttonWidth, headerFrameHeight}))
     {
         auto apply_transform_values = [&](const Json &pos, float rot, const Json &scl) {
             std::vector<BatchPropertyEdit> edits;
@@ -3119,8 +3110,8 @@ void InspectorPanel::draw(DocumentSession &document, SelectionModel &selection, 
     }
     const InspectorAddressScope addressScope(document, objectId, hostGeneration_);
 
-    const auto attach_behavior = [&](const std::string &behaviorType) {
-        if (behaviorType.empty())
+    const auto attach_behavior = [&](Json behavior) {
+        if (behavior.value("type", std::string{}).empty())
             return;
         const Selection before = selection.current();
         auto scriptId = script_component_id(document, objectId);
@@ -3149,13 +3140,12 @@ void InspectorPanel::draw(DocumentSession &document, SelectionModel &selection, 
                         ordinal = behaviors->size();
                 }
             }
-            result = commands.add_behavior(document, objectId, *scriptId,
-                                           Json{{"type", behaviorType}});
+            result = commands.add_behavior(document, objectId, *scriptId, std::move(behavior));
         }
         else
         {
             Json script = default_component_record(5);
-            script["behaviors"].push_back(Json{{"type", behaviorType}});
+            script["behaviors"].push_back(std::move(behavior));
             result = commands.add_component(document, objectId, std::move(script));
             if (result.status == CommandStatus::Changed && result.command)
                 scriptId = result.command->payload.value("id", 0);
@@ -3197,7 +3187,7 @@ void InspectorPanel::draw(DocumentSession &document, SelectionModel &selection, 
                         return std::isalnum(character) || character == '_';
                     });
                 if (validType)
-                    attach_behavior(behaviorType);
+                    attach_behavior(Json{{"type", behaviorType}});
             }
         }
         ImGui::EndDragDropTarget();
@@ -3568,23 +3558,9 @@ void InspectorPanel::draw(DocumentSession &document, SelectionModel &selection, 
         ImGui::TextUnformatted(component_label(type));
 
         ImGui::SameLine(ImGui::GetWindowContentRegionMax().x - buttonWidth);
-        const ImVec2 btnPos = ImGui::GetCursorScreenPos();
-        const bool menuClicked = ImGui::InvisibleButton("##menu", ImVec2(buttonWidth, headerFrameHeight));
-        const bool btnHovered = ImGui::IsItemHovered();
-        const bool btnActive = ImGui::IsItemActive();
-        const ImU32 iconColor = btnActive ? ImGui::GetColorU32(ImGuiCol_HeaderActive)
-                             : (btnHovered ? ImGui::GetColorU32(ImGuiCol_Text)
-                                           : ImGui::GetColorU32(ImGuiCol_TextDisabled));
-        const float iconSize = 12.0f * uiScale;
-        draw_editor_icon(EditorIcon::MoreVertical, ImGui::GetWindowDrawList(),
-                         ImVec2(btnPos.x + (buttonWidth - iconSize) * 0.5f,
-                                btnPos.y + (headerFrameHeight - iconSize) * 0.5f),
-                         iconSize, iconColor);
-        if (menuClicked)
-            ImGui::OpenPopup("ComponentHeaderContextMenu");
 
         bool componentRemoved = false;
-        if (ImGui::BeginPopupContextItem("ComponentHeaderContextMenu"))
+        if (begin_more_menu("##menu", "ComponentHeaderContextMenu", {buttonWidth, headerFrameHeight}))
         {
             if (ImGui::MenuItem("Reset"))
             {
@@ -4009,7 +3985,7 @@ void InspectorPanel::draw(DocumentSession &document, SelectionModel &selection, 
                 behaviorFields_.draw(document, scriptSelection, commands, catalog, browse, resourceIndex_,
                                      searchQuery_);
             }
-            if (behaviorRevealPending_)
+            if (behaviorRevealPending_ && revealObjectId_ == objectId && revealComponentId_ == componentId)
             {
                 revealObjectId_.reset();
                 revealComponentId_.reset();
@@ -4080,6 +4056,14 @@ void InspectorPanel::draw(DocumentSession &document, SelectionModel &selection, 
         if (!anyComponent)
             ImGui::TextDisabled("No compatible components match this search.");
         ImGui::SeparatorText("Behaviors");
+        const auto &copiedBehavior = behaviorFields_.copied_behavior();
+        if (copiedBehavior &&
+            discovery_query_matches(addPickerQuery_, "paste behavior " + copiedBehavior->value("type", std::string{})) &&
+            ImGui::MenuItem("Paste Behavior"))
+        {
+            attach_behavior(*copiedBehavior);
+            ImGui::CloseCurrentPopup();
+        }
         bool anyBehavior = false;
         const auto behaviorCatalog = catalog.snapshot();
         if (!behaviorCatalog)
@@ -4106,7 +4090,7 @@ void InspectorPanel::draw(DocumentSession &document, SelectionModel &selection, 
                             behavior["scanner_warning"].get_ref<const std::string &>().c_str());
                     if (ImGui::MenuItem(behaviorType.c_str()))
                     {
-                        attach_behavior(behaviorType);
+                        attach_behavior(Json{{"type", behaviorType}});
                         ImGui::CloseCurrentPopup();
                         break;
                     }
@@ -4373,27 +4357,13 @@ void InspectorPanel::draw_multi_object_fields(DocumentSession &document, Selecti
                 ImGui::TextUnformatted(component_label(type));
 
                 ImGui::SameLine(ImGui::GetWindowContentRegionMax().x - buttonWidth);
-                const ImVec2 btnPos = ImGui::GetCursorScreenPos();
-                const bool menuClicked = ImGui::InvisibleButton("##menu", ImVec2(buttonWidth, headerFrameHeight));
-                const bool btnHovered = ImGui::IsItemHovered();
-                const bool btnActive = ImGui::IsItemActive();
-                const ImU32 iconColor = btnActive ? ImGui::GetColorU32(ImGuiCol_HeaderActive)
-                                     : (btnHovered ? ImGui::GetColorU32(ImGuiCol_Text)
-                                                   : ImGui::GetColorU32(ImGuiCol_TextDisabled));
-                const float iconSize = 12.0f * uiScale;
-                draw_editor_icon(EditorIcon::MoreVertical, ImGui::GetWindowDrawList(),
-                                 ImVec2(btnPos.x + (buttonWidth - iconSize) * 0.5f,
-                                        btnPos.y + (headerFrameHeight - iconSize) * 0.5f),
-                                 iconSize, iconColor);
-                if (menuClicked)
-                    ImGui::OpenPopup("CommonComponentContextMenu");
 
                 std::vector<ComponentSettingsTarget> groupTargets;
                 groupTargets.reserve(matching.size());
                 for (std::size_t index = 0; index < matching.size(); ++index)
                     groupTargets.emplace_back(objectIds[index], matching[index].first);
 
-                if (ImGui::BeginPopupContextItem("CommonComponentContextMenu"))
+                if (begin_more_menu("##menu", "CommonComponentContextMenu", {buttonWidth, headerFrameHeight}))
                 {
                     if (ImGui::MenuItem("Reset Settings for Selection"))
                     {

@@ -948,7 +948,6 @@ bool draw_typed_value(DocumentSession &document, EditCommandService &commands, i
             const std::uint64_t originalValue = value;
             auto minimum = unsigned_bound(descriptor, "minimum").value_or(0);
             auto maximum = unsigned_bound(descriptor, "maximum");
-            std::uint64_t limit = maximum.value_or(std::numeric_limits<std::uint64_t>::max());
             const auto minOpt = std::optional<double>(static_cast<double>(minimum));
             const auto maxOpt = maximum ? std::optional<double>(static_cast<double>(*maximum)) : std::nullopt;
             apply_label_scrub(
@@ -979,7 +978,7 @@ bool draw_typed_value(DocumentSession &document, EditCommandService &commands, i
                 value = apply_numeric_delta(scrubCtx.scrub.targets.front().originalJson, scrubCtx.scrub.accumDelta, minOpt, maxOpt).get<std::uint64_t>();
             const std::vector<PropertyAddress> targets{
                 address_for_document(document, objectId, componentId, ordinal, path)};
-            live_input_uint64("##value", value, &minimum, &limit, scrubCtx.liveEdit, targets, [&] {
+            live_input_uint64("##value", value, nullptr, nullptr, scrubCtx.liveEdit, targets, [&] {
                 draw_active_behavior_revert_context(path);
             });
         }
@@ -1019,7 +1018,7 @@ bool draw_typed_value(DocumentSession &document, EditCommandService &commands, i
                 value = apply_numeric_delta(scrubCtx.scrub.targets.front().originalJson, scrubCtx.scrub.accumDelta, minOpt, maxOpt).get<std::int64_t>();
             const std::vector<PropertyAddress> targets{
                 address_for_document(document, objectId, componentId, ordinal, path)};
-            live_input_int64("##value", value, &minimum, &maximum, scrubCtx.liveEdit, targets, [&] {
+            live_input_int64("##value", value, nullptr, nullptr, scrubCtx.liveEdit, targets, [&] {
                 draw_active_behavior_revert_context(path);
             });
         }
@@ -1363,6 +1362,23 @@ void BehaviorFieldsPanel::reveal_field(int objectId, int componentId,
     revealPath_ = std::move(fieldPath);
 }
 
+bool BehaviorFieldsPanel::behavior_expanded(const DocumentSession &document, int componentId,
+                                            std::size_t ordinal) const
+{
+    return !feedbackDocument_ ||
+        !matches(*feedbackDocument_, ProjectGeneration{document.projectGeneration}, document.tabId,
+                 DocumentGeneration{document.documentGeneration}) ||
+        !collapsedBehaviors_.contains({componentId, ordinal});
+}
+
+void BehaviorFieldsPanel::clear_reveal_target()
+{
+    revealObjectId_.reset();
+    revealComponentId_.reset();
+    revealBehaviorOrdinal_.reset();
+    revealPath_.clear();
+}
+
 bool BehaviorFieldsPanel::consume_reveal_target(
     int objectId, int componentId, std::size_t behaviorOrdinal,
     const std::vector<FieldPathSegment> &path)
@@ -1377,10 +1393,7 @@ bool BehaviorFieldsPanel::consume_reveal_target(
                          revealPath_.starts_with(currentPath + "/");
     if (!related)
         return false;
-    revealObjectId_.reset();
-    revealComponentId_.reset();
-    revealBehaviorOrdinal_.reset();
-    revealPath_.clear();
+    clear_reveal_target();
     return true;
 }
 
@@ -1393,6 +1406,8 @@ void BehaviorFieldsPanel::draw(DocumentSession &document, SelectionModel &select
     const DocumentIdentity currentIdentity{
         ProjectGeneration{document.projectGeneration}, document.tabId,
         DocumentGeneration{document.documentGeneration}};
+    if (feedbackDocument_ != currentIdentity)
+        collapsedBehaviors_.clear();
     const auto &currentSelection = selection.current();
     if (feedbackDocument_ && (*feedbackDocument_ != currentIdentity ||
         feedbackSelection_ != currentSelection ||
@@ -1451,140 +1466,174 @@ void BehaviorFieldsPanel::draw(DocumentSession &document, SelectionModel &select
     const auto behaviorList = component.find("behaviors");
     if (behaviorList == component.end() || !behaviorList->is_array())
         return;
-    if (revealObjectId_ &&
-        (*revealObjectId_ != objectId || revealComponentId_ != componentId ||
-         !revealBehaviorOrdinal_ || *revealBehaviorOrdinal_ >= behaviorList->size()))
-    {
-        revealObjectId_.reset();
-        revealComponentId_.reset();
-        revealBehaviorOrdinal_.reset();
-        revealPath_.clear();
-    }
-    if (revealObjectId_ && !behaviorList->empty())
-        selection.set(document, Selection{objectId, componentId, *revealBehaviorOrdinal_,
-                                          FocusedPanel::Behaviors});
-    if (!behaviorList->empty() &&
-        (!selection.current().behaviorOrdinal ||
-         *selection.current().behaviorOrdinal >= behaviorList->size()))
-        selection.set(document, Selection{objectId, componentId, 0, FocusedPanel::Inspector});
-    ImGui::TextUnformatted("Behaviors");
-    for (std::size_t index = 0; index < behaviorList->size(); ++index)
-    {
-        const auto &behavior = (*behaviorList)[index];
-        const std::string name = behavior.is_object() ? behavior.value("type", std::string("Unknown")) : "Malformed";
-        ImGui::PushID(static_cast<int>(index));
-        const std::string itemLabel = std::to_string(index) + ": " + name;
-        const float itemWidth = std::max(1.0f, ImGui::GetContentRegionAvail().x);
-        const float itemHeight = ImGui::GetFrameHeight();
-        const ImVec2 itemPos = ImGui::GetCursorScreenPos();
-        if (ImGui::Selectable("##behavior_item",
-                              selection.current().behaviorOrdinal == index,
-                              0,
-                              ImVec2(itemWidth, itemHeight)))
-            selection.set(document, Selection{objectId, componentId, index, FocusedPanel::Behaviors});
-        draw_clipped_property_label(
-            ImGui::GetWindowDrawList(),
-            itemPos.x + ImGui::GetStyle().FramePadding.x,
-            itemPos.y,
-            std::max(1.0f, itemWidth - ImGui::GetStyle().FramePadding.x * 2.0f),
-            itemHeight,
-            itemLabel.c_str(),
-            ImGui::GetColorU32(ImGuiCol_Text),
-            ImGui::IsItemHovered());
-        ImGui::PopID();
-    }
-    if (!selection.current().behaviorOrdinal || *selection.current().behaviorOrdinal >= behaviorList->size())
-    {
-        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
-        ImGui::TextDisabled("Select a behavior to edit its fields.");
-        ImGui::PopStyleColor();
-        return;
-    }
-    const auto ordinal = *selection.current().behaviorOrdinal;
-    const BehaviorOverrideContextScope overrideContext(document, commands, feedback_,
-                                                        objectId, componentId, ordinal);
-    const BehaviorAddressScope addressScope(document, objectId, componentId, ordinal);
-    const Json *behavior = behavior_owner(document, objectId, componentId, ordinal);
-    if (behavior == nullptr || !behavior->is_object())
-        return;
-    const std::string behaviorName = behavior->value("type", std::string("Unknown"));
-    const auto snapshot = catalog.snapshot();
-    const Json *descriptor = snapshot ? find_behavior_descriptor(snapshot->document, behaviorName) : nullptr;
-    const bool schemaUnavailable = descriptor == nullptr ||
-        !descriptor->value("field_schema_available", false);
-    if (schemaUnavailable)
-    {
-        ImGui::TextDisabled("No schema");
-        if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("Saved fields remain editable as JSON until a source schema is available.");
-    }
-    else if (descriptor->contains("scanner_warning") && (*descriptor)["scanner_warning"].is_string())
-    {
-        ImGui::TextColored(ImVec4(1.0f, 0.72f, 0.35f, 1.0f), "%s",
-                           (*descriptor)["scanner_warning"].get_ref<const std::string &>().c_str());
-    }
+    if (revealObjectId_ && (*revealObjectId_ != objectId ||
+        (revealComponentId_ == componentId &&
+         (!revealBehaviorOrdinal_ || *revealBehaviorOrdinal_ >= behaviorList->size()))))
+        clear_reveal_target();
 
-    std::set<std::string> knownFields;
-    if (descriptor != nullptr && descriptor->value("field_schema_available", false))
-    {
-        const auto fields = descriptor->find("fields");
-        if (fields != descriptor->end() && fields->is_array())
+    const auto snapshot = catalog.snapshot();
+    const auto drawFields = [&](std::size_t ordinal, const std::string &behaviorName) {
+        const BehaviorOverrideContextScope overrideContext(document, commands, feedback_,
+                                                            objectId, componentId, ordinal);
+        const BehaviorAddressScope addressScope(document, objectId, componentId, ordinal);
+        const Json *behavior = behavior_owner(document, objectId, componentId, ordinal);
+        if (behavior == nullptr || !behavior->is_object())
+            return;
+        const Json *descriptor = snapshot ? find_behavior_descriptor(snapshot->document, behaviorName) : nullptr;
+        const bool schemaUnavailable = descriptor == nullptr ||
+            !descriptor->value("field_schema_available", false);
+        if (schemaUnavailable)
         {
-            for (const auto &field : *fields)
+            ImGui::TextDisabled("No schema");
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("Saved fields remain editable as JSON until a source schema is available.");
+        }
+        else if (descriptor->contains("scanner_warning") && (*descriptor)["scanner_warning"].is_string())
+        {
+            ImGui::TextColored(ImVec4(1.0f, 0.72f, 0.35f, 1.0f), "%s",
+                               (*descriptor)["scanner_warning"].get_ref<const std::string &>().c_str());
+        }
+
+        std::set<std::string> knownFields;
+        if (descriptor != nullptr && descriptor->value("field_schema_available", false))
+        {
+            const auto fields = descriptor->find("fields");
+            if (fields != descriptor->end() && fields->is_array())
             {
-                const std::string fieldName = field.value("name", std::string{});
-                if (fieldName.empty())
-                    continue;
-                const std::string searchable = behaviorName + " " + fieldName + " " +
-                    field.value("label", fieldName) + " " +
-                    field.value("kind", std::string("opaque_json")) + " #" +
-                    std::to_string(objectId) + object_search_context(document, objectId);
-                knownFields.insert(fieldName);
-                if (!discovery_query_matches(searchQuery, searchable))
-                    continue;
-                const bool reveal = consume_reveal_target(
-                    objectId, componentId, ordinal, {std::string(fieldName)});
-                if (reveal)
-                    ImGui::SetKeyboardFocusHere();
-                draw_typed_value(document, commands, objectId, componentId, ordinal,
-                                 {std::string(fieldName)}, field, fieldName, browse, resourceIndex, scrubCtx);
-                if (reveal)
-                    ImGui::SetScrollHereY(0.5f);
+                for (const auto &field : *fields)
+                {
+                    const std::string fieldName = field.value("name", std::string{});
+                    if (fieldName.empty())
+                        continue;
+                    const std::string searchable = behaviorName + " " + fieldName + " " +
+                        field.value("label", fieldName) + " " +
+                        field.value("kind", std::string("opaque_json")) + " #" +
+                        std::to_string(objectId) + object_search_context(document, objectId);
+                    knownFields.insert(fieldName);
+                    if (!discovery_query_matches(searchQuery, searchable))
+                        continue;
+                    const bool reveal = consume_reveal_target(
+                        objectId, componentId, ordinal, {std::string(fieldName)});
+                    if (reveal)
+                        ImGui::SetKeyboardFocusHere();
+                    draw_typed_value(document, commands, objectId, componentId, ordinal,
+                                     {std::string(fieldName)}, field, fieldName, browse, resourceIndex, scrubCtx);
+                    if (reveal)
+                        ImGui::SetScrollHereY(0.5f);
+                }
             }
         }
-    }
 
-    std::vector<std::string> extras;
-    for (auto it = behavior->begin(); it != behavior->end(); ++it)
-        if (it.key() != "type" && !knownFields.contains(it.key()) &&
-            discovery_query_matches(searchQuery, behaviorName + " " + it.key() +
-                object_search_context(document, objectId)))
-            extras.push_back(it.key());
-    // Undeclared fields are preserved. Only typed metadata can distinguish an
-    // integer parameter from a reference; never guess from coincidentally equal IDs.
-    for (const auto &key : extras)
-    {
-        const bool reveal = consume_reveal_target(objectId, componentId, ordinal,
-                                                  {std::string(key)});
-        if (reveal)
-            ImGui::SetKeyboardFocusHere();
-        ImGui::PushID(key.c_str());
-        const Json *value = read_path(behavior_owner(document, objectId, componentId, ordinal), {key});
-        if (value != nullptr && (value->is_number_integer() || value->is_object() || value->is_array()))
+        std::vector<std::string> extras;
+        behavior = behavior_owner(document, objectId, componentId, ordinal);
+        if (behavior == nullptr)
+            return;
+        for (auto it = behavior->begin(); it != behavior->end(); ++it)
+            if (it.key() != "type" && !knownFields.contains(it.key()) &&
+                discovery_query_matches(searchQuery, behaviorName + " " + it.key() +
+                    object_search_context(document, objectId)))
+                extras.push_back(it.key());
+        // Undeclared fields are preserved. Only typed metadata can distinguish an
+        // integer parameter from a reference; never guess from coincidentally equal IDs.
+        for (const auto &key : extras)
         {
-            begin_field(key, {key});
-            ImGui::TextDisabled("Unrecognized");
-            if (ImGui::IsItemHovered())
-                ImGui::SetTooltip(schemaUnavailable
-                    ? "This field is not in the current schema. Edit the behavior source to declare it."
-                    : "The field type is unavailable.");
-            end_field();
+            const bool reveal = consume_reveal_target(objectId, componentId, ordinal,
+                                                      {std::string(key)});
+            if (reveal)
+                ImGui::SetKeyboardFocusHere();
+            ImGui::PushID(key.c_str());
+            const Json *value = read_path(behavior_owner(document, objectId, componentId, ordinal), {key});
+            if (value != nullptr && (value->is_number_integer() || value->is_object() || value->is_array()))
+            {
+                begin_field(key, {key});
+                ImGui::TextDisabled("Unrecognized");
+                if (ImGui::IsItemHovered())
+                    ImGui::SetTooltip(schemaUnavailable
+                        ? "This field is not in the current schema. Edit the behavior source to declare it."
+                        : "The field type is unavailable.");
+                end_field();
+            }
+            else
+                draw_raw_value(document, commands, objectId, componentId, ordinal, {key}, key, scrubCtx);
+            ImGui::PopID();
+            if (reveal)
+                ImGui::SetScrollHereY(0.5f);
         }
-        else
-            draw_raw_value(document, commands, objectId, componentId, ordinal, {key}, key, scrubCtx);
-        ImGui::PopID();
+    };
+
+    const auto behaviorCount = behaviorList->size();
+    const float uiScale = std::clamp(ImGui::GetIO().FontGlobalScale, 0.5f, 6.0f);
+    for (std::size_t index = 0; index < behaviorCount; ++index)
+    {
+        const Json *behavior = behavior_owner(document, objectId, componentId, index);
+        if (behavior == nullptr)
+            continue;
+        const auto type = behavior->is_object() ? behavior->find("type") : behavior->end();
+        const bool hasType = type != behavior->end() && type->is_string();
+        const auto name = hasType ? type->get<std::string>() : std::string("Unknown");
+        ImGui::PushID(static_cast<int>(index));
+        const bool reveal = revealObjectId_ == objectId &&
+                            revealComponentId_ == componentId && revealBehaviorOrdinal_ == index;
         if (reveal)
-            ImGui::SetScrollHereY(0.5f);
+            ImGui::SetNextItemOpen(true, ImGuiCond_Always);
+        const std::string header = "###behavior." + name;
+        const bool expanded = ImGui::CollapsingHeader(header.c_str(),
+            ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_SpanAvailWidth | ImGuiTreeNodeFlags_AllowOverlap);
+        const auto key = std::pair{componentId, index};
+        if (expanded)
+            collapsedBehaviors_.erase(key);
+        else
+            collapsedBehaviors_.insert(key);
+
+        const ImVec2 headerMin = ImGui::GetItemRectMin();
+        const ImVec2 nextRow = ImGui::GetCursorScreenPos();
+        const float contentRight = nextRow.x + ImGui::GetContentRegionAvail().x;
+        const float menuWidth = std::min(24.0f * uiScale, std::max(1.0f, contentRight - nextRow.x));
+        const float height = ImGui::GetFrameHeight();
+        const float labelX = headerMin.x + ImGui::GetTreeNodeToLabelSpacing();
+        draw_clipped_property_label(ImGui::GetWindowDrawList(), labelX, headerMin.y,
+                                    std::max(1.0f, contentRight - menuWidth - labelX), height,
+                                    name.c_str(), ImGui::GetColorU32(ImGuiCol_Text), ImGui::IsItemHovered());
+        ImGui::SameLine(ImGui::GetWindowContentRegionMax().x - menuWidth);
+        bool remove = false;
+        std::optional<Json> insert;
+        if (begin_more_menu("##behavior_menu", "BehaviorContextMenu", {menuWidth, height}))
+        {
+            if (ImGui::MenuItem("Copy Behavior", nullptr, false, hasType))
+                behaviorClipboard_ = *behavior;
+            if (ImGui::MenuItem("Paste Behavior", nullptr, false, behaviorClipboard_.has_value()))
+                insert = behaviorClipboard_;
+            if (ImGui::MenuItem("Duplicate Behavior", nullptr, false, hasType))
+                insert = *behavior;
+            ImGui::Separator();
+            remove = ImGui::MenuItem("Remove Behavior");
+            ImGui::EndPopup();
+        }
+        ImGui::PopID();
+        if (remove || insert)
+        {
+            cancel_active_interactions(&document);
+            const Selection before = selection.current();
+            Selection after = before;
+            after.behaviorOrdinal.reset();
+            const auto result = insert
+                ? commands.add_behavior(document, objectId, componentId, std::move(*insert), behaviorCount, {before, after})
+                : commands.remove_behavior(document, objectId, componentId, index, {before, after});
+            if (result.status == CommandStatus::Changed)
+            {
+                selection.set(document, std::move(after));
+                feedback_.clear();
+            }
+            else
+                feedback_ = result.message;
+            return;
+        }
+        if (reveal && revealPath_.empty())
+            ImGui::SetScrollFromPosY(headerMin.y - ImGui::GetWindowPos().y, 0.5f);
+        if (expanded)
+            drawFields(index, name);
+        if (reveal)
+            clear_reveal_target();
     }
     if (!feedback_.empty())
         ImGui::TextColored(ImVec4(0.95f, 0.55f, 0.38f, 1.0f), "%s", feedback_.c_str());
@@ -1604,6 +1653,8 @@ void BehaviorFieldsPanel::draw_multi_object_fields(DocumentSession &document,
     const DocumentIdentity currentIdentity{
         ProjectGeneration{document.projectGeneration}, document.tabId,
         DocumentGeneration{document.documentGeneration}};
+    if (feedbackDocument_ != currentIdentity)
+        collapsedBehaviors_.clear();
     if (feedbackDocument_ && (*feedbackDocument_ != currentIdentity ||
         feedbackSelection_ != selection || feedbackObjectIds_ != objectIds ||
         feedbackRevision_ != document.valueRevision))
@@ -1661,7 +1712,6 @@ void BehaviorFieldsPanel::draw_multi_object_fields(DocumentSession &document,
     }
 
     std::vector<std::vector<MultiBehaviorAddress>> scriptComponents(primaryScriptCount);
-    bool hasAnyCommonBehavior = false;
     for (std::size_t scriptOccurrence = 0; scriptOccurrence < primaryScriptCount; ++scriptOccurrence)
     {
         auto &participants = scriptComponents[scriptOccurrence];
@@ -1741,14 +1791,18 @@ void BehaviorFieldsPanel::draw_multi_object_fields(DocumentSession &document,
             if (fields == descriptor->end() || !fields->is_array())
                 continue;
 
-            if (!hasAnyCommonBehavior)
-            {
-                ImGui::SeparatorText("Common Script behavior fields");
-                hasAnyCommonBehavior = true;
-            }
             ImGui::PushID(static_cast<int>(scriptOccurrence));
             ImGui::PushID(static_cast<int>(behaviorOrdinal));
-            ImGui::Text("Script %zu · %s", scriptOccurrence + 1, behaviorName.c_str());
+            const std::string title = (primaryScriptCount > 1
+                ? "Script " + std::to_string(scriptOccurrence + 1) + " · " + behaviorName
+                : behaviorName) + "###common_behavior";
+            if (!ImGui::CollapsingHeader(title.c_str(),
+                ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_SpanAvailWidth))
+            {
+                ImGui::PopID();
+                ImGui::PopID();
+                continue;
+            }
             std::vector<std::pair<int, int>> overrideTargets;
             overrideTargets.reserve(participants.size());
             for (const auto &participant : participants)

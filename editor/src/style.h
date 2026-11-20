@@ -57,6 +57,7 @@ void push_editor_toolbar_style(bool playMode = false);
 void pop_editor_toolbar_style();
 bool icon_label_button(EditorIcon icon, const char *label, const char *tooltip = nullptr, float customWidth = 0.0f);
 bool icon_button(EditorIcon icon, const char *str_id, bool active = false, const char *tooltip = nullptr, ImVec2 size = {});
+bool begin_more_menu(const char *buttonId, const char *popupId, ImVec2 size);
 void draw_editor_icon(EditorIcon icon, ImDrawList *draw, ImVec2 origin, float size, ImU32 color);
 std::string_view strip_identity_suffix(std::string_view label) noexcept;
 std::string format_clean_float(double value, int maxDecimals = 2);

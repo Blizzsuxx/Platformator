@@ -1,11 +1,14 @@
 #include "project.h"
 #include "document.h"
+#include "documentmanager.h"
 #include "editcommands.h"
 #include "editorwork.h"
 #include "audiopreview.h"
 #include "layersettings.h"
 #include "panels/project.h"
+#include "platform/nativefile_testhooks.h"
 #include "selection.h"
+#include "sourcescanner.h"
 #include "test_support.h"
 
 #include <SDL3/SDL.h>
@@ -19,6 +22,8 @@
 #include <array>
 #include <chrono>
 #include <cstdint>
+#include <fstream>
+#include <iterator>
 #include <optional>
 #include <set>
 #include <stdexcept>
@@ -53,7 +58,7 @@ struct ProjectPanelTestProbe
         panel.selectedDirectory_ = directory;
         panel.selectedRoot_ = assetRoot;
         panel.selectedRootLabel_ = "Assets";
-        panel.selectedEntry_.reset();
+        panel.clear_asset_selection();
         for (auto current = directory; path_is_within(assetRoot, current); current = current.parent_path())
         {
             panel.expandedDirectories_.insert(current.string());
@@ -64,12 +69,12 @@ struct ProjectPanelTestProbe
 
     static void select_entry(ProjectPanel &panel, const std::filesystem::path &entry)
     {
-        panel.selectedEntry_ = entry;
+        panel.select_only_asset(entry);
     }
 
     static bool selected_entry_is(const ProjectPanel &panel, const std::filesystem::path &entry)
     {
-        return panel.selectedEntry_ && *panel.selectedEntry_ == entry;
+        return panel.selectedEntries_.contains(entry);
     }
 
     static bool selected_directory_is(const ProjectPanel &panel,
@@ -286,6 +291,21 @@ struct ProjectPanelTestProbe
         return panel.execute_context_create(itemType, inDir);
     }
 
+    static bool behavior_creation_pending(const ProjectPanel &panel)
+    {
+        return panel.behaviorCreation_.has_value();
+    }
+
+    static std::size_t pending_delete_count(const ProjectPanel &panel)
+    {
+        return panel.assetDeletion_ ? panel.assetDeletion_->paths.size() : 0;
+    }
+
+    static std::string behavior_creation_error(const ProjectPanel &panel)
+    {
+        return panel.behaviorCreation_ ? panel.behaviorCreation_->error : std::string{};
+    }
+
     static bool execute_context_delete(ProjectPanel &panel, const std::filesystem::path &targetPath)
     {
         return panel.execute_context_delete(targetPath);
@@ -351,7 +371,8 @@ class ProjectPanelFrames
                                   EditCommandService &commands,
                                   SelectionModel *selection = nullptr,
                                   const std::vector<std::pair<ImGuiKey, bool>> &keyEvents = {},
-                                  std::optional<bool> wantTextInput = std::nullopt)
+                                  std::optional<bool> wantTextInput = std::nullopt,
+                                  const char *textInput = nullptr)
     {
         SDL_Event event;
         while (SDL_PollEvent(&event))
@@ -360,16 +381,22 @@ class ProjectPanelFrames
         ImGui_ImplSDL3_NewFrame();
         for (const auto &[key, down] : keyEvents)
             ImGui::GetIO().AddKeyEvent(key, down);
+        if (textInput != nullptr)
+            ImGui::GetIO().AddInputCharactersUTF8(textInput);
         ImGui::NewFrame();
         if (wantTextInput)
             ImGui::GetIO().WantTextInput = *wantTextInput;
-        ImGui::SetNextWindowFocus();
+        if (!ProjectPanelTestProbe::behavior_creation_pending(panel) &&
+            ProjectPanelTestProbe::pending_delete_count(panel) == 0)
+            ImGui::SetNextWindowFocus();
         ImGui::SetNextWindowPos({0.0f, 0.0f}, ImGuiCond_Always);
         ImGui::SetNextWindowSize({1080.0f, 800.0f}, ImGuiCond_Always);
         ImGui::Begin("Project and Assets###panel.project",
                      nullptr, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize);
         panel.draw(document, commands, selection);
         ImGui::End();
+        panel.draw_behavior_creation_dialog(true);
+        panel.draw_asset_delete_dialog(true);
         ImGui::Render();
         require(SDL_SetRenderDrawColor(renderer_, 24, 24, 24, 255) && SDL_RenderClear(renderer_),
                 std::string("SDL frame clear failed: ") + SDL_GetError());
@@ -1392,6 +1419,347 @@ void test_project_change_owner_commit_budget()
 #endif
 }
 
+void test_project_browser_selects_and_deletes_multiple_assets()
+{
+    for (const float thumbnailScale : {0.0f, 0.5f})
+    {
+        TemporaryDirectory temp;
+        const auto assetRoot = temp.path() / "assets";
+        std::filesystem::create_directory(assetRoot);
+        const auto first = assetRoot / "A.h";
+        const auto second = assetRoot / "B.h";
+        const auto third = assetRoot / "C.h";
+        const auto fourth = assetRoot / "D.cpp";
+        for (const auto &path : {first, second, third, fourth})
+            std::ofstream(path) << "// test asset\n";
+
+        ProjectContext context;
+        context.set_roots(temp.path(), assetRoot);
+        ProjectChanges changes;
+        ProjectScanService scans(1);
+        ProjectPanelFrames frames;
+        ProjectPanel panel(context, changes, scans, frames.renderer());
+        auto document = make_default_document(temp.path(), assetRoot, context.snapshot().generation);
+        EditCommandService commands;
+        SelectionModel selection;
+        panel.view_state().thumbnailScale = thumbnailScale;
+        settle_panel(frames, panel, document, commands, scans);
+        frames.draw(panel, document, commands, &selection);
+        const auto nodes = panel.semantic_nodes(document, selection.current(), "main/panel/project");
+        const auto click = [&](const std::filesystem::path &path, int button = ImGuiMouseButton_Left) {
+            const auto item = std::find_if(nodes.begin(), nodes.end(), [&](const SemanticNode &node) {
+                return node.name == path.filename().string();
+            });
+            require(item != nodes.end() && item->bounds, "the asset must have visible click bounds");
+            const auto &bounds = *item->bounds;
+            ImGui::GetIO().AddMousePosEvent(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+            frames.draw(panel, document, commands);
+            ImGui::GetIO().AddMouseButtonEvent(button, true);
+            frames.draw(panel, document, commands);
+            ImGui::GetIO().AddMouseButtonEvent(button, false);
+            frames.draw(panel, document, commands);
+        };
+        std::filesystem::path openedScript;
+        panel.set_open_script_callback([&](const auto &path) { openedScript = path; });
+        click(fourth);
+        click(fourth);
+        require(openedScript == fourth, "double-click must dispatch opening the clicked C++ script");
+
+        click(first);
+        ImGui::GetIO().AddKeyEvent(ImGuiMod_Ctrl, true);
+        click(fourth);
+        require(panel.selected_asset_count() == 2 && ProjectPanelTestProbe::selected_entry_is(panel, first) &&
+                    ProjectPanelTestProbe::selected_entry_is(panel, fourth) && !panel.selected_entry(),
+                "Ctrl-click must add a non-adjacent file to the current selection");
+        click(fourth);
+        ImGui::GetIO().AddKeyEvent(ImGuiMod_Ctrl, false);
+        require(panel.selected_entry() == first, "Ctrl-click must also deselect a selected file");
+
+        click(first);
+        ImGui::GetIO().AddKeyEvent(ImGuiMod_Shift, true);
+        click(third);
+        ImGui::GetIO().AddKeyEvent(ImGuiMod_Shift, false);
+        require(panel.selected_asset_count() == 3 && ProjectPanelTestProbe::selected_entry_is(panel, second) &&
+                    !ProjectPanelTestProbe::selected_entry_is(panel, fourth),
+                "Shift-click must select the full displayed range between the anchor and the clicked file");
+
+        frames.draw(panel, document, commands, nullptr, {{ImGuiKey_Delete, true}});
+        frames.draw(panel, document, commands, nullptr, {{ImGuiKey_Delete, false}});
+        require(ProjectPanelTestProbe::pending_delete_count(panel) == 3 && std::filesystem::exists(first),
+                "Delete must confirm the entire selection before removing any files");
+        frames.draw(panel, document, commands, nullptr, {{ImGuiKey_Escape, true}});
+        frames.draw(panel, document, commands, nullptr, {{ImGuiKey_Escape, false}});
+        require(ProjectPanelTestProbe::pending_delete_count(panel) == 0 && std::filesystem::exists(first) &&
+                    std::filesystem::exists(second) && std::filesystem::exists(third),
+                "canceling bulk delete must preserve every selected file");
+
+        click(second, ImGuiMouseButton_Right);
+        require(panel.view_state().contextTargetPath == second && panel.selected_asset_count() == 3,
+                "right-clicking a selected file must preserve the full group");
+        panel.request_delete_selection();
+        frames.draw(panel, document, commands);
+        frames.draw(panel, document, commands, nullptr, {{ImGuiKey_Enter, true}});
+        frames.draw(panel, document, commands, nullptr, {{ImGuiKey_Enter, false}});
+        require(!std::filesystem::exists(first) && !std::filesystem::exists(second) &&
+                    !std::filesystem::exists(third) && std::filesystem::exists(fourth) &&
+                    panel.selected_asset_count() == 0,
+                "confirming bulk delete must remove only the selected files and clear the selection");
+    }
+}
+
+void test_project_browser_reopens_context_menu_after_canceling_rename()
+{
+    for (const float thumbnailScale : {0.0f, 0.5f})
+    {
+        TemporaryDirectory temp;
+        const auto assetRoot = temp.path() / "assets";
+        std::filesystem::create_directory(assetRoot);
+        const auto asset = assetRoot / "Original.cpp";
+        std::ofstream(asset) << "// test asset\n";
+
+        ProjectContext context;
+        context.set_roots(temp.path(), assetRoot);
+        ProjectChanges changes;
+        ProjectScanService scans(1);
+        ProjectPanelFrames frames;
+        ProjectPanel panel(context, changes, scans, frames.renderer());
+        auto document = make_default_document(temp.path(), assetRoot, context.snapshot().generation);
+        EditCommandService commands;
+        auto &state = panel.view_state();
+        state.thumbnailScale = thumbnailScale;
+        settle_panel(frames, panel, document, commands, scans);
+        ProjectPanelTestProbe::select_entry(panel, asset);
+        frames.draw(panel, document, commands);
+
+        frames.draw(panel, document, commands, nullptr, {{ImGuiKey_F2, true}});
+        require(state.renaming, "F2 must start the inline rename");
+        frames.draw(panel, document, commands, nullptr, {{ImGuiKey_F2, false}});
+        frames.draw(panel, document, commands);
+        if (thumbnailScale == 0.0f)
+        {
+            frames.draw(panel, document, commands, nullptr, {}, std::nullopt, "Edited.cpp");
+            require(std::string_view(state.renameBuffer) == "Edited.cpp",
+                    "the list rename must accept the replacement draft before canceling");
+        }
+        frames.draw(panel, document, commands, nullptr, {{ImGuiKey_Escape, true}});
+        frames.draw(panel, document, commands, nullptr, {{ImGuiKey_Escape, false}});
+        require(!state.renaming && state.renamingPath.empty() && std::filesystem::is_regular_file(asset) &&
+                    !std::filesystem::exists(assetRoot / "Edited.cpp"),
+                "Escape must clear the rename state and preserve the original name");
+
+        SelectionModel selection;
+        const auto nodes = panel.semantic_nodes(document, selection.current(), "main/panel/project");
+        const auto node = std::find_if(nodes.begin(), nodes.end(),
+            [](const SemanticNode &entry) { return entry.name == "Original.cpp"; });
+        require(node != nodes.end() && node->bounds, "the original asset must remain visible after canceling");
+        const auto &bounds = *node->bounds;
+        ImGui::GetIO().AddMousePosEvent(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+        frames.draw(panel, document, commands);
+        ImGui::GetIO().AddMouseButtonEvent(ImGuiMouseButton_Right, true);
+        frames.draw(panel, document, commands);
+        ImGui::GetIO().AddMouseButtonEvent(ImGuiMouseButton_Right, false);
+        frames.draw(panel, document, commands);
+        require(state.contextTargetPath == asset,
+                "right-click must reopen the original asset's context menu after canceling rename");
+    }
+}
+
+void test_project_browser_creates_named_behavior_scripts()
+{
+    TemporaryDirectory temp;
+    const auto projectRoot = temp.path() / "project";
+    const auto assetRoot = projectRoot / "assets";
+    std::filesystem::create_directories(assetRoot);
+
+    ProjectContext context;
+    context.set_roots(projectRoot, assetRoot);
+    ProjectChanges changes;
+    ProjectScanService scans(1);
+    ProjectPanelFrames frames;
+    ProjectPanel panel(context, changes, scans, frames.renderer());
+
+    auto document = make_default_document(projectRoot, assetRoot, context.snapshot().generation);
+    EditCommandService commands;
+    const auto behaviorRoot = assetRoot / "behaviors";
+    const auto header = behaviorRoot / "PlayerMover.h";
+    const auto script = behaviorRoot / "PlayerMover.cpp";
+    const auto enterBehaviorName = [&](const char *name) {
+        frames.draw(panel, document, commands);
+        frames.draw(panel, document, commands);
+        frames.draw(panel, document, commands, nullptr, {}, std::nullopt, name);
+        frames.draw(panel, document, commands, nullptr, {{ImGuiKey_Enter, true}});
+        frames.draw(panel, document, commands, nullptr, {{ImGuiKey_Enter, false}});
+    };
+    const auto cancelBehaviorCreation = [&] {
+        frames.draw(panel, document, commands, nullptr, {{ImGuiKey_Escape, true}});
+        frames.draw(panel, document, commands, nullptr, {{ImGuiKey_Escape, false}});
+    };
+    require(ProjectPanelTestProbe::execute_context_create(panel, "Behavior Script", assetRoot) &&
+                ProjectPanelTestProbe::behavior_creation_pending(panel) &&
+                !std::filesystem::exists(behaviorRoot),
+            "requesting a behavior must wait for a name before writing files");
+    enterBehaviorName("class");
+    require(!ProjectPanelTestProbe::behavior_creation_error(panel).empty() &&
+                !std::filesystem::exists(behaviorRoot),
+            "a C++ keyword must keep the dialog open and create no files");
+    cancelBehaviorCreation();
+    require(!ProjectPanelTestProbe::behavior_creation_pending(panel),
+            "Escape must cancel the behavior dialog");
+    require(ProjectPanelTestProbe::execute_context_create(panel, "Behavior Script", assetRoot),
+            "the behavior naming dialog must reopen after canceling");
+    enterBehaviorName("PlayerMover");
+    require(!ProjectPanelTestProbe::behavior_creation_pending(panel) &&
+                std::filesystem::is_regular_file(header) && std::filesystem::is_regular_file(script),
+            "submitting the name must create the header and source in the compiled behaviors folder");
+    {
+        std::ifstream input(header);
+        std::string source(std::istreambuf_iterator<char>{input}, std::istreambuf_iterator<char>{});
+        std::ifstream implementationInput(script);
+        const std::string implementation(std::istreambuf_iterator<char>{implementationInput},
+                                         std::istreambuf_iterator<char>{});
+        require(implementation.starts_with("#include \"PlayerMover.h\""),
+                "the generated source must include its matching header");
+        const std::string_view hooks[] = {
+            "start()", "update(double", "fixedUpdate(double", "lateUpdate(double",
+            "onDestroy()", "onCollisionEnter(", "onCollisionExit("};
+        for (const auto hook : hooks)
+        {
+            const auto method = source.find(std::string(" ") + std::string(hook));
+            require(method != std::string::npos,
+                    "generated behavior must expose the " + std::string(hook) + " gameplay callback");
+            const auto methodLine = source.rfind('\n', method);
+            const auto commentLine = source.rfind('\n', methodLine - 1);
+            require(source.compare(commentLine + 1, 7, "    // ") == 0 &&
+                        source.find(" override", method) < source.find('\n', method),
+                    "each generated Behavior override must have its own comment");
+            require(implementation.find("PlayerMover::" + std::string(hook)) != std::string::npos,
+                    "the generated source must define the " + std::string(hook) + " gameplay callback");
+        }
+        for (const std::string_view method : {"~PlayerMover(", "clone(", "getTypeName(", "serialize(",
+                                              "deserialize(", "resolveTemplateAssets(", "resolveReferences("})
+            require(source.find(method) == std::string::npos && implementation.find(method) == std::string::npos,
+                    "generated behavior must leave " + std::string(method) + " to the engine");
+
+        constexpr std::string_view registration = "SERIALIZABLE_SCRIPT(PlayerMover);";
+        const auto fields = source.find(registration);
+        require(fields != std::string::npos, "created script must register its chosen type");
+        source.replace(fields, registration.size(), "int speed = 4;\n    SERIALIZABLE_SCRIPT(PlayerMover, speed);");
+        const auto scan = SourceBehaviorScanner::scan_sources({{header, source}, {script, implementation}});
+        require(scan.behaviors.contains("PlayerMover") &&
+                    scan.behaviors.at("PlayerMover").fields.size() == 1 &&
+                    scan.behaviors.at("PlayerMover").fields.front().name == "speed",
+                "the source catalog must discover fields added to the generated behavior");
+    }
+    require(ProjectPanelTestProbe::execute_context_create(panel, "Behavior Script", behaviorRoot),
+            "creating in the behaviors folder must open the naming dialog");
+    enterBehaviorName("PlayerMover");
+    require(ProjectPanelTestProbe::behavior_creation_error(panel).find("already exists") != std::string::npos,
+            "creating an existing script must report the name conflict");
+    cancelBehaviorCreation();
+
+    const auto racingSource = behaviorRoot / "RacingBehavior.cpp";
+    const auto racingHeader = behaviorRoot / "RacingBehavior.h";
+    require(ProjectPanelTestProbe::execute_context_create(panel, "Behavior Script", behaviorRoot),
+            "the behavior dialog must open for the write conflict fixture");
+    NativeFileTestHooks hooks;
+    hooks.beforeCommit = [&](const std::filesystem::path &path) {
+        if (path == racingSource)
+            std::ofstream(path) << "// independently created source\n";
+    };
+    set_native_file_test_hooks(std::move(hooks));
+    enterBehaviorName("RacingBehavior");
+    clear_native_file_test_hooks();
+    std::ifstream existingSource(racingSource);
+    std::string originalContents;
+    std::getline(existingSource, originalContents);
+    require(!std::filesystem::exists(racingHeader) && originalContents == "// independently created source" &&
+                ProjectPanelTestProbe::behavior_creation_error(panel).find("already exists") != std::string::npos,
+            "a conflict while writing the source must roll back the header and preserve the other writer's file");
+    cancelBehaviorCreation();
+
+    const auto subdirectory = behaviorRoot / "Movement";
+    std::filesystem::create_directory(subdirectory);
+    require(ProjectPanelTestProbe::execute_context_create(panel, "Behavior Script", subdirectory),
+            "creating in a nested behaviors folder must open the naming dialog");
+    enterBehaviorName("CameraFollow");
+    require(!ProjectPanelTestProbe::behavior_creation_pending(panel) &&
+                std::filesystem::is_regular_file(subdirectory / "CameraFollow.h") &&
+                std::filesystem::is_regular_file(subdirectory / "CameraFollow.cpp"),
+            "creating a pair must keep a selected subfolder within the behaviors folder");
+
+    const auto makeOwner = [](int objectId, int componentId) {
+        return object(objectId, "Owner", Json::array({component(componentId, 5, {
+            {"behaviors", Json::array({
+                Json{{"type", "PlayerMover"}, {"speed", 12}, {"target", objectId}},
+                Json{{"type", "KeepBehavior"}, {"target", objectId}}
+            })}
+        })}));
+    };
+    const auto openPath = assetRoot / "Open.scene";
+    const auto closedPath = assetRoot / "Closed.scene";
+    const auto templatePath = assetRoot / "Reusable.pttemplate";
+    write_json(openPath, Json::array({makeOwner(1, 2)}));
+    write_json(closedPath, Json::array({object(10, "Parent", Json::array(), Json::array({makeOwner(11, 12)}))}));
+    write_json(templatePath, make_template_envelope("Reusable", makeOwner(20, 21), Json::array({
+        Json{{"owner_id", 20}, {"component_id", 21}, {"path", "/behaviors/0/target"},
+             {"target_kind", "GameObject"}, {"scope", "internal"}},
+        Json{{"owner_id", 20}, {"component_id", 21}, {"path", "/behaviors/1/target"},
+             {"target_kind", "GameObject"}, {"scope", "internal"}}
+    })));
+    DocumentManager documents(projectRoot, assetRoot);
+    const auto openId = documents.open_scene(openPath);
+    require(openId.has_value(), "the behavior edit fixture must open its scene");
+    auto *tab = documents.find(*openId);
+    auto &openDocument = tab->workspace().document_for_edit();
+    require(tab->history().set_property(openDocument,
+                address_for_document(openDocument, 1, std::nullopt, std::nullopt, {"name"}), "Unsaved edit").status ==
+                CommandStatus::Changed,
+            "the open scene must have an unrelated unsaved edit");
+    BehaviorReferenceUpdateResult update;
+    panel.set_behavior_change_callback([&](const auto &changes) {
+        update = documents.update_behavior_references(changes);
+    });
+    require(ProjectPanelTestProbe::execute_context_rename(panel, header, "RunnerMove.h"),
+            "renaming a behavior header must rename the pair");
+    const auto renamedHeader = behaviorRoot / "RunnerMove.h";
+    const auto renamedSource = behaviorRoot / "RunnerMove.cpp";
+    require(!std::filesystem::exists(header) && !std::filesystem::exists(script) &&
+                std::filesystem::is_regular_file(renamedHeader) && std::filesystem::is_regular_file(renamedSource),
+            "renaming a behavior must remove both original filenames");
+    {
+        std::ifstream headerInput(renamedHeader);
+        const std::string headerText(std::istreambuf_iterator<char>{headerInput}, std::istreambuf_iterator<char>{});
+        std::ifstream sourceInput(renamedSource);
+        const std::string source(std::istreambuf_iterator<char>{sourceInput}, std::istreambuf_iterator<char>{});
+        require(source.starts_with("#include \"RunnerMove.h\"") &&
+                    source.find("void RunnerMove::update(double") != std::string::npos &&
+                    headerText.find("SERIALIZABLE_SCRIPT(RunnerMove);") != std::string::npos,
+                "the renamed pair must update its include, callback definitions, and registration");
+    }
+    require(update.failures.empty() && update.updatedDocuments == 3 &&
+                openDocument.root[0]["name"] == "Unsaved edit" && tab->workspace().dirty() &&
+                read_json(openPath)[0]["name"] == "Owner" &&
+                openDocument.root[0]["components"][0]["behaviors"][0]["type"] == "RunnerMove" &&
+                read_json(closedPath)[0]["children"][0]["components"][0]["behaviors"][0]["speed"] == 12 &&
+                read_json(closedPath)[0]["children"][0]["components"][0]["behaviors"][0]["type"] == "RunnerMove" &&
+                read_json(templatePath)["root"]["components"][0]["behaviors"][0]["type"] == "RunnerMove",
+            "rename must update open and closed documents while preserving saved fields and unsaved edits");
+
+    require(ProjectPanelTestProbe::execute_context_delete(panel, renamedSource),
+            "deleting the behavior implementation must remove the pair");
+    const auto savedTemplate = read_json(templatePath);
+    const auto retainedBehaviors = openDocument.root[0]["components"][0]["behaviors"];
+    require(update.failures.empty() && update.updatedDocuments == 3 &&
+                !std::filesystem::exists(renamedHeader) && !std::filesystem::exists(renamedSource) &&
+                retainedBehaviors.size() == 1 && retainedBehaviors[0]["type"] == "KeepBehavior" &&
+                read_json(openPath)[0]["components"][0]["behaviors"] == retainedBehaviors &&
+                read_json(closedPath)[0]["children"][0]["components"][0]["behaviors"].size() == 1 &&
+                savedTemplate["reference_bindings"].size() == 1 &&
+                savedTemplate["reference_bindings"][0]["path"] == "/behaviors/0/target" &&
+                load_template_envelope(savedTemplate),
+            "delete must remove matching records and keep remaining template bindings valid");
+}
+
 void test_project_browser_context_menu_operations_and_two_column_view()
 {
     TemporaryDirectory temp;
@@ -1427,12 +1795,8 @@ void test_project_browser_context_menu_operations_and_two_column_view()
     const auto folder = assetRoot / "New Folder";
     require(std::filesystem::is_directory(folder), "created folder must exist on filesystem");
 
-    // Context menu create: Script
-    const bool createdScript = ProjectPanelTestProbe::execute_context_create(
-        panel, "Behavior Script", folder);
-    require(createdScript, "context menu script creation must succeed");
     const auto script = folder / "NewBehavior.cpp";
-    require(std::filesystem::exists(script), "created script must exist on filesystem");
+    std::ofstream(script) << "// Example behavior script\n";
 
     // Context menu create: Scene
     const bool createdScene = ProjectPanelTestProbe::execute_context_create(
@@ -1482,17 +1846,9 @@ void test_project_browser_context_menu_operations_and_two_column_view()
     const auto inlineRenamedPath = folder / "RenamedScript.cpp";
     require(std::filesystem::exists(inlineRenamedPath), "renamed file must exist at new path");
 
-    // Test confirmation-guarded interactive delete
-    viewState.confirmDeletePending = true;
-    viewState.pendingDeletePath = inlineRenamedPath;
-    require(viewState.confirmDeletePending && viewState.pendingDeletePath == inlineRenamedPath,
-            "interactive delete request must populate pending confirmation state");
-    const bool confirmedDelete = ProjectPanelTestProbe::execute_context_delete(
-        panel, viewState.pendingDeletePath);
-    require(confirmedDelete, "confirmed delete execution must succeed");
-    viewState.confirmDeletePending = false;
-    viewState.pendingDeletePath.clear();
-    require(!std::filesystem::exists(inlineRenamedPath), "deleted file must no longer exist");
+    require(ProjectPanelTestProbe::execute_context_delete(panel, inlineRenamedPath) &&
+                !std::filesystem::exists(inlineRenamedPath),
+            "deleting the renamed file must remove it");
 
     // Context menu reveal in file manager
     ProjectPanelTestProbe::reveal_in_file_manager(panel, script);
@@ -1533,12 +1889,10 @@ void test_project_browser_context_menu_operations_and_two_column_view()
 
     viewState.renaming = false;
     viewState.renamingPath.clear();
-    viewState.pendingDeletePath.clear();
-    viewState.confirmDeletePending = false;
     (void)frames.draw(panel, shortcutDocument, shortcutCommands, nullptr,
                       {{ImGuiKey_LeftCtrl, false}, {ImGuiKey_D, false},
                        {ImGuiKey_Delete, true}}, true);
-    require(std::filesystem::exists(shortcutAsset) && viewState.pendingDeletePath.empty(),
+    require(std::filesystem::exists(shortcutAsset) && ProjectPanelTestProbe::pending_delete_count(panel) == 0,
             "an actual Delete ImGui key event must not queue deletion while text input owns the keyboard");
 
     const auto clips = folder / "Clips";
@@ -2143,5 +2497,8 @@ void run_project_cases()
     test_project_template_selection_has_no_detached_controls();
     test_project_change_owner_commit_budget();
     test_animation_preview_uploads_without_project_draw();
+    test_project_browser_selects_and_deletes_multiple_assets();
+    test_project_browser_reopens_context_menu_after_canceling_rename();
+    test_project_browser_creates_named_behavior_scripts();
     test_project_browser_context_menu_operations_and_two_column_view();
 }

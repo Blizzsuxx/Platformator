@@ -102,6 +102,7 @@ class InspectorPanel
                                   EditCommandService *commands = nullptr);
 
   private:
+    void reveal_behavior(int objectId, int componentId, std::size_t ordinal, std::string fieldPath);
     bool draw_boolean(DocumentSession &document, EditCommandService &commands, int objectId,
                       std::optional<int> componentId, std::vector<FieldPathSegment> path,
                       const char *label, bool defaultValue = false);

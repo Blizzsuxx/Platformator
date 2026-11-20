@@ -112,7 +112,7 @@ void resolveSerializedField(T &value, platformator::ReferenceResolver &resolver,
 #define PLATFORMATOR_RESOLVE_TEMPLATE_FIELD(field)                                                                     \
     platformator_json_detail::resolveSerializedField(field, resolver, #field, true);
 
-#define PLATFORMATOR_SERIALIZABLE_SCRIPT_COMMON(Type)                                                                  \
+#define PLATFORMATOR_SERIALIZABLE_SCRIPT_REGISTRATION(Type)                                                            \
   public:                                                                                                              \
     static bool registerScriptType()                                                                                   \
     {                                                                                                                  \
@@ -122,6 +122,16 @@ void resolveSerializedField(T &value, platformator::ReferenceResolver &resolver,
         return true;                                                                                                   \
     }                                                                                                                  \
     inline static const bool platformatorRegisteredBehavior = registerScriptType();                                    \
+    static platformator::ScriptInspectionResult platformatorInspectScriptInstance(                                      \
+        const Behavior &instance, const platformator::ScriptInspectionLimits &limits)                                    \
+    {                                                                                                                  \
+        const auto *typed = dynamic_cast<const Type *>(&instance);                                                     \
+        if (typed == nullptr)                                                                                          \
+            return {};                                                                                                 \
+        return platformatorInspectScriptFields(*typed, limits);                                                       \
+    }
+
+#define PLATFORMATOR_SERIALIZABLE_SCRIPT_OVERRIDES(Type)                                                               \
     std::string getTypeName() const override                                                                           \
     {                                                                                                                  \
         return #Type;                                                                                                  \
@@ -139,18 +149,13 @@ void resolveSerializedField(T &value, platformator::ReferenceResolver &resolver,
     {                                                                                                                  \
         return new Type(*this);                                                                                        \
     }                                                                                                                  \
-    static platformator::ScriptInspectionResult platformatorInspectScriptInstance(                                      \
-        const Behavior &instance, const platformator::ScriptInspectionLimits &limits)                                    \
+    void resolveReferences(platformator::ReferenceResolver &resolver) override                                         \
     {                                                                                                                  \
-        const auto *typed = dynamic_cast<const Type *>(&instance);                                                     \
-        if (typed == nullptr)                                                                                          \
-            return {};                                                                                                 \
-        return platformatorInspectScriptFields(*typed, limits);                                                       \
+        platformatorResolveScriptReferences(resolver);                                                                 \
     }
 
-
-#define PLATFORMATOR_SERIALIZABLE_SCRIPT_0(Type)                                                                       \
-    PLATFORMATOR_SERIALIZABLE_SCRIPT_COMMON(Type)                                                                      \
+#define PLATFORMATOR_SERIALIZABLE_SCRIPT_FIELDS_0(Type)                                                                \
+    PLATFORMATOR_SERIALIZABLE_SCRIPT_REGISTRATION(Type)                                                                \
     static platformator::ScriptDescriptor platformatorDescribeScriptMetadata()                                         \
     {                                                                                                                  \
         return platformator::ScriptDescriptor{#Type, true, {}};                                                        \
@@ -158,7 +163,7 @@ void resolveSerializedField(T &value, platformator::ReferenceResolver &resolver,
     static platformator::ScriptInspectionResult platformatorInspectScriptFields(                                       \
         const Type &, const platformator::ScriptInspectionLimits &)                                                    \
     {                                                                                                                  \
-        platformator::ScriptInspectionResult result;                                                                  \
+        platformator::ScriptInspectionResult result;                                                                   \
         result.providerAvailable = true;                                                                               \
         return result;                                                                                                 \
     }                                                                                                                  \
@@ -169,12 +174,13 @@ void resolveSerializedField(T &value, platformator::ReferenceResolver &resolver,
     friend void from_json(const nlohmann::json &, Type &)                                                              \
     {                                                                                                                  \
     }                                                                                                                  \
-    void resolveReferences(platformator::ReferenceResolver &resolver) override                                         \
+    void platformatorResolveScriptTemplateAssets(platformator::ReferenceResolver &) {}                                 \
+    void platformatorResolveScriptReferences(platformator::ReferenceResolver &)                                        \
     {                                                                                                                  \
     }
 
-#define PLATFORMATOR_SERIALIZABLE_SCRIPT_WITH_FIELDS(Type, ...)                                                        \
-    PLATFORMATOR_SERIALIZABLE_SCRIPT_COMMON(Type)                                                                      \
+#define PLATFORMATOR_SERIALIZABLE_SCRIPT_FIELDS_1(Type, ...)                                                           \
+    PLATFORMATOR_SERIALIZABLE_SCRIPT_REGISTRATION(Type)                                                                \
     static platformator::ScriptDescriptor platformatorDescribeScriptMetadata()                                         \
     {                                                                                                                  \
         using SelfType = Type;                                                                                         \
@@ -191,16 +197,31 @@ void resolveSerializedField(T &value, platformator::ReferenceResolver &resolver,
         return result;                                                                                                 \
     }                                                                                                                  \
     NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(Type, __VA_ARGS__)                                                     \
-    void resolveTemplateAssets(platformator::ReferenceResolver &resolver) override                                       \
+    void platformatorResolveScriptTemplateAssets(platformator::ReferenceResolver &resolver)                            \
     {                                                                                                                  \
         PLATFORMATOR_FOR_EACH(PLATFORMATOR_RESOLVE_TEMPLATE_FIELD, __VA_ARGS__)                                        \
     }                                                                                                                  \
-    void resolveReferences(platformator::ReferenceResolver &resolver) override                                         \
+    void platformatorResolveScriptReferences(platformator::ReferenceResolver &resolver)                                \
     {                                                                                                                  \
         PLATFORMATOR_FOR_EACH(PLATFORMATOR_RESOLVE_SERIALIZED_FIELD, __VA_ARGS__)                                      \
     }
 
-#define PLATFORMATOR_SERIALIZABLE_SCRIPT_1(Type, ...) PLATFORMATOR_SERIALIZABLE_SCRIPT_WITH_FIELDS(Type, __VA_ARGS__)
+#define PLATFORMATOR_SERIALIZABLE_SCRIPT_0(Type)                                                                       \
+    PLATFORMATOR_SERIALIZABLE_SCRIPT_FIELDS_0(Type)                                                                    \
+    PLATFORMATOR_SERIALIZABLE_SCRIPT_OVERRIDES(Type)
+
+#define PLATFORMATOR_SERIALIZABLE_SCRIPT_1(Type, ...)                                                                  \
+    PLATFORMATOR_SERIALIZABLE_SCRIPT_FIELDS_1(Type, __VA_ARGS__)                                                       \
+    PLATFORMATOR_SERIALIZABLE_SCRIPT_OVERRIDES(Type)                                                                   \
+    void resolveTemplateAssets(platformator::ReferenceResolver &resolver) override                                       \
+    {                                                                                                                  \
+        platformatorResolveScriptTemplateAssets(resolver);                                                             \
+    }
+
+// Registers a script and generates field helpers for classes that implement the Behavior overrides.
+#define SERIALIZABLE_SCRIPT_FIELDS(Type, ...)                                                                          \
+    PLATFORMATOR_CONCAT(PLATFORMATOR_SERIALIZABLE_SCRIPT_FIELDS_, PLATFORMATOR_HAS_FIELDS_FLAG(__VA_ARGS__))           \
+    (Type __VA_OPT__(, __VA_ARGS__))
 
 #define SERIALIZABLE_SCRIPT(Type, ...)                                                                                 \
     PLATFORMATOR_SERIALIZABLE_SCRIPT_SELECT(PLATFORMATOR_HAS_FIELDS_FLAG(__VA_ARGS__))(Type __VA_OPT__(, __VA_ARGS__))

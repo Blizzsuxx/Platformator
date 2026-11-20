@@ -4,6 +4,7 @@
 #include <cctype>
 #include <cstring>
 #include <fstream>
+#include <regex>
 #include <sstream>
 #include <system_error>
 #include <unordered_set>
@@ -38,7 +39,8 @@ std::string trim(std::string_view sv)
 }
 
 // Preserves line numbers (`\n`) while blanking comments and string/char literal bodies.
-std::string strip_comments_preserving_lines(std::string_view src, bool preserveStringLiterals)
+std::string strip_comments_preserving_lines(std::string_view src, bool preserveStringLiterals,
+                                            bool preserveOffsets = false)
 {
     std::string out;
     out.reserve(src.size());
@@ -72,25 +74,35 @@ std::string strip_comments_preserving_lines(std::string_view src, bool preserveS
         }
         if (src[i] == '/' && i + 1 < src.size() && src[i + 1] == '/')
         {
+            const auto start = i;
             i += 2;
             while (i < src.size() && src[i] != '\n')
                 ++i;
+            if (preserveOffsets)
+                out.append(i - start, ' ');
             continue;
         }
         if (src[i] == '/' && i + 1 < src.size() && src[i + 1] == '*')
         {
+            if (preserveOffsets)
+                out.append(2, ' ');
             i += 2;
             while (i + 1 < src.size() && !(src[i] == '*' && src[i + 1] == '/'))
             {
                 if (src[i] == '\n')
                     out.push_back('\n');
+                else if (preserveOffsets)
+                    out.push_back(' ');
                 ++i;
             }
             if (i + 1 < src.size())
                 i += 2;
             else
                 i = src.size();
-            out.push_back(' ');
+            if (preserveOffsets)
+                out.resize(i, ' ');
+            else
+                out.push_back(' ');
             continue;
         }
         if (src[i] == '"' || src[i] == '\'')
@@ -117,11 +129,17 @@ std::string strip_comments_preserving_lines(std::string_view src, bool preserveS
                 out.append(src.substr(start, i - start));
             else
             {
-                out.push_back(quote);
-                for (std::size_t k = start + 1; k + 1 < i; ++k)
-                    out.push_back(' ');
-                if (i > start + 1 && src[i - 1] == quote)
+                if (preserveOffsets)
+                    for (std::size_t k = start; k < i; ++k)
+                        out.push_back(src[k] == '\n' ? '\n' : ' ');
+                else
+                {
                     out.push_back(quote);
+                    for (std::size_t k = start + 1; k + 1 < i; ++k)
+                        out.push_back(' ');
+                    if (i > start + 1 && src[i - 1] == quote)
+                        out.push_back(quote);
+                }
             }
             continue;
         }
@@ -162,6 +180,7 @@ struct ParsedClassInfo
 struct ParsedMacroCall
 {
     std::string typeName;
+    std::string registeredName;
     std::vector<std::string> fieldNames;
     std::filesystem::path filePath;
     int line = 0;
@@ -656,6 +675,7 @@ void parse_serializable_script_macros(const std::filesystem::path &filePath,
                                       RawFileParse &out)
 {
     constexpr std::string_view Macro = "SERIALIZABLE_SCRIPT";
+    constexpr std::string_view FieldsSuffix = "_FIELDS";
     std::size_t pos = 0;
     while (pos < stripped.size())
     {
@@ -668,6 +688,9 @@ void parse_serializable_script_macros(const std::filesystem::path &filePath,
             continue;
         }
         std::size_t cur = found + Macro.size();
+        if (stripped.substr(cur).starts_with(FieldsSuffix))
+            cur += FieldsSuffix.size();
+        const auto macroName = stripped.substr(found, cur - found);
         while (cur < stripped.size() && std::isspace(static_cast<unsigned char>(stripped[cur])) != 0)
             ++cur;
         if (cur >= stripped.size() || stripped[cur] != '(')
@@ -684,7 +707,7 @@ void parse_serializable_script_macros(const std::filesystem::path &filePath,
             const std::string typeName = strip_namespace_qualifiers(trim(firstArgument));
             out.diagnostics.push_back({
                 typeName, {}, filePath, line_at_offset(rawWithStrings, found),
-                "SERIALIZABLE_SCRIPT call is incomplete; waiting for its closing parenthesis."});
+                std::string(macroName) + " call is incomplete; waiting for its closing parenthesis."});
             pos = found + Macro.size();
             continue;
         }
@@ -695,6 +718,7 @@ void parse_serializable_script_macros(const std::filesystem::path &filePath,
         {
             ParsedMacroCall call;
             call.typeName = strip_namespace_qualifiers(args.front());
+            call.registeredName = trim(args.front());
             call.filePath = filePath;
             call.line = line_at_offset(rawWithStrings, found);
             for (std::size_t idx = 1; idx < args.size(); ++idx)
@@ -1149,6 +1173,7 @@ SourceScanResult SourceBehaviorScanner::scan_sources(
         if (const auto macroIt = macrosByType.find(typeName); macroIt != macrosByType.end())
         {
             desc.sourcePath = macroIt->second.filePath;
+            desc.registeredName = macroIt->second.registeredName;
             for (const std::string &fieldName : macroIt->second.fieldNames)
             {
                 const ParsedMemberField *matchedMember = nullptr;
@@ -1197,6 +1222,7 @@ SourceScanResult SourceBehaviorScanner::scan_sources(
         SourceBehaviorDescriptor desc;
         desc.typeName = typeName;
         desc.sourcePath = macro.filePath;
+        desc.registeredName = macro.registeredName;
         desc.declarationLine = macro.line;
         for (const std::string &fieldName : macro.fieldNames)
         {
@@ -1395,6 +1421,7 @@ SourceScanResult SourceBehaviorScanner::scan_project(const std::filesystem::path
         if (const auto macroIt = macrosByType.find(typeName); macroIt != macrosByType.end())
         {
             desc.sourcePath = macroIt->second.filePath;
+            desc.registeredName = macroIt->second.registeredName;
             for (const std::string &fieldName : macroIt->second.fieldNames)
             {
                 const ParsedMemberField *matchedMember = nullptr;
@@ -1441,6 +1468,7 @@ SourceScanResult SourceBehaviorScanner::scan_project(const std::filesystem::path
         SourceBehaviorDescriptor desc;
         desc.typeName = typeName;
         desc.sourcePath = macro.filePath;
+        desc.registeredName = macro.registeredName;
         desc.declarationLine = macro.line;
         for (const std::string &fieldName : macro.fieldNames)
         {
@@ -1463,6 +1491,57 @@ SourceScanResult SourceBehaviorScanner::scan_project(const std::filesystem::path
         else
             ++it;
     }
+    return result;
+}
+std::string rename_behavior_source(std::string_view source, std::string_view oldType,
+                                   std::string_view newType, std::string_view oldRegisteredName,
+                                   std::string_view newRegisteredName, std::string_view oldHeader,
+                                   std::string_view newHeader)
+{
+    struct Replacement
+    {
+        std::size_t offset;
+        std::size_t length;
+        std::string text;
+    };
+    std::vector<Replacement> replacements;
+    const auto code = strip_comments_preserving_lines(source, false, true);
+    for (auto pos = code.find(oldType); pos != std::string::npos; pos = code.find(oldType, pos + oldType.size()))
+    {
+        const auto end = pos + oldType.size();
+        if ((pos == 0 || !is_ident_char(code[pos - 1])) &&
+            (end == code.size() || !is_ident_char(code[end])))
+            replacements.push_back({pos, oldType.size(), std::string(newType)});
+    }
+    const auto literals = strip_comments_preserving_lines(source, true, true);
+    static const std::regex registeredNamePattern(
+        R"re((?:\bgetTypeName\s*\(\s*\)\s*const\s*(?:override\s*)?\{\s*return\s*|\bregisterScript(?:Factory|DescriptorProvider|InspectionProvider)\s*\(\s*)"([^"\r\n]+)")re");
+    for (std::sregex_iterator it(literals.begin(), literals.end(), registeredNamePattern), end; it != end; ++it)
+    {
+        const auto &match = *it;
+        if (match.str(1) == oldRegisteredName && code[match.position()] != ' ')
+            replacements.push_back({static_cast<std::size_t>(match.position(1)),
+                                    static_cast<std::size_t>(match.length(1)), std::string(newRegisteredName)});
+    }
+    if (!oldHeader.empty())
+    {
+        static const std::regex includePattern(R"re(^[ \t]*#[ \t]*include[ \t]*"([^"\r\n]+)")re",
+                                               std::regex::ECMAScript | std::regex::multiline);
+        for (std::sregex_iterator it(literals.begin(), literals.end(), includePattern), end; it != end; ++it)
+        {
+            const auto &match = *it;
+            const auto included = match.str(1);
+            if (std::filesystem::path(included).filename().string() == oldHeader &&
+                trim(std::string_view(code).substr(match.position(), match.length())).starts_with('#'))
+                replacements.push_back({static_cast<std::size_t>(match.position(1)) + included.size() - oldHeader.size(),
+                                        oldHeader.size(), std::string(newHeader)});
+        }
+    }
+    std::sort(replacements.begin(), replacements.end(),
+              [](const Replacement &left, const Replacement &right) { return left.offset > right.offset; });
+    std::string result(source);
+    for (const auto &edit : replacements)
+        result.replace(edit.offset, edit.length, edit.text);
     return result;
 }
 } // namespace platformator_editor

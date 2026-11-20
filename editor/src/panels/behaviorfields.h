@@ -9,6 +9,7 @@
 
 #include <cstdint>
 #include <optional>
+#include <set>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -49,6 +50,8 @@ class BehaviorFieldsPanel
     void discard_active_interactions(DocumentSession *document = nullptr);
     void reveal_field(int objectId, int componentId, std::size_t behaviorOrdinal,
                       std::string fieldPath);
+    bool behavior_expanded(const DocumentSession &document, int componentId, std::size_t ordinal) const;
+    const std::optional<Json> &copied_behavior() const noexcept { return behaviorClipboard_; }
 
     void draw(DocumentSession &document, SelectionModel &selection,
               EditCommandService &commands, const BehaviorCatalog &catalog,
@@ -64,6 +67,7 @@ class BehaviorFieldsPanel
   private:
     bool consume_reveal_target(int objectId, int componentId, std::size_t behaviorOrdinal,
                                const std::vector<FieldPathSegment> &path);
+    void clear_reveal_target();
 
     std::optional<int> revealObjectId_;
     std::optional<int> revealComponentId_;
@@ -74,6 +78,8 @@ class BehaviorFieldsPanel
     Selection feedbackSelection_;
     std::vector<int> feedbackObjectIds_;
     std::uint64_t feedbackRevision_ = 0;
+    std::set<std::pair<int, std::size_t>> collapsedBehaviors_;
+    std::optional<Json> behaviorClipboard_;
     ScrubState scrubState_;
     LivePropertyEditState liveEdit_;
     std::uint64_t hostGeneration_ = 0;

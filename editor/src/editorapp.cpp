@@ -1593,6 +1593,18 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                 else if (retargeted.updatedCount > 0)
                     statusMessage = "Updated linked template paths after rename.";
             });
+        projectPanel.set_behavior_change_callback([&](const BehaviorTypeChanges &changes) {
+            inspectorPanel.commit_active_interactions();
+            const auto result = documentManager.update_behavior_references(changes);
+            statusMessage = "Updated behavior references in " + std::to_string(result.updatedDocuments) +
+                " scene or template document(s).";
+            if (!result.failures.empty())
+            {
+                const auto &failure = result.failures.front();
+                statusMessage += " Could not update " + std::to_string(result.failures.size()) +
+                    " document(s). " + failure.path.filename().string() + " " + failure.message;
+            }
+        });
         projectPanel.set_hierarchy_object_template_drop_callback(
             [&](int objectId, const std::filesystem::path &templateDirectory) {
                 if (workspace == nullptr || editCommands == nullptr)
@@ -2697,7 +2709,23 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
             const auto pathBytes = absolutePath.generic_u8string();
             const std::string encodedPath(reinterpret_cast<const char *>(pathBytes.data()),
                                           pathBytes.size());
-            std::string url = "file://";
+            const char *args[] = {"code", "--reuse-window", encodedPath.c_str(), nullptr};
+            const SDL_PropertiesID properties = SDL_CreateProperties();
+            if (properties != 0)
+            {
+                SDL_SetPointerProperty(properties, SDL_PROP_PROCESS_CREATE_ARGS_POINTER, args);
+                SDL_SetBooleanProperty(properties, SDL_PROP_PROCESS_CREATE_BACKGROUND_BOOLEAN, true);
+                SDL_Process *process = SDL_CreateProcessWithProperties(properties);
+                SDL_DestroyProperties(properties);
+                if (process != nullptr)
+                {
+                    SDL_DestroyProcess(process);
+                    statusMessage = "Opening script in VS Code.";
+                    return;
+                }
+            }
+
+            std::string url = "vscode://file";
             if (encodedPath.empty() || encodedPath.front() != '/')
                 url.push_back('/');
             constexpr char hex[] = "0123456789ABCDEF";
@@ -2717,9 +2745,9 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                 }
             }
             if (SDL_OpenURL(url.c_str()))
-                statusMessage = "Opened script with the operating system association.";
+                statusMessage = "Opening script in VS Code.";
             else
-                statusMessage = std::string("Script could not be opened: ") + SDL_GetError();
+                statusMessage = "VS Code could not open the script. Make sure VS Code is installed and its code command is available.";
         });
         save_layer_settings_draft = [&] {
             const bool draftDirty = projectSettingsPanel.layer_draft_dirty();
@@ -5357,7 +5385,7 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                         const auto targetDir = projectPanel.selected_directory();
                         if (ImGui::MenuItem("Folder"))
                             projectPanel.execute_context_create("Folder", targetDir);
-                        if (ImGui::MenuItem("Behavior Script"))
+                        if (ImGui::MenuItem("Behavior Script...", nullptr, false, !projectLocked))
                             projectPanel.execute_context_create("Behavior Script", targetDir);
                         if (ImGui::MenuItem("Scene"))
                             projectPanel.execute_context_create("Scene", targetDir);
@@ -5368,12 +5396,10 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                         ImGui::EndMenu();
                     }
                     ImGui::Separator();
-                    const auto selectedEntry = projectPanel.selected_entry();
-                    const bool hasSelectedAsset = selectedEntry.has_value();
-                    if (ImGui::MenuItem("Delete Asset", "Delete", false, hasSelectedAsset))
-                    {
-                        projectPanel.execute_context_delete(*selectedEntry);
-                    }
+                    const auto selectedCount = projectPanel.selected_asset_count();
+                    if (ImGui::MenuItem(selectedCount > 1 ? "Delete Selected Assets" : "Delete Asset",
+                                        "Delete", false, selectedCount != 0 && !projectLocked))
+                        projectPanel.request_delete_selection();
                     ImGui::Separator();
                     if (ImGui::MenuItem("Refresh"))
                     {
@@ -6564,8 +6590,8 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                             projectPanel.execute_context_create("Animation Clip", projectPanel.selected_directory());
                         else if (command == "assets/delete")
                         {
-                            if (const auto entry = projectPanel.selected_entry())
-                                projectPanel.execute_context_delete(*entry);
+                            if (!projectLocked)
+                                projectPanel.request_delete_selection();
                         }
                         else if (command == "assets/refresh")
                             projectPanel.refresh();
@@ -6913,6 +6939,8 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                             statusMessage = error;
                     }
                 });
+            projectPanel.draw_behavior_creation_dialog(!projectLocked);
+            projectPanel.draw_asset_delete_dialog(!projectLocked);
             bool animationContentsVisible = false;
             if (showAnimationEditorWindow && documentManager.animation_tab_count() != 0)
             {
@@ -7166,14 +7194,15 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
 
             // Assets
             const auto targetDir = projectPanel.selected_directory();
-            const auto selectedEntry = projectPanel.selected_entry();
-            const bool hasSelectedAsset = selectedEntry.has_value();
+            const auto selectedAssetCount = projectPanel.selected_asset_count();
             addMenuCommand("assets/create-folder", "assets", "Create Folder", !projectLocked);
             addMenuCommand("assets/create-script", "assets", "Create Behavior Script", !projectLocked);
             addMenuCommand("assets/create-scene", "assets", "Create Scene", !projectLocked);
             addMenuCommand("assets/create-template", "assets", "Create Object Template", !projectLocked);
             addMenuCommand("assets/create-animation", "assets", "Create Animation Clip", !projectLocked);
-            addMenuCommand("assets/delete", "assets", "Delete Asset", hasSelectedAsset && !projectLocked);
+            addMenuCommand("assets/delete", "assets",
+                           selectedAssetCount > 1 ? "Delete Selected Assets" : "Delete Asset",
+                           selectedAssetCount != 0 && !projectLocked);
             addMenuCommand("assets/refresh", "assets", "Refresh", true);
 
             // GameObject

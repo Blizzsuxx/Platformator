@@ -51,6 +51,7 @@ struct SourceBehaviorFieldDescriptor
 struct SourceBehaviorDescriptor
 {
     std::string typeName;
+    std::string registeredName;
     std::string baseClass;
     std::filesystem::path headerPath;
     std::filesystem::path sourcePath;
@@ -58,6 +59,11 @@ struct SourceBehaviorDescriptor
     std::vector<SourceBehaviorFieldDescriptor> fields;
     std::vector<SourceScannerDiagnostic> diagnostics;
 };
+
+std::string rename_behavior_source(std::string_view source, std::string_view oldType,
+                                   std::string_view newType, std::string_view oldRegisteredName,
+                                   std::string_view newRegisteredName, std::string_view oldHeader,
+                                   std::string_view newHeader);
 
 struct SourceScanResult
 {

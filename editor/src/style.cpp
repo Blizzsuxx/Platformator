@@ -6,6 +6,8 @@
 #include <cstring>
 #include <filesystem>
 
+#include <imgui_internal.h>
+
 namespace platformator_editor
 {
 namespace
@@ -447,6 +449,37 @@ bool icon_button(EditorIcon icon, const char *str_id, bool active, const char *t
         ImGui::EndTooltip();
     }
     return pressed;
+}
+
+bool begin_more_menu(const char *buttonId, const char *popupId, ImVec2 size)
+{
+    const bool wasOpen = ImGui::IsPopupOpen(popupId);
+    const bool pressed = ImGui::InvisibleButton(buttonId, size,
+        ImGuiButtonFlags_PressedOnClick | ImGuiButtonFlags_NoHoldingActiveId | ImGuiButtonFlags_EnableNav);
+    const ImVec2 minimum = ImGui::GetItemRectMin();
+    const ImVec2 maximum = ImGui::GetItemRectMax();
+    const float scale = std::clamp(ImGui::GetIO().FontGlobalScale, 0.5f, 6.0f);
+    const float iconSize = std::min({12.0f * scale, size.x, size.y});
+    const ImU32 color = ImGui::GetColorU32(pressed ? ImGuiCol_HeaderActive
+        : (wasOpen || ImGui::IsItemHovered()) ? ImGuiCol_Text : ImGuiCol_TextDisabled);
+    draw_editor_icon(EditorIcon::MoreVertical, ImGui::GetWindowDrawList(),
+                     {minimum.x + (size.x - iconSize) * 0.5f,
+                      minimum.y + (size.y - iconSize) * 0.5f}, iconSize, color);
+
+    // The popup can block normal button hit testing until ImGui dismisses it.
+    const bool close = wasOpen && (pressed ||
+        (ImGui::IsItemVisible() && ImGui::IsMouseClicked(ImGuiMouseButton_Left) &&
+         ImGui::IsMouseHoveringRect(minimum, maximum)));
+    if (pressed && !wasOpen)
+        ImGui::OpenPopup(popupId);
+
+    if (!ImGui::BeginPopupContextItem(popupId))
+        return false;
+    if (!close)
+        return true;
+    ImGui::CloseCurrentPopup();
+    ImGui::EndPopup();
+    return false;
 }
 
 void draw_editor_icon(EditorIcon icon, ImDrawList *draw, ImVec2 origin, float size, ImU32 color)

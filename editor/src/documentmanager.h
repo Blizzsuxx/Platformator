@@ -80,6 +80,12 @@ struct TemplateRetargetResult
     operator std::size_t() const noexcept { return updatedCount; }
 };
 
+struct BehaviorReferenceUpdateResult
+{
+    std::size_t updatedDocuments = 0;
+    std::vector<TemplateRetargetFailure> failures;
+};
+
 class DocumentTab
 {
   public:
@@ -245,6 +251,7 @@ class DocumentManager
                                                          const std::filesystem::path &newPath,
                                                          bool directory);
     TemplateRetargetResult retry_pending_template_asset_links();
+    BehaviorReferenceUpdateResult update_behavior_references(const BehaviorTypeChanges &changes);
     void set_template_binding_collector(TemplateBindingCollector collector)
     {
         templateBindingCollector_ = std::move(collector);

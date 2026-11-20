@@ -703,6 +703,122 @@ void run_integer_fields_keep_independent_drafts()
     ImGui::DestroyContext();
 }
 
+void run_inspector_removes_unregistered_behavior()
+{
+    ImGui::CreateContext();
+    ImGuiIO &io = ImGui::GetIO();
+    io.IniFilename = nullptr;
+    io.DisplaySize = {400.0f, 300.0f};
+    io.DeltaTime = 1.0f / 60.0f;
+    io.Fonts->AddFontDefault();
+    io.Fonts->Build();
+
+    auto document = make_default_document();
+    const Json missing{{"type", "NewBehavior"}, {"custom", 42}};
+    const Json remaining{{"type", "KeepBehavior"}};
+    document.root[0]["components"].push_back(component(
+        kScriptId, 5, {{"behaviors", Json::array({missing, remaining})}}));
+    ++document.structureRevision;
+    rebuild_document_indexes(document);
+    SelectionModel selection;
+    selection.set(document, Selection{kObjectId, kScriptId, 0, FocusedPanel::Behaviors});
+    EditCommandService commands;
+    BehaviorFieldsPanel panel;
+    BehaviorCatalog catalog;
+
+    const auto frameAt = [&](ImVec2 mouse, bool down = false) {
+        io.AddMousePosEvent(mouse.x, mouse.y);
+        io.AddMouseButtonEvent(ImGuiMouseButton_Left, down);
+        ImGui::NewFrame();
+        ImGui::SetNextWindowPos({0, 0});
+        ImGui::SetNextWindowSize({400, 300});
+        ImGui::Begin("Behavior Inspector");
+        ImGui::PushID(0);
+        const auto menuId = ImGui::GetID("##behavior_menu");
+        ImGui::PopID();
+        panel.draw(document, selection, commands, catalog);
+        ImGui::End();
+        ImGui::Render();
+        return ImGui::GetHoveredID() == menuId;
+    };
+    frameAt({380, 10});
+    ImVec2 menuButton{};
+    for (float y = 25; y < 175; y += 3)
+    {
+        if (frameAt({380, y}))
+        {
+            menuButton = {380, y};
+            break;
+        }
+    }
+    require(menuButton.y > 0, "the Inspector must show a three-dot menu for a missing behavior");
+    const auto click = [&](ImVec2 pos) {
+        frameAt(pos, true);
+        frameAt(pos);
+    };
+    const auto popupOpen = [] { return !ImGui::GetCurrentContext()->OpenPopupStack.empty(); };
+    click(menuButton);
+    require(popupOpen(), "clicking a behavior's three-dot button must open its menu");
+    click(menuButton);
+    require(!popupOpen(), "clicking the behavior's three-dot button again without moving must close it");
+
+    const auto choose = [&](const char *label) {
+        frameAt(menuButton);
+        click(menuButton);
+        const auto &stack = ImGui::GetCurrentContext()->OpenPopupStack;
+        require(!stack.empty() && stack.back().Window != nullptr, "the behavior menu must reopen");
+        auto *popup = stack.back().Window;
+        const auto id = popup->GetID(label);
+        for (float y = popup->Pos.y + 2.0f; y < popup->Pos.y + popup->Size.y; y += 2.0f)
+        {
+            const ImVec2 pos{popup->Pos.x + 15.0f, y};
+            frameAt(pos);
+            if (ImGui::GetHoveredID() == id)
+            {
+                click(pos);
+                return;
+            }
+        }
+        throw std::runtime_error(std::string("behavior menu item could not be selected: ") + label);
+    };
+    choose("Copy Behavior");
+    require(panel.copied_behavior() == missing &&
+                document.root[0]["components"][1]["behaviors"] == Json::array({missing, remaining}),
+            "Copy Behavior must preserve the saved record without changing the object");
+    choose("Paste Behavior");
+    require(document.root[0]["components"][1]["behaviors"] == Json::array({missing, remaining, missing}),
+            "Paste Behavior must append the copied record with its saved fields");
+    require(commands.undo(document, selection).status == CommandStatus::Changed,
+            "pasting a behavior must support undo");
+    choose("Duplicate Behavior");
+    require(document.root[0]["components"][1]["behaviors"] == Json::array({missing, remaining, missing}) &&
+                commands.undo(document, selection).status == CommandStatus::Changed,
+            "Duplicate Behavior must append the same record as an undoable edit");
+    choose("Remove Behavior");
+    require(document.root[0]["components"][1]["behaviors"] == Json::array({remaining}),
+            "Remove Behavior must remove only the selected missing record");
+    require(commands.undo(document, selection).status == CommandStatus::Changed &&
+                document.root[0]["components"][1]["behaviors"] == Json::array({missing, remaining}),
+            "undo must restore the unregistered behavior and its saved data");
+
+    auto &owner = document.root[0];
+    owner["templateNodeId"] = 10;
+    owner["components"][1]["templateComponentId"] = 11;
+    const Json previousOverrides = Json::array({
+        "component[id=11].behaviors[0].custom", "component[id=11].behaviors[1].target"});
+    owner["overrides"] = previousOverrides;
+    EditCommandService linkedCommands;
+    require(linkedCommands.remove_behavior(document, kObjectId, kScriptId, 0).status == CommandStatus::Changed &&
+                document.root[0]["overrides"] == Json::array({
+                    "component[id=11].behaviors[0].target", "component[id=11].behaviors"}),
+            "removing an inherited behavior must retain the removal during template updates");
+    require(linkedCommands.undo(document, selection).status == CommandStatus::Changed &&
+                document.root[0]["overrides"] == previousOverrides &&
+                document.root[0]["components"][1]["behaviors"] == Json::array({missing, remaining}),
+            "undo must restore both the inherited behavior and its override paths");
+    ImGui::DestroyContext();
+}
+
 void run_behavior_numeric_edit_preserves_unmodeled_data()
 {
     ImGui::CreateContext();
@@ -1922,17 +2038,25 @@ void run_compact_transform_and_header_menu_tests()
     io.Fonts->Build();
 
     bool singleHeaderPopupOpen = false;
+    ImGuiID cameraMenuButton = 0;
+    float componentMenuX = 0.0f;
     const auto render_frame = [&]() {
         ImGui::NewFrame();
         ImGui::SetNextWindowPos({0.0f, 0.0f}, ImGuiCond_Always);
         ImGui::SetNextWindowSize({600.0f, 500.0f}, ImGuiCond_Always);
         ImGui::Begin("Inspector###panel.inspector", nullptr);
+        ImGui::PushID("0");
+        ImGui::PushID(std::to_string(document.projectGeneration).c_str());
+        ImGui::PushID(std::to_string(document.tabId.value).c_str());
+        ImGui::PushID(std::to_string(document.documentGeneration).c_str());
+        ImGui::PushID("1");
+        ImGui::PushID(101);
+        cameraMenuButton = ImGui::GetID("##menu");
+        for (int index = 0; index < 6; ++index)
+            ImGui::PopID();
+        componentMenuX = ImGui::GetCurrentWindow()->ContentRegionRect.Max.x - 12.0f;
         panel.draw(document, selection, commands, catalog);
-        if (ImGui::IsPopupOpen("ComponentHeaderContextMenu"))
-        {
-            singleHeaderPopupOpen = true;
-            ImGui::CloseCurrentPopup();
-        }
+        singleHeaderPopupOpen = ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopup);
         ImGui::End();
         ImGui::Render();
     };
@@ -2049,25 +2173,32 @@ void run_compact_transform_and_header_menu_tests()
     commands.undo(document, selection);
     require(document.root[0]["position"]["x"] == 10.0, "undo must restore original position");
 
-    // Test component header menu button click does not collapse the header
-    // The menu button is at the right edge of the header row (x ~ 580)
-    // Find the header position by scanning y coordinates for component 101
+    // Find the camera's menu button along the content edge, accounting for the scrollbar.
+    selection.set(document, Selection{1, std::nullopt, std::nullopt, FocusedPanel::Inspector});
     render_frame();
-    for (float scanY = 100.0f; scanY < 400.0f; scanY += 10.0f)
+    float menuY = 0.0f;
+    for (float scanY = 60.0f; scanY < 500.0f; scanY += 4.0f)
     {
-        io.AddMousePosEvent(580.0f, scanY);
+        io.AddMousePosEvent(componentMenuX, scanY);
         render_frame();
-        if (ImGui::GetHoveredID() != 0)
+        if (ImGui::GetHoveredID() == cameraMenuButton)
         {
-            // Click menu button
-            io.AddMouseButtonEvent(0, true);
-            render_frame();
-            io.AddMouseButtonEvent(0, false);
-            render_frame();
-            if (singleHeaderPopupOpen)
-                break;
+            menuY = scanY;
+            break;
         }
     }
+    require(menuY > 0.0f, "the camera component's three-dot button must be reachable");
+    io.AddMouseButtonEvent(ImGuiMouseButton_Left, true);
+    render_frame();
+    io.AddMouseButtonEvent(ImGuiMouseButton_Left, false);
+    render_frame();
+    require(singleHeaderPopupOpen, "clicking a component's three-dot button must open its menu");
+    io.AddMouseButtonEvent(ImGuiMouseButton_Left, true);
+    render_frame();
+    io.AddMouseButtonEvent(ImGuiMouseButton_Left, false);
+    render_frame();
+    require(!singleHeaderPopupOpen,
+            "clicking the component's three-dot button again without moving must close its menu");
 
     // Test single Inspector feedback rendering and Transform-first ordering
     selection.set(document, Selection{1, std::nullopt, std::nullopt, FocusedPanel::Inspector});
@@ -2214,6 +2345,100 @@ void init_test_imgui()
     io.DeltaTime = 1.0f / 60.0f;
     io.Fonts->AddFontDefault();
     io.Fonts->Build();
+}
+
+void run_behavior_fields_are_independently_collapsible()
+{
+    init_test_imgui();
+    ImGui::GetIO().DisplaySize = {400.0f, 300.0f};
+    auto document = make_default_document();
+    const std::array names{"FirstBehavior", "SecondBehavior"};
+    document.root[0]["components"].push_back(component(kScriptId, 5, {
+        {"behaviors", Json::array({
+            Json{{"type", names[0]}, {"count", -3}},
+            Json{{"type", names[1]}, {"count", 8}}
+        })}
+    }));
+    ++document.structureRevision;
+    rebuild_document_indexes(document);
+    SelectionModel selection;
+    selection.set(document, Selection{kObjectId, kScriptId, std::nullopt, FocusedPanel::Inspector});
+    EditCommandService commands;
+    BehaviorFieldsPanel panel;
+    BehaviorCatalog catalog;
+    Json descriptors = Json::array();
+    for (std::size_t index = 0; index < names.size(); ++index)
+        descriptors.push_back({
+            {"name", names[index]}, {"field_schema_available", true},
+            {"fields", Json::array({Json{{"name", "count"},
+                {"kind", index == 0 ? "signed_integer" : "unsigned_integer"}}})}
+        });
+    require(catalog.set_source_catalog({{"schema_version", 1}, {"behaviors", descriptors}}),
+            "the behavior sections must have numeric field schemas");
+
+    std::array<ImGuiID, 2> headerIds{};
+    std::array<ImGuiID, 2> fieldIds{};
+    const auto frameAt = [&](ImVec2 point, bool down = false) {
+        auto &io = ImGui::GetIO();
+        io.AddMousePosEvent(point.x, point.y);
+        io.AddMouseButtonEvent(ImGuiMouseButton_Left, down);
+        ImGui::NewFrame();
+        ImGui::SetNextWindowPos({0.0f, 0.0f});
+        ImGui::SetNextWindowSize({400.0f, 300.0f});
+        ImGui::Begin("Behavior sections");
+        if (headerIds.front() == 0)
+        {
+            for (std::size_t index = 0; index < names.size(); ++index)
+            {
+                ImGui::PushID(static_cast<int>(index));
+                headerIds[index] = ImGui::GetID(("###behavior." + std::string(names[index])).c_str());
+                ImGui::PopID();
+                ImGui::PushID(std::to_string(document.projectGeneration).c_str());
+                ImGui::PushID(std::to_string(document.tabId.value).c_str());
+                ImGui::PushID(std::to_string(document.documentGeneration).c_str());
+                ImGui::PushID(std::to_string(kObjectId).c_str());
+                ImGui::PushID(std::to_string(kScriptId).c_str());
+                ImGui::PushID(std::to_string(index).c_str());
+                ImGui::PushID("/count");
+                fieldIds[index] = ImGui::GetID("##value");
+                for (int id = 0; id < 7; ++id)
+                    ImGui::PopID();
+            }
+        }
+        panel.draw(document, selection, commands, catalog);
+        ImGui::End();
+        ImGui::Render();
+    };
+    frameAt({20.0f, 10.0f});
+    const auto findItem = [&](ImGuiID id, float x) -> std::optional<ImVec2> {
+        for (float y = 25.0f; y < 155.0f; y += 3.0f)
+        {
+            frameAt({x, y});
+            if (ImGui::GetHoveredID() == id)
+                return ImVec2{x, y};
+        }
+        return std::nullopt;
+    };
+
+    const auto firstField = findItem(fieldIds[0], 385.0f);
+    const auto secondField = findItem(fieldIds[1], 385.0f);
+    require(firstField && secondField && firstField->y < secondField->y && !selection.current().behaviorOrdinal,
+            "both behaviors must show their fields in order, using the full numeric input width without step buttons");
+    const auto firstHeader = findItem(headerIds[0], 35.0f);
+    require(firstHeader.has_value(), "the first behavior header must be clickable");
+    frameAt(*firstHeader, true);
+    frameAt(*firstHeader);
+    require(!panel.behavior_expanded(document, kScriptId, 0) &&
+                panel.behavior_expanded(document, kScriptId, 1) &&
+                !findItem(fieldIds[0], 385.0f) && findItem(fieldIds[1], 385.0f),
+            "collapsing one behavior must hide its fields while keeping the other behavior expanded");
+
+    panel.reveal_field(kObjectId, kScriptId, 0, "/count");
+    frameAt({20.0f, 10.0f});
+    require(panel.behavior_expanded(document, kScriptId, 0) && findItem(fieldIds[0], 385.0f) &&
+                !selection.current().behaviorOrdinal,
+            "revealing a behavior field must expand its section without selecting the behavior");
+    ImGui::DestroyContext();
 }
 
 void run_clean_inactive_vs_precision_edit_display_tests()
@@ -3807,6 +4032,8 @@ int main()
         run_multi_collider_layer_targets_keep_object_component_pairs();
         run_axis_labels_have_unique_ids();
         run_integer_fields_keep_independent_drafts();
+        run_inspector_removes_unregistered_behavior();
+        run_behavior_fields_are_independently_collapsible();
         run_behavior_numeric_edit_preserves_unmodeled_data();
         run_mixed_multi_selection_edits_are_atomic();
         run_multi_behavior_template_overrides_revert_all_targets();

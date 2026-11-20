@@ -3715,6 +3715,58 @@ StructuralCommandResult EditCommandService::remove_behavior(DocumentSession &doc
     StructuralCommand command{document.documentGeneration, StructuralCommandKind::DeleteBehavior,
                               std::nullopt, objectId, scriptComponentId, behaviorOrdinal,
                               (*behaviors)[behaviorOrdinal], std::move(selection)};
+    if (is_template_node(*owner))
+    {
+        const auto collectionPath = template_override_path_for_address(document,
+            address_for_document(document, objectId, scriptComponentId, std::nullopt, {"behaviors"}));
+        const auto prefix = collectionPath + "[";
+        const auto previous = owner->find("overrides");
+        Json overrides = Json::array();
+        bool hasCollectionOverride = false;
+        if (previous != owner->end() && previous->is_array())
+        {
+            for (const auto &entry : *previous)
+            {
+                if (!entry.is_string())
+                {
+                    overrides.push_back(entry);
+                    continue;
+                }
+                auto path = entry.get<std::string>();
+                if (path == collectionPath)
+                    hasCollectionOverride = true;
+                if (path.starts_with(prefix))
+                {
+                    const auto end = path.find(']', prefix.size());
+                    if (end != std::string::npos)
+                    {
+                        std::size_t index = 0;
+                        const auto last = path.data() + end;
+                        const auto parsed = std::from_chars(path.data() + prefix.size(), last, index);
+                        if (parsed.ec == std::errc{} && parsed.ptr == last)
+                        {
+                            if (index == behaviorOrdinal)
+                                continue;
+                            if (index > behaviorOrdinal)
+                                path.replace(prefix.size(), end - prefix.size(), std::to_string(index - 1));
+                        }
+                    }
+                }
+                overrides.push_back(std::move(path));
+            }
+        }
+        if (!hasCollectionOverride)
+            overrides.push_back(collectionPath);
+        const std::vector<BatchOperation> operations{
+            command,
+            PropertyCommand{
+                address_for_document(document, objectId, std::nullopt, std::nullopt, {"overrides"}),
+                previous == owner->end() ? PropertyValue::missing() : PropertyValue::of(*previous),
+                PropertyValue::of(std::move(overrides)), command.selection}};
+        auto result = apply_batch(document, operations, command.selection);
+        return {result.status, std::move(result.message), std::move(result.affectedObjectIds),
+                std::move(result.change), std::move(command)};
+    }
     return apply(document, command, CommandDirection::Forward);
 }
 

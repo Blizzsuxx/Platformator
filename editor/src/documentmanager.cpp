@@ -7,6 +7,7 @@
 #include "platform/nativefile.h"
 
 #include <algorithm>
+#include <charconv>
 #include <fstream>
 #include <limits>
 #include <stdexcept>
@@ -28,6 +29,117 @@ bool path_is_within(const std::filesystem::path &root, const std::filesystem::pa
     return std::none_of(relative.begin(), relative.end(), [](const auto &part) {
         return part == "..";
     });
+}
+
+using BehaviorOrdinals = std::map<int, std::vector<std::optional<std::size_t>>>;
+
+bool remap_behavior_ordinal(std::string &path, std::string_view prefix, char delimiter,
+                           const std::vector<std::optional<std::size_t>> &ordinals)
+{
+    if (!path.starts_with(prefix))
+        return true;
+    const auto end = path.find(delimiter, prefix.size());
+    if (end == std::string::npos)
+        return true;
+    std::size_t previous = 0;
+    const auto first = path.data() + prefix.size();
+    const auto last = path.data() + end;
+    const auto parsed = std::from_chars(first, last, previous);
+    if (parsed.ec != std::errc{} || parsed.ptr != last || previous >= ordinals.size())
+        return true;
+    if (!ordinals[previous])
+        return false;
+    path.replace(prefix.size(), end - prefix.size(), std::to_string(*ordinals[previous]));
+    return true;
+}
+
+void remap_behavior_paths(Json &owner, const char *key, std::string_view prefix,
+                          const std::vector<std::optional<std::size_t>> &ordinals)
+{
+    auto paths = owner.find(key);
+    if (paths == owner.end() || !paths->is_array())
+        return;
+    for (auto it = paths->begin(); it != paths->end();)
+    {
+        if (it->is_string() && !remap_behavior_ordinal(
+                it->get_ref<std::string &>(), prefix, ']', ordinals))
+            it = paths->erase(it);
+        else
+            ++it;
+    }
+}
+
+bool update_behavior_object(Json &object, const BehaviorTypeChanges &changes, BehaviorOrdinals &ordinals)
+{
+    if (!object.is_object())
+        return false;
+    bool changed = false;
+    auto components = object.find("components");
+    if (components != object.end() && components->is_array())
+    {
+        for (auto &component : *components)
+        {
+            if (!component.is_object() || component.find("type") == component.end() || component["type"] != 5)
+                continue;
+            auto behaviors = component.find("behaviors");
+            if (behaviors == component.end() || !behaviors->is_array())
+                continue;
+            std::vector<std::optional<std::size_t>> positions;
+            positions.reserve(behaviors->size());
+            for (auto it = behaviors->begin(); it != behaviors->end();)
+            {
+                const auto type = it->is_object() ? it->find("type") : it->end();
+                const auto change = type != it->end() && type->is_string()
+                    ? changes.find(type->get_ref<const std::string &>()) : changes.end();
+                if (change != changes.end() && !change->second)
+                {
+                    positions.emplace_back();
+                    it = behaviors->erase(it);
+                    changed = true;
+                    continue;
+                }
+                positions.emplace_back(static_cast<std::size_t>(it - behaviors->begin()));
+                if (change != changes.end() && *type != *change->second)
+                {
+                    *type = *change->second;
+                    changed = true;
+                }
+                ++it;
+            }
+            if (positions.size() != behaviors->size())
+            {
+                const int componentId = component.value("id", -1);
+                const int templateComponentId = component.value("templateComponentId", componentId);
+                const std::string prefix = "component[id=" + std::to_string(templateComponentId) + "].behaviors[";
+                remap_behavior_paths(object, "overrides", prefix, positions);
+                remap_behavior_paths(object, "templateSourcePaths", prefix, positions);
+                remap_behavior_paths(component, "templateSourceFields", "behaviors[", positions);
+                remap_behavior_paths(component, "templateSourcePaths", "behaviors[", positions);
+                ordinals.emplace(componentId, std::move(positions));
+            }
+        }
+    }
+    auto children = object.find("children");
+    if (children != object.end() && children->is_array())
+        for (auto &child : *children)
+            changed = update_behavior_object(child, changes, ordinals) || changed;
+    return changed;
+}
+
+void remap_behavior_bindings(Json &bindings, const BehaviorOrdinals &ordinals)
+{
+    if (!bindings.is_array() || ordinals.empty())
+        return;
+    for (auto it = bindings.begin(); it != bindings.end();)
+    {
+        const auto mapping = it->is_object() ? ordinals.find(it->value("component_id", -1)) : ordinals.end();
+        const auto field = it->is_object() ? it->find("path") : it->end();
+        if (mapping != ordinals.end() && field != it->end() && field->is_string() &&
+            !remap_behavior_ordinal(field->get_ref<std::string &>(), "/behaviors/", '/', mapping->second))
+            it = bindings.erase(it);
+        else
+            ++it;
+    }
 }
 
 std::optional<std::filesystem::path> normalized_destination_path(
@@ -983,6 +1095,156 @@ TemplateRetargetResult DocumentManager::retry_pending_template_asset_links()
         aggregate.failures.insert(aggregate.failures.end(), result.failures.begin(), result.failures.end());
     }
     return aggregate;
+}
+
+BehaviorReferenceUpdateResult DocumentManager::update_behavior_references(const BehaviorTypeChanges &changes)
+{
+    BehaviorReferenceUpdateResult result;
+    if (changes.empty())
+        return result;
+
+    struct OpenDocument
+    {
+        DocumentTab *tab;
+        bool wasDirty;
+        bool updated = false;
+    };
+    std::map<std::filesystem::path, OpenDocument> openDocuments;
+    for (const auto &tab : tabs_)
+    {
+        auto &workspace = tab->workspace();
+        auto &document = workspace.document_for_edit();
+        const auto path = document.sourcePath.value_or(std::filesystem::path{});
+        auto open = OpenDocument{tab.get(), workspace.dirty()};
+        try
+        {
+            std::vector<BatchOperation> operations;
+            BehaviorOrdinals ordinals;
+            for (std::size_t index = 0; index < document.root.size(); ++index)
+            {
+                const auto &before = document.root[index];
+                auto after = before;
+                if (!update_behavior_object(after, changes, ordinals))
+                    continue;
+                operations.emplace_back(StructuralCommand{
+                    document.documentGeneration, StructuralCommandKind::DeleteObject, std::nullopt,
+                    0, std::nullopt, index, before, {}});
+                operations.emplace_back(StructuralCommand{
+                    document.documentGeneration, StructuralCommandKind::InsertObject, std::nullopt,
+                    0, std::nullopt, index, std::move(after), {}});
+            }
+            if (!operations.empty())
+            {
+                Json bindings = tab->template_reference_bindings();
+                remap_behavior_bindings(bindings, ordinals);
+                const auto committed = tab->history().apply_batch(document, operations);
+                if (!committed)
+                    result.failures.push_back({path, committed.message});
+                else
+                {
+                    tab->set_template_reference_bindings(std::move(bindings));
+                    tab->selection().repair(document);
+                    open.updated = true;
+                    ++result.updatedDocuments;
+                }
+            }
+        }
+        catch (const std::exception &error)
+        {
+            result.failures.push_back({path, error.what()});
+        }
+        if (!path.empty())
+            openDocuments.emplace(path, open);
+    }
+
+    std::set<std::filesystem::path> paths;
+    const auto collectPaths = [&](const std::filesystem::path &root)
+    {
+        std::error_code scanError;
+        for (std::filesystem::recursive_directory_iterator it(
+                 root, std::filesystem::directory_options::skip_permission_denied, scanError), end;
+             it != end && !scanError; it.increment(scanError))
+        {
+            const auto path = it->path();
+            std::error_code statusError;
+            if (it->is_directory(statusError))
+            {
+                const auto name = path.filename().string();
+                if (name == "build" || name == "bin" || name == "vendored" || name.starts_with('.'))
+                    it.disable_recursion_pending();
+            }
+            else if ((path.extension() == ".scene" || path.extension() == ".pttemplate") &&
+                     std::filesystem::is_regular_file(it->symlink_status(statusError)))
+                paths.insert(path);
+        }
+        if (scanError)
+            result.failures.push_back({root, scanError.message()});
+    };
+    collectPaths(projectRoot_);
+    if (!path_is_within(projectRoot_, assetRoot_))
+        collectPaths(assetRoot_);
+    for (const auto &[path, open] : openDocuments)
+        if (path_is_within(projectRoot_, path))
+            paths.insert(path);
+
+    for (const auto &path : paths)
+    {
+        try
+        {
+            std::string identityError;
+            const auto identity = native_file_identity(path, identityError);
+            if (!identity)
+            {
+                result.failures.push_back({path, identityError.empty() ? "Document is unavailable." : identityError});
+                continue;
+            }
+            std::ifstream input(path, std::ios::binary);
+            Json contents = Json::parse(input);
+            input.close();
+            BehaviorOrdinals ordinals;
+            bool changed = false;
+            Json *root = &contents;
+            if (contents.is_object() && contents.contains("root"))
+                root = &contents["root"];
+            if (root->is_array())
+                for (auto &object : *root)
+                    changed = update_behavior_object(object, changes, ordinals) || changed;
+            else if (path.extension() == ".pttemplate" && root->is_object())
+                changed = update_behavior_object(*root, changes, ordinals);
+            if (!changed)
+                continue;
+
+            if (path.extension() == ".pttemplate" && contents.contains("reference_bindings"))
+                remap_behavior_bindings(contents["reference_bindings"], ordinals);
+            const auto open = openDocuments.find(path);
+            if (open != openDocuments.end() &&
+                open->second.tab->workspace().document().sourceIdentity != identity)
+            {
+                result.failures.push_back({path, "The open document changed on disk."});
+                continue;
+            }
+            const auto written = write_file_atomically(path, contents.dump(2) + "\n", true, identity, true);
+            if (!written.succeeded())
+            {
+                result.failures.push_back({path, written.message});
+                continue;
+            }
+            if (open == openDocuments.end() || !open->second.updated)
+                ++result.updatedDocuments;
+            if (open != openDocuments.end())
+            {
+                auto &workspace = open->second.tab->workspace();
+                workspace.document_for_edit().sourceIdentity = native_file_identity(path, identityError);
+                if (!open->second.wasDirty && open->second.updated)
+                    workspace.mark_saved();
+            }
+        }
+        catch (const std::exception &error)
+        {
+            result.failures.push_back({path, error.what()});
+        }
+    }
+    return result;
 }
 
 std::optional<TabId> DocumentManager::open_template(const std::filesystem::path &path,

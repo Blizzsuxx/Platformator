@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <cstddef>
 #include <filesystem>
+#include <map>
 #include <optional>
 #include <string>
 #include <unordered_map>
@@ -14,6 +15,7 @@
 namespace platformator_editor
 {
 using Json = nlohmann::json;
+using BehaviorTypeChanges = std::map<std::string, std::optional<std::string>, std::less<>>;
 
 struct ObjectLocation
 {

@@ -7,6 +7,8 @@
 #include "../componenttypes.h"
 #include "../style.h"
 #include "../discovery.h"
+#include "../platform/nativefile.h"
+#include "../sourcescanner.h"
 #include "referencefields.h"
 #include "selection.h"
 #include "spriteeditor.h"
@@ -324,6 +326,263 @@ std::optional<std::string> behavior_type_from_source(const std::filesystem::path
     }
     return std::nullopt;
 }
+
+bool valid_behavior_name(std::string_view name)
+{
+    const auto isLetter = [](char ch) {
+        return (ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z');
+    };
+    if (name.empty() || !isLetter(name.front()) || name.find("__") != std::string_view::npos ||
+        !std::all_of(name.begin() + 1, name.end(), [isLetter](char ch) {
+            return isLetter(ch) || (ch >= '0' && ch <= '9') || ch == '_';
+        }))
+        return false;
+
+    constexpr std::string_view reserved[] = {
+        "alignas", "alignof", "and", "and_eq", "asm", "auto", "bitand", "bitor", "bool",
+        "break", "case", "catch", "char", "char8_t", "char16_t", "char32_t", "class", "compl",
+        "concept", "const", "consteval", "constexpr", "constinit", "const_cast", "continue",
+        "co_await", "co_return", "co_yield", "decltype", "default", "delete", "do", "double",
+        "dynamic_cast", "else", "enum", "explicit", "export", "extern", "false", "float", "for",
+        "friend", "goto", "if", "inline", "int", "long", "mutable", "namespace", "new", "noexcept",
+        "not", "not_eq", "nullptr", "operator", "or", "or_eq", "private", "protected", "public",
+        "register", "reinterpret_cast", "requires", "return", "short", "signed", "sizeof",
+        "static", "static_assert", "static_cast", "struct", "switch", "template", "this",
+        "thread_local", "throw", "true", "try", "typedef", "typeid", "typename", "union",
+        "unsigned", "using", "virtual", "void", "volatile", "wchar_t", "while", "xor", "xor_eq",
+        "Behavior", "Collision", "Collider", "std", "nlohmann", "platformator",
+        "start", "update", "fixedUpdate", "lateUpdate", "onDestroy", "onCollisionEnter",
+        "onCollisionExit", "clone", "getTypeName", "serialize", "deserialize",
+        "resolveTemplateAssets", "resolveReferences", "registerScriptType",
+        "platformatorRegisteredBehavior", "platformatorDescribeScriptMetadata",
+        "platformatorInspectScriptInstance", "platformatorInspectScriptFields",
+        "platformatorResolveScriptTemplateAssets", "platformatorResolveScriptReferences",
+        "to_json", "from_json", "SelfType"
+    };
+    return std::find(std::begin(reserved), std::end(reserved), name) == std::end(reserved);
+}
+
+constexpr std::string_view BehaviorScriptHeader = R"cpp(#pragma once
+
+#include <platformator/behavior.h>
+#include <platformator/scriptregistration.h>
+
+namespace behaviors
+{
+class @NAME@ : public Behavior
+{
+public:
+    // Initialize the behavior before its first update, after references are resolved.
+    void start() override;
+
+    // Run gameplay logic each frame. timeDelta is the elapsed time in seconds.
+    void update(double timeDelta) override;
+
+    // Run logic that needs the fixed simulation step, such as physics control.
+    void fixedUpdate(double timeDelta) override;
+
+    // Run after the regular updates, for example to follow a moving object.
+    void lateUpdate(double timeDelta) override;
+
+    // Clean up gameplay state when the engine destroys this behavior.
+    void onDestroy() override;
+
+    // React when contact begins. collision describes the contact with the other collider.
+    void onCollisionEnter(const Collision *collision, Collider *other, double timeDelta) override;
+
+    // React when contact with the other collider ends.
+    void onCollisionExit(Collider *other, double timeDelta) override;
+
+private:
+    // Declare your fields here and list their names after the type to save and inspect them.
+    SERIALIZABLE_SCRIPT(@NAME@);
+};
+} // namespace behaviors
+)cpp";
+
+constexpr std::string_view BehaviorScriptSource = R"cpp(#include "@NAME@.h"
+
+namespace behaviors
+{
+void @NAME@::start()
+{
+}
+
+void @NAME@::update(double timeDelta)
+{
+    (void)timeDelta;
+}
+
+void @NAME@::fixedUpdate(double timeDelta)
+{
+    (void)timeDelta;
+}
+
+void @NAME@::lateUpdate(double timeDelta)
+{
+    (void)timeDelta;
+}
+
+void @NAME@::onDestroy()
+{
+}
+
+void @NAME@::onCollisionEnter(const Collision *collision, Collider *other, double timeDelta)
+{
+    (void)collision;
+    (void)other;
+    (void)timeDelta;
+}
+
+void @NAME@::onCollisionExit(Collider *other, double timeDelta)
+{
+    (void)other;
+    (void)timeDelta;
+}
+} // namespace behaviors
+)cpp";
+
+std::string render_behavior_script(std::string_view scriptTemplate, std::string_view name)
+{
+    std::string source(scriptTemplate);
+    constexpr std::string_view placeholder = "@NAME@";
+    for (auto position = source.find(placeholder); position != std::string::npos;
+         position = source.find(placeholder, position + name.size()))
+        source.replace(position, placeholder.size(), name);
+    return source;
+}
+
+bool is_behavior_source_path(const std::filesystem::path &path)
+{
+    const auto extension = lowercase_asset_extension(path);
+    return extension == ".h" || extension == ".hpp" || extension == ".hh" ||
+        extension == ".cpp" || extension == ".cc" || extension == ".cxx";
+}
+
+struct BehaviorSourceUnit
+{
+    std::vector<std::pair<std::filesystem::path, std::string>> files;
+    std::vector<SourceBehaviorDescriptor> types;
+};
+
+BehaviorSourceUnit read_behavior_source_unit(const std::filesystem::path &path)
+{
+    if (!is_behavior_source_path(path))
+        return {};
+    BehaviorSourceUnit unit;
+    const auto read = [&](const std::filesystem::path &candidate) {
+        std::error_code error;
+        if (!std::filesystem::is_regular_file(std::filesystem::symlink_status(candidate, error)))
+            return;
+        const auto size = std::filesystem::file_size(candidate, error);
+        if (error || size > 2U * 1024U * 1024U)
+            return;
+        std::ifstream input(candidate, std::ios::binary);
+        if (input)
+            unit.files.emplace_back(candidate, std::string(std::istreambuf_iterator<char>(input), {}));
+    };
+    read(path);
+    if (unit.files.empty())
+        return {};
+    for (const char *extension : {".h", ".hpp", ".hh", ".cpp", ".cc", ".cxx"})
+    {
+        auto sibling = path;
+        sibling.replace_extension(extension);
+        if (sibling != path)
+            read(sibling);
+    }
+    auto scan = SourceBehaviorScanner::scan_sources(unit.files);
+    for (const auto &[type, descriptor] : scan.behaviors)
+    {
+        if (descriptor.headerPath == path || descriptor.sourcePath == path ||
+            (!descriptor.headerPath.empty() && unit.files.front().second.find(
+                descriptor.headerPath.filename().string()) != std::string::npos))
+            unit.types.push_back(descriptor);
+    }
+    std::erase_if(unit.files, [&](const auto &file) {
+        return std::none_of(unit.types.begin(), unit.types.end(), [&](const auto &descriptor) {
+            return file.first == path || file.first == descriptor.headerPath ||
+                file.first == descriptor.sourcePath || (!descriptor.headerPath.empty() &&
+                file.second.find(descriptor.headerPath.filename().string()) != std::string::npos);
+        });
+    });
+    return unit;
+}
+
+std::string registered_name(const SourceBehaviorDescriptor &behavior)
+{
+    return behavior.registeredName.empty() ? behavior.typeName : behavior.registeredName;
+}
+
+std::string rename_behavior_files(const BehaviorSourceUnit &unit, std::string_view newType,
+                                  std::vector<std::pair<std::filesystem::path, std::filesystem::path>> &renamed,
+                                  BehaviorTypeChanges &changes)
+{
+    const auto &behavior = unit.types.front();
+    const auto oldName = registered_name(behavior);
+    if (!oldName.ends_with(behavior.typeName))
+        return "Could not determine the registered behavior name.";
+    const std::string newName = oldName.substr(0, oldName.size() - behavior.typeName.size()) + std::string(newType);
+    const auto headerPath = behavior.headerPath;
+    const auto oldHeader = headerPath.filename().string();
+    const auto newHeader = std::string(newType) + headerPath.extension().string();
+    std::vector<std::optional<FileIdentity>> originals;
+    std::vector<std::optional<FileIdentity>> created;
+    std::error_code error;
+    for (const auto &[path, original] : unit.files)
+    {
+        const auto destination = path.parent_path() / (std::string(newType) + path.extension().string());
+        if (std::filesystem::exists(std::filesystem::symlink_status(destination, error)))
+            return destination.filename().string() + " already exists.";
+        if (error && error != std::errc::no_such_file_or_directory)
+            return error.message();
+        std::string identityError;
+        const auto identity = native_file_identity(path, identityError);
+        if (!identity)
+            return "Could not identify " + path.filename().string() + ". " + identityError;
+        originals.push_back(identity);
+        renamed.emplace_back(path, destination);
+    }
+    const auto discardCreated = [&] {
+        for (std::size_t i = 0; i < created.size(); ++i)
+        {
+            std::string identityError;
+            if (created[i] && native_file_identity(renamed[i].second, identityError) == created[i])
+                std::filesystem::remove(renamed[i].second, error);
+        }
+    };
+    for (std::size_t i = 0; i < unit.files.size(); ++i)
+    {
+        const auto &contents = unit.files[i].second;
+        const auto updated = rename_behavior_source(contents, behavior.typeName, newType, oldName, newName,
+                                                      oldHeader, newHeader);
+        const auto written = write_file_atomically(renamed[i].second, updated, false);
+        if (!written.succeeded())
+        {
+            discardCreated();
+            return written.message;
+        }
+        std::string identityError;
+        created.push_back(native_file_identity(renamed[i].second, identityError));
+    }
+    for (std::size_t i = 0; i < renamed.size(); ++i)
+    {
+        std::string identityError;
+        if (native_file_identity(renamed[i].first, identityError) == originals[i] &&
+            std::filesystem::remove(renamed[i].first, error) && !error)
+            continue;
+        bool restored = true;
+        for (std::size_t j = 0; j < i; ++j)
+            restored = write_file_atomically(unit.files[j].first, unit.files[j].second, false).succeeded() && restored;
+        if (restored)
+            discardCreated();
+        return "Could not finish renaming " + renamed[i].first.filename().string() +
+            (restored ? "." : ". Check the original and renamed files.");
+    }
+    if (oldName != newName)
+        changes.emplace(oldName, newName);
+    return {};
+}
 } // namespace
 
 bool ProjectPanel::project_shortcuts_allowed(bool wantTextInput, bool renaming) noexcept
@@ -365,8 +624,61 @@ bool ProjectPanel::select_asset(const std::filesystem::path &path)
     selectedRoot_ = assetRoot_;
     selectedRootLabel_ = "Assets";
     selectedDirectory_ = canonical.parent_path();
-    selectedEntry_ = canonical;
+    select_only_asset(canonical);
     return true;
+}
+
+std::optional<std::filesystem::path> ProjectPanel::selected_entry() const
+{
+    if (selectedEntries_.size() == 1)
+        return *selectedEntries_.begin();
+    return std::nullopt;
+}
+
+void ProjectPanel::clear_asset_selection()
+{
+    selectedEntries_.clear();
+    selectionAnchor_.clear();
+}
+
+void ProjectPanel::select_only_asset(const std::filesystem::path &path)
+{
+    selectedEntries_ = {path};
+    selectionAnchor_ = path;
+}
+
+void ProjectPanel::select_clicked_asset(const std::filesystem::path &path)
+{
+    const auto &io = ImGui::GetIO();
+    const bool toggle = io.KeyCtrl || io.KeySuper;
+    if (io.KeyShift && !selectionAnchor_.empty())
+    {
+        const auto &directory = directories_.at(selectedDirectory_.string());
+        const auto &indexes = directory.filteredEntryIndexes;
+        const auto findEntry = [&](const std::filesystem::path &entry) {
+            return std::find_if(indexes.begin(), indexes.end(), [&](std::size_t index) {
+                return directory.entries[index].path == entry;
+            });
+        };
+        const auto anchor = findEntry(selectionAnchor_);
+        const auto target = findEntry(path);
+        if (anchor != indexes.end() && target != indexes.end())
+        {
+            if (!toggle)
+                selectedEntries_.clear();
+            for (auto it = std::min(anchor, target); it != std::max(anchor, target) + 1; ++it)
+                selectedEntries_.insert(directory.entries[*it].path);
+            return;
+        }
+    }
+    if (toggle)
+    {
+        if (selectedEntries_.erase(path) == 0)
+            selectedEntries_.insert(path);
+        selectionAnchor_ = path;
+    }
+    else
+        select_only_asset(path);
 }
 
 void ProjectPanel::set_frame_renderer(SDL_Renderer *renderer) noexcept
@@ -450,7 +762,7 @@ std::vector<SemanticNode> ProjectPanel::semantic_nodes(const DocumentSession &do
         node.selected = target != pendingTileTargets_.end() &&
             (target->second.directory
                 ? selectedDirectory_ == target->second.path
-                : selectedEntry_ && *selectedEntry_ == target->second.path);
+                : selectedEntries_.contains(target->second.path));
         node.focused = semanticFocusNode_ && *semanticFocusNode_ == node.id;
         nodes.push_back(std::move(node));
     }
@@ -509,12 +821,12 @@ bool ProjectPanel::dispatch_semantic_action(DocumentSession &document,
     if (target.directory)
     {
         selectedDirectory_ = target.path;
-        selectedEntry_.reset();
+        clear_asset_selection();
         expandedDirectories_.insert(target.path.string());
         request_scan(target.path);
     }
     else
-        selectedEntry_ = target.path;
+        select_only_asset(target.path);
     semanticFocusNode_ = action.nodeId;
     Selection focused = selection.current();
     focused.focusedPanel = FocusedPanel::Project;
@@ -971,8 +1283,9 @@ std::size_t ProjectPanel::apply_changes(const ProjectChangeBatch &batch,
                 resourceChange(event, path);
             if (event.kind == ProjectChangeKind::Removed)
             {
-                if (selectedEntry_ && path_is_within(path, *selectedEntry_))
-                    selectedEntry_.reset();
+                std::erase_if(selectedEntries_, [&](const auto &entry) { return path_is_within(path, entry); });
+                if (path_is_within(path, selectionAnchor_))
+                    selectionAnchor_.clear();
                 if (event.directory && path_is_within(path, selectedDirectory_))
                     selectedDirectory_ = path.parent_path();
                 if (event.directory && path_is_within(path, selectedRoot_))
@@ -996,8 +1309,14 @@ std::size_t ProjectPanel::apply_changes(const ProjectChangeBatch &batch,
                 };
                 rebase(selectedDirectory_);
                 rebase(selectedRoot_);
-                if (selectedEntry_)
-                    rebase(*selectedEntry_);
+                rebase(selectionAnchor_);
+                std::set<std::filesystem::path> rebasedEntries;
+                for (auto selected : selectedEntries_)
+                {
+                    rebase(selected);
+                    rebasedEntries.insert(std::move(selected));
+                }
+                selectedEntries_.swap(rebasedEntries);
             }
             pendingChanges_.pop_front();
         }
@@ -1319,7 +1638,7 @@ void ProjectPanel::draw_folder_tree(const std::filesystem::path &root,
                 selectedDirectory_ = directory;
                 selectedRoot_ = root;
                 selectedRootLabel_ = rootLabel;
-                selectedEntry_.reset();
+                clear_asset_selection();
                 hierarchyObjectTemplateDropCallback_(objectId, directory);
             }
         }
@@ -1330,7 +1649,7 @@ void ProjectPanel::draw_folder_tree(const std::filesystem::path &root,
         selectedDirectory_ = directory;
         selectedRoot_ = root;
         selectedRootLabel_ = rootLabel;
-        selectedEntry_.reset();
+        clear_asset_selection();
     }
 
     if (open)
@@ -1476,12 +1795,13 @@ void ProjectPanel::draw_asset_tile(const std::filesystem::path &path,
     const float uiScale = std::clamp(ImGui::GetIO().FontGlobalScale, 0.5f, 6.0f);
     const std::string entryKey = path.string();
     const std::string label = path.filename().string();
-    const bool selected = selectedEntry_ && *selectedEntry_ == path;
+    const bool selected = selectedEntries_.contains(path);
     ImGui::PushID(entryKey.c_str());
     const bool clicked = ImGui::InvisibleButton("##asset-tile", {tileWidth, tileHeight});
     const ImVec2 minimum = ImGui::GetItemRectMin();
     const ImVec2 maximum = ImGui::GetItemRectMax();
     const bool hovered = ImGui::IsItemHovered();
+    ImGui::OpenPopupOnItemClick("##asset-item-context", ImGuiPopupFlags_MouseButtonRight);
     const bool behaviorSource = behaviorRoot && editor_asset_format(path).behaviorHeader;
     if (!isDirectory && (!behaviorRoot || behaviorSource) && ImGui::BeginDragDropSource())
     {
@@ -1687,27 +2007,7 @@ void ProjectPanel::draw_asset_tile(const std::filesystem::path &path,
     {
         ImGui::SetCursorScreenPos({minimum.x + 3.0f * uiScale, textY - 2.0f * uiScale});
         ImGui::SetNextItemWidth(maximum.x - minimum.x - 6.0f * uiScale);
-        if (viewState_.renameFocusPending)
-        {
-            ImGui::SetKeyboardFocusHere();
-            viewState_.renameFocusPending = false;
-        }
-        const bool enter = ImGui::InputText("##inline-rename", viewState_.renameBuffer,
-                                            sizeof(viewState_.renameBuffer),
-                                            ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_AutoSelectAll);
-        const bool escape = ImGui::IsItemActive() && ImGui::IsKeyPressed(ImGuiKey_Escape);
-        if (enter || ImGui::IsItemDeactivatedAfterEdit())
-        {
-            if (!escape && viewState_.renaming)
-            {
-                execute_context_rename(viewState_.renamingPath, viewState_.renameBuffer);
-            }
-            viewState_.renaming = false;
-        }
-        else if (escape)
-        {
-            viewState_.renaming = false;
-        }
+        draw_inline_rename();
     }
     else
     {
@@ -1736,18 +2036,18 @@ void ProjectPanel::draw_asset_tile(const std::filesystem::path &path,
         else
             ImGui::SetTooltip("%s", displayPath.c_str());
     }
-    const bool doubleClicked = hovered &&
+    const auto &io = ImGui::GetIO();
+    const bool doubleClicked = hovered && !io.KeyCtrl && !io.KeySuper && !io.KeyShift &&
         ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left);
-    if (clicked || doubleClicked)
-    {
-        selectedEntry_ = path;
-    }
+    if (clicked && !doubleClicked)
+        select_clicked_asset(path);
     if (doubleClicked)
     {
+        select_only_asset(path);
         if (isDirectory)
         {
             selectedDirectory_ = path;
-            selectedEntry_.reset();
+            clear_asset_selection();
             auto parent = path;
             while (path_is_within(assetRoot, parent))
             {
@@ -1775,7 +2075,7 @@ void ProjectPanel::draw_asset_tile(const std::filesystem::path &path,
         node.value = isDirectory ? "Folder" : asset_search_type(path, false);
         node.help = bounded_semantic_text(path.generic_string());
         node.visible = true;
-        node.selected = selectedEntry_ && *selectedEntry_ == path;
+        node.selected = selectedEntries_.contains(path);
         node.bounds = SemanticBounds{minimum.x, minimum.y,
                                      maximum.x - minimum.x, maximum.y - minimum.y};
         node.actions = {"activate"};
@@ -1790,16 +2090,17 @@ void ProjectPanel::draw_asset_tile(const std::filesystem::path &path,
         target.behaviorRoot = behaviorRoot;
         pendingTileTargets_.emplace(nodeId, std::move(target));
     }
-    if (ImGui::BeginPopupContextItem("##asset-item-context"))
+    if (ImGui::BeginPopup("##asset-item-context"))
     {
         viewState_.contextTargetPath = path;
-        selectedEntry_ = path;
+        if (!selectedEntries_.contains(path))
+            select_only_asset(path);
         if (ImGui::MenuItem("Open"))
         {
             if (isDirectory)
             {
                 selectedDirectory_ = path;
-                selectedEntry_.reset();
+                clear_asset_selection();
             }
             else
                 (void)open_asset(path);
@@ -1821,18 +2122,15 @@ void ProjectPanel::draw_asset_tile(const std::filesystem::path &path,
         {
             execute_context_duplicate(path);
         }
-        if (ImGui::MenuItem("Delete", "Delete"))
-        {
-            viewState_.confirmDeletePending = true;
-            viewState_.pendingDeletePath = path;
-        }
+        if (ImGui::MenuItem(selected_asset_count() > 1 ? "Delete Selected Assets" : "Delete", "Delete"))
+            request_delete_selection();
         ImGui::Separator();
         if (ImGui::BeginMenu("Create"))
         {
             const auto targetDir = isDirectory ? path : path.parent_path();
             if (ImGui::MenuItem("Folder"))
                 execute_context_create("Folder", targetDir);
-            if (ImGui::MenuItem("Behavior Script"))
+            if (ImGui::MenuItem("Behavior Script..."))
                 execute_context_create("Behavior Script", targetDir);
             if (ImGui::MenuItem("Scene"))
                 execute_context_create("Scene", targetDir);
@@ -1855,7 +2153,7 @@ void ProjectPanel::draw_asset_list_row(const std::filesystem::path &path,
     const float uiScale = std::clamp(ImGui::GetIO().FontGlobalScale, 0.5f, 6.0f);
     const std::string entryKey = path.string();
     const std::string label = path.filename().string();
-    const bool selected = selectedEntry_ && *selectedEntry_ == path;
+    const bool selected = selectedEntries_.contains(path);
     const float availableWidth = ImGui::GetContentRegionAvail().x;
     ImGui::PushID(entryKey.c_str());
 
@@ -1864,6 +2162,7 @@ void ProjectPanel::draw_asset_list_row(const std::filesystem::path &path,
     const ImVec2 minimum = ImGui::GetItemRectMin();
     const ImVec2 maximum = ImGui::GetItemRectMax();
     const bool hovered = ImGui::IsItemHovered();
+    ImGui::OpenPopupOnItemClick("##asset-item-context", ImGuiPopupFlags_MouseButtonRight);
 
     const bool behaviorSource = behaviorRoot && editor_asset_format(path).behaviorHeader;
     if (!isDirectory && (!behaviorRoot || behaviorSource) && ImGui::BeginDragDropSource())
@@ -1906,27 +2205,7 @@ void ProjectPanel::draw_asset_list_row(const std::filesystem::path &path,
         const float inputX = minimum.x + 22.0f * uiScale;
         ImGui::SetCursorScreenPos({inputX, textY - 2.0f * uiScale});
         ImGui::SetNextItemWidth(std::max(80.0f * uiScale, maximum.x - inputX - 100.0f * uiScale));
-        if (viewState_.renameFocusPending)
-        {
-            ImGui::SetKeyboardFocusHere();
-            viewState_.renameFocusPending = false;
-        }
-        const bool enter = ImGui::InputText("##inline-rename", viewState_.renameBuffer,
-                                            sizeof(viewState_.renameBuffer),
-                                            ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_AutoSelectAll);
-        const bool escape = ImGui::IsItemActive() && ImGui::IsKeyPressed(ImGuiKey_Escape);
-        if (enter || ImGui::IsItemDeactivatedAfterEdit())
-        {
-            if (!escape && viewState_.renaming)
-            {
-                execute_context_rename(viewState_.renamingPath, viewState_.renameBuffer);
-            }
-            viewState_.renaming = false;
-        }
-        else if (escape)
-        {
-            viewState_.renaming = false;
-        }
+        draw_inline_rename();
     }
     else
     {
@@ -1942,17 +2221,18 @@ void ProjectPanel::draw_asset_list_row(const std::filesystem::path &path,
     drawList->AddText({maximum.x - typeWidth - 8.0f * uiScale, textY},
                       ImGui::GetColorU32(ImGuiCol_TextDisabled), typeText.c_str());
 
-    if (clicked)
-    {
-        selectedEntry_ = path;
-    }
-    const bool doubleClicked = hovered && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left);
+    const auto &io = ImGui::GetIO();
+    const bool doubleClicked = hovered && !io.KeyCtrl && !io.KeySuper && !io.KeyShift &&
+        ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left);
+    if (clicked && !doubleClicked)
+        select_clicked_asset(path);
     if (doubleClicked)
     {
+        select_only_asset(path);
         if (isDirectory)
         {
             selectedDirectory_ = path;
-            selectedEntry_.reset();
+            clear_asset_selection();
             auto parent = path;
             while (path_is_within(assetRoot, parent))
             {
@@ -1968,16 +2248,17 @@ void ProjectPanel::draw_asset_list_row(const std::filesystem::path &path,
         }
     }
 
-    if (ImGui::BeginPopupContextItem("##asset-item-context"))
+    if (ImGui::BeginPopup("##asset-item-context"))
     {
         viewState_.contextTargetPath = path;
-        selectedEntry_ = path;
+        if (!selectedEntries_.contains(path))
+            select_only_asset(path);
         if (ImGui::MenuItem("Open"))
         {
             if (isDirectory)
             {
                 selectedDirectory_ = path;
-                selectedEntry_.reset();
+                clear_asset_selection();
             }
             else
                 (void)open_asset(path);
@@ -1999,18 +2280,15 @@ void ProjectPanel::draw_asset_list_row(const std::filesystem::path &path,
         {
             execute_context_duplicate(path);
         }
-        if (ImGui::MenuItem("Delete", "Delete"))
-        {
-            viewState_.confirmDeletePending = true;
-            viewState_.pendingDeletePath = path;
-        }
+        if (ImGui::MenuItem(selected_asset_count() > 1 ? "Delete Selected Assets" : "Delete", "Delete"))
+            request_delete_selection();
         ImGui::Separator();
         if (ImGui::BeginMenu("Create"))
         {
             const auto targetDir = isDirectory ? path : path.parent_path();
             if (ImGui::MenuItem("Folder"))
                 execute_context_create("Folder", targetDir);
-            if (ImGui::MenuItem("Behavior Script"))
+            if (ImGui::MenuItem("Behavior Script..."))
                 execute_context_create("Behavior Script", targetDir);
             if (ImGui::MenuItem("Scene"))
                 execute_context_create("Scene", targetDir);
@@ -2036,7 +2314,7 @@ void ProjectPanel::draw_asset_list_row(const std::filesystem::path &path,
             : isDirectory ? "Folder" : asset_search_type(path, false);
         node.help = bounded_semantic_text(path.generic_string());
         node.visible = true;
-        node.selected = selectedEntry_ && *selectedEntry_ == path;
+        node.selected = selectedEntries_.contains(path);
         node.bounds = SemanticBounds{minimum.x, minimum.y,
                                      maximum.x - minimum.x, maximum.y - minimum.y};
         node.actions = {"activate"};
@@ -2052,6 +2330,25 @@ void ProjectPanel::draw_asset_list_row(const std::filesystem::path &path,
     }
 
     ImGui::PopID();
+}
+
+void ProjectPanel::draw_inline_rename()
+{
+    if (std::exchange(viewState_.renameFocusPending, false))
+        ImGui::SetKeyboardFocusHere();
+
+    // InputText can deactivate itself when it consumes Escape.
+    const bool cancel = ImGui::IsKeyPressed(ImGuiKey_Escape, false);
+    const bool enter = ImGui::InputText("##inline-rename", viewState_.renameBuffer,
+                                       sizeof(viewState_.renameBuffer),
+                                       ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_AutoSelectAll);
+    if (!cancel && !enter && !ImGui::IsItemDeactivated())
+        return;
+
+    if (!cancel && (enter || ImGui::IsItemDeactivatedAfterEdit()))
+        execute_context_rename(viewState_.renamingPath, viewState_.renameBuffer);
+    viewState_.renaming = false;
+    viewState_.renamingPath.clear();
 }
 
 bool ProjectPanel::execute_context_create(std::string_view itemType, const std::filesystem::path &targetDir)
@@ -2071,21 +2368,15 @@ bool ProjectPanel::execute_context_create(std::string_view itemType, const std::
     }
     if (itemType == "Behavior Script")
     {
-        std::filesystem::path candidate = targetDir / "NewBehavior.cpp";
-        int counter = 1;
-        while (std::filesystem::exists(candidate, ec))
-        {
-            candidate = targetDir / ("NewBehavior" + std::to_string(counter++) + ".cpp");
-        }
-        const std::string stem = candidate.stem().string();
-        std::string content = "#include <platformator/behavior.h>\n\nclass " + stem + " : public platformator::Behavior\n{\npublic:\n    void update(float deltaTime) override {}\n};\n";
-        const auto written = write_file_atomically(candidate, content, false);
-        if (written.succeeded())
-        {
-            refresh();
-            return true;
-        }
-        return false;
+        const auto &snapshot = context_.snapshot();
+        if (snapshot.assetRoot.empty())
+            return false;
+        const auto behaviorRoot = snapshot.assetRoot / "behaviors";
+        const auto directory = targetDir.lexically_normal();
+        behaviorCreation_ = BehaviorCreation{
+            path_is_within(behaviorRoot, directory) ? directory : behaviorRoot,
+            snapshot.generation};
+        return true;
     }
     if (itemType == "Scene")
     {
@@ -2147,12 +2438,231 @@ bool ProjectPanel::execute_context_create(std::string_view itemType, const std::
     return false;
 }
 
+std::string ProjectPanel::create_behavior_script(const BehaviorCreation &request)
+{
+    const auto &snapshot = context_.snapshot();
+    if (request.projectGeneration != snapshot.generation)
+        return "The project changed. Open Create Behavior Script again.";
+
+    const std::string_view name(request.name.data());
+    if (!valid_behavior_name(name))
+        return "Enter a non-reserved C++ class name starting with a letter. Use letters, digits, or underscores.";
+
+    std::error_code error;
+    const auto directory = std::filesystem::weakly_canonical(request.directory, error);
+    if (error || !path_is_within(snapshot.assetRoot / "behaviors", directory))
+        return "The destination must be inside the project's behaviors folder.";
+    std::filesystem::create_directory(snapshot.assetRoot / "behaviors", error);
+    if (error)
+        return "Could not prepare the behaviors folder. " + error.message();
+
+    const auto header = directory / (std::string(name) + ".h");
+    const auto source = directory / (std::string(name) + ".cpp");
+    for (const auto &path : {header, source})
+    {
+        const auto status = std::filesystem::symlink_status(path, error);
+        if (error && error != std::errc::no_such_file_or_directory)
+            return "Could not inspect " + path.filename().string() + ". " + error.message();
+        if (std::filesystem::exists(status))
+            return path.filename().string() + " already exists.";
+    }
+
+    const auto writeError = [](const std::filesystem::path &path, const AtomicWriteResult &result) {
+        return result.status == AtomicWriteStatus::Conflict
+            ? path.filename().string() + " already exists."
+            : "Could not create " + path.filename().string() + ". " + result.message;
+    };
+    const auto writtenHeader = write_file_atomically(header, render_behavior_script(BehaviorScriptHeader, name), false);
+    if (!writtenHeader.succeeded())
+        return writeError(header, writtenHeader);
+
+    std::string identityError;
+    const auto headerIdentity = native_file_identity(header, identityError);
+    const auto writtenSource = write_file_atomically(source, render_behavior_script(BehaviorScriptSource, name), false);
+    if (!writtenSource.succeeded())
+    {
+        auto message = writeError(source, writtenSource);
+        error.clear();
+        const auto currentHeader = native_file_identity(header, identityError);
+        if (headerIdentity && currentHeader == headerIdentity)
+            std::filesystem::remove(header, error);
+        if (error || !identityError.empty() || (currentHeader && currentHeader != headerIdentity))
+        {
+            message += " Check " + header.filename().string() + " before retrying.";
+            refresh();
+        }
+        return message;
+    }
+
+    refresh();
+    select_asset(header);
+    return {};
+}
+
+void ProjectPanel::draw_behavior_creation_dialog(bool canCreate)
+{
+    constexpr const char *title = "Create Behavior Script";
+    if (behaviorCreation_ && std::exchange(behaviorCreation_->openPending, false))
+        ImGui::OpenPopup(title);
+    if (!ImGui::BeginPopupModal(title, nullptr, ImGuiWindowFlags_AlwaysAutoResize))
+        return;
+
+    if (!behaviorCreation_ ||
+        behaviorCreation_->projectGeneration != context_.snapshot().generation)
+    {
+        behaviorCreation_.reset();
+        ImGui::CloseCurrentPopup();
+        ImGui::EndPopup();
+        return;
+    }
+
+    auto &request = *behaviorCreation_;
+    ImGui::TextDisabled("%s", request.directory.lexically_relative(
+        context_.snapshot().projectRoot).generic_string().c_str());
+    if (std::exchange(request.focusName, false))
+        ImGui::SetKeyboardFocusHere();
+    ImGui::SetNextItemWidth(18.0f * ImGui::GetFontSize());
+    const bool enter = ImGui::InputText("Behavior Name", request.name.data(), request.name.size(),
+                                       ImGuiInputTextFlags_EnterReturnsTrue);
+    if (ImGui::IsItemEdited())
+        request.error.clear();
+    ImGui::BeginDisabled(!canCreate);
+    const bool create = ImGui::Button("Create");
+    ImGui::EndDisabled();
+    ImGui::SameLine();
+    const bool cancel = ImGui::Button("Cancel") || ImGui::IsKeyPressed(ImGuiKey_Escape);
+    const bool submit = canCreate && (create || enter);
+    if (submit && !cancel)
+    {
+        request.error = create_behavior_script(request);
+        request.focusName = !request.error.empty();
+    }
+
+    if (cancel || (submit && request.error.empty()))
+    {
+        behaviorCreation_.reset();
+        ImGui::CloseCurrentPopup();
+    }
+    else if (!request.error.empty())
+    {
+        ImGui::PushTextWrapPos(36.0f * ImGui::GetFontSize());
+        ImGui::TextUnformatted(request.error.c_str());
+        ImGui::PopTextWrapPos();
+    }
+    ImGui::EndPopup();
+}
+
+void ProjectPanel::request_delete_selection()
+{
+    if (!selectedEntries_.empty() && !assetDeletion_)
+        assetDeletion_ = AssetDeletion{std::vector(selectedEntries_.begin(), selectedEntries_.end()),
+                                       context_.snapshot().generation};
+}
+
+void ProjectPanel::draw_asset_delete_dialog(bool canDelete)
+{
+    constexpr const char *title = "Delete Assets";
+    if (assetDeletion_ && std::exchange(assetDeletion_->openPending, false))
+        ImGui::OpenPopup(title);
+    if (!ImGui::BeginPopupModal(title, nullptr, ImGuiWindowFlags_AlwaysAutoResize))
+        return;
+
+    if (!assetDeletion_ || assetDeletion_->projectGeneration != context_.snapshot().generation)
+    {
+        assetDeletion_.reset();
+        ImGui::CloseCurrentPopup();
+        ImGui::EndPopup();
+        return;
+    }
+
+    auto &request = *assetDeletion_;
+    if (request.failed)
+        ImGui::Text("Could not delete %zu remaining item(s).", request.paths.size());
+    else if (request.paths.size() == 1)
+        ImGui::Text("Delete '%s'?", request.paths.front().filename().string().c_str());
+    else
+        ImGui::Text("Delete %zu selected items?", request.paths.size());
+    if (std::any_of(request.paths.begin(), request.paths.end(), is_behavior_source_path))
+        ImGui::TextWrapped("Deleting a behavior also removes its matching source files and its uses in scenes and templates.");
+    ImGui::TextDisabled("This action cannot be undone.");
+    ImGui::Spacing();
+    const float buttonWidth = 8.0f * ImGui::GetFontSize();
+    ImGui::BeginDisabled(!canDelete);
+    const bool confirm = ImGui::Button(request.failed ? "Retry" : "Delete", {buttonWidth, 0.0f});
+    ImGui::EndDisabled();
+    ImGui::SameLine();
+    const bool cancel = ImGui::Button("Cancel", {buttonWidth, 0.0f}) ||
+                        ImGui::IsKeyPressed(ImGuiKey_Escape, false);
+    if (!cancel && canDelete && (confirm || ImGui::IsKeyPressed(ImGuiKey_Enter, false)))
+    {
+        BehaviorTypeChanges changes;
+        std::erase_if(request.paths, [&](const auto &path) { return delete_asset(path, changes); });
+        if (!changes.empty() && behaviorChangeCallback_)
+            behaviorChangeCallback_(changes);
+        request.failed = !request.paths.empty();
+        refresh();
+    }
+    if (cancel || request.paths.empty())
+    {
+        assetDeletion_.reset();
+        ImGui::CloseCurrentPopup();
+    }
+    ImGui::EndPopup();
+}
+
 bool ProjectPanel::execute_context_delete(const std::filesystem::path &targetPath)
 {
+    BehaviorTypeChanges changes;
+    const bool deleted = delete_asset(targetPath, changes);
+    if (!changes.empty() && behaviorChangeCallback_)
+        behaviorChangeCallback_(changes);
+    refresh();
+    return deleted;
+}
+
+bool ProjectPanel::delete_asset(const std::filesystem::path &targetPath, BehaviorTypeChanges &changes)
+{
+    const auto &assetRoot = context_.snapshot().assetRoot;
+    if (targetPath == assetRoot || !path_is_within(assetRoot, targetPath))
+        return false;
+
+    std::error_code pathError;
+    const auto parent = std::filesystem::weakly_canonical(targetPath.parent_path(), pathError);
+    if (pathError || !path_is_within(assetRoot, parent))
+        return false;
+
     std::error_code ec;
-    const bool isDirectory = std::filesystem::is_directory(targetPath, ec) && !ec;
+    const bool isDirectory = std::filesystem::is_directory(std::filesystem::symlink_status(targetPath, ec));
     ec.clear();
-    const bool removed = std::filesystem::remove_all(targetPath, ec) > 0 && !ec;
+    auto unit = read_behavior_source_unit(targetPath);
+    if (isDirectory)
+    {
+        SourceBehaviorScanner scanner;
+        const auto scan = scanner.scan_project(targetPath);
+        if (scan.truncated)
+            return false;
+        for (const auto &[name, behavior] : scan.behaviors)
+            unit.types.push_back(behavior);
+    }
+
+    bool removed = false;
+    if (unit.files.empty())
+        removed = std::filesystem::remove_all(targetPath, ec) > 0 && !ec;
+    else
+    {
+        for (std::size_t i = 0; i < unit.files.size(); ++i)
+        {
+            if (std::filesystem::remove(unit.files[i].first, ec) && !ec)
+                continue;
+            for (std::size_t j = 0; j < i; ++j)
+                (void)write_file_atomically(unit.files[j].first, unit.files[j].second, false);
+            return false;
+        }
+        removed = true;
+    }
+    if (removed)
+        for (const auto &behavior : unit.types)
+            changes.insert_or_assign(registered_name(behavior), std::nullopt);
     if (removed && audioPreview_ != nullptr && audioPreview_->active_path())
     {
         const auto target = canonical_for_matching(targetPath);
@@ -2160,10 +2670,18 @@ bool ProjectPanel::execute_context_delete(const std::filesystem::path &targetPat
         if (target == active || (isDirectory && path_is_within(target, active)))
             audioPreview_->stop();
     }
-    if (selectedEntry_ && *selectedEntry_ == targetPath)
-        selectedEntry_.reset();
-    refresh();
-    return removed && !ec;
+    if (!ec)
+    {
+        const auto removedPath = [&](const std::filesystem::path &path) {
+            return path_is_within(targetPath, path) ||
+                std::any_of(unit.files.begin(), unit.files.end(),
+                            [&](const auto &file) { return file.first == path; });
+        };
+        std::erase_if(selectedEntries_, removedPath);
+        if (removedPath(selectionAnchor_))
+            selectionAnchor_.clear();
+    }
+    return !ec;
 }
 
 bool ProjectPanel::execute_context_duplicate(const std::filesystem::path &targetPath)
@@ -2187,8 +2705,42 @@ bool ProjectPanel::execute_context_duplicate(const std::filesystem::path &target
 
 bool ProjectPanel::execute_context_rename(const std::filesystem::path &targetPath, const std::string &newName)
 {
+    assetEditError_.clear();
     if (newName.empty() || newName == targetPath.filename().string())
         return false;
+    const auto unit = read_behavior_source_unit(targetPath);
+    if (!unit.types.empty())
+    {
+        const std::filesystem::path filename(newName);
+        const auto extension = filename.extension();
+        const auto name = extension.empty() ? filename.string() : filename.stem().string();
+        if (unit.types.size() != 1)
+            assetEditError_ = "This file declares multiple behaviors. Rename them individually in the source editor.";
+        else if (filename.has_parent_path() || (!extension.empty() && extension != targetPath.extension()) ||
+                 !valid_behavior_name(name))
+            assetEditError_ = "Enter a valid C++ behavior name and keep the file extension.";
+        else
+        {
+            BehaviorTypeChanges changes;
+            std::vector<std::pair<std::filesystem::path, std::filesystem::path>> renamed;
+            assetEditError_ = rename_behavior_files(unit, name, renamed, changes);
+            if (assetEditError_.empty())
+            {
+                for (const auto &[source, destination] : renamed)
+                {
+                    if (selectedEntries_.erase(source) != 0)
+                        selectedEntries_.insert(destination);
+                    if (selectionAnchor_ == source)
+                        selectionAnchor_ = destination;
+                }
+                if (!changes.empty() && behaviorChangeCallback_)
+                    behaviorChangeCallback_(changes);
+                refresh();
+                return true;
+            }
+        }
+        return false;
+    }
     std::error_code ec;
     const auto dest = targetPath.parent_path() / newName;
     std::error_code typeError;
@@ -2203,8 +2755,10 @@ bool ProjectPanel::execute_context_rename(const std::filesystem::path &targetPat
             if (activePath == renamedPath || (directory && path_is_within(renamedPath, activePath)))
                 audioPreview_->stop();
         }
-        if (selectedEntry_ && *selectedEntry_ == targetPath)
-            selectedEntry_ = dest;
+        if (selectedEntries_.erase(targetPath) != 0)
+            selectedEntries_.insert(dest);
+        if (selectionAnchor_ == targetPath)
+            selectionAnchor_ = dest;
         if (assetRenameCallback_ && (directory || targetPath.extension() == ".pttemplate"))
             assetRenameCallback_(targetPath, dest, directory);
     }
@@ -2236,7 +2790,7 @@ void ProjectPanel::draw_contents(const std::filesystem::path &root, const std::s
     if (ImGui::SmallButton(rootLabel.c_str()))
     {
         selectedDirectory_ = root;
-        selectedEntry_.reset();
+        clear_asset_selection();
     }
     if (ImGui::IsItemHovered())
         ImGui::SetTooltip("%s", root.string().c_str());
@@ -2253,7 +2807,7 @@ void ProjectPanel::draw_contents(const std::filesystem::path &root, const std::s
             if (ImGui::SmallButton(part.string().c_str()))
             {
                 selectedDirectory_ = currentPath;
-                selectedEntry_.reset();
+                clear_asset_selection();
             }
             if (ImGui::IsItemHovered())
                 ImGui::SetTooltip("%s", currentPath.string().c_str());
@@ -2268,6 +2822,8 @@ void ProjectPanel::draw_contents(const std::filesystem::path &root, const std::s
 
     if (!state.error.empty())
         ImGui::TextWrapped("%s", state.error.c_str());
+    if (!assetEditError_.empty())
+        ImGui::TextWrapped("%s", assetEditError_.c_str());
     if (!state.loaded && !state.hasCompleteSnapshot)
     {
         ImGui::TextDisabled("Scanning...");
@@ -2287,12 +2843,18 @@ void ProjectPanel::draw_contents(const std::filesystem::path &root, const std::s
         ImGui::SetNextItemWidth(-FLT_MIN);
     if (ImGui::InputTextWithHint("##project-search", "Search name, type, or path",
                                  searchBuffer.data(), searchBuffer.size()))
+    {
         searchQuery_ = searchBuffer.data();
+        clear_asset_selection();
+    }
     if (!searchQuery_.empty())
     {
         ImGui::SameLine();
         if (ImGui::Button("×##clear-project-search", ImVec2(clearBtnWidth, clearBtnWidth)))
+        {
             searchQuery_.clear();
+            clear_asset_selection();
+        }
     }
     ImGui::Separator();
 
@@ -2350,7 +2912,7 @@ void ProjectPanel::draw_contents(const std::filesystem::path &root, const std::s
                     selectedDirectory_ = directory;
                     selectedRoot_ = root;
                     selectedRootLabel_ = rootLabel;
-                    selectedEntry_.reset();
+                    clear_asset_selection();
                     hierarchyObjectTemplateDropCallback_(objectId, directory);
                 }
             }
@@ -2445,7 +3007,7 @@ void ProjectPanel::draw_contents(const std::filesystem::path &root, const std::s
         {
             if (ImGui::MenuItem("Folder"))
                 execute_context_create("Folder", selectedDirectory_);
-            if (ImGui::MenuItem("Behavior Script"))
+            if (ImGui::MenuItem("Behavior Script..."))
                 execute_context_create("Behavior Script", selectedDirectory_);
             if (ImGui::MenuItem("Scene"))
                 execute_context_create("Scene", selectedDirectory_);
@@ -2462,27 +3024,23 @@ void ProjectPanel::draw_contents(const std::filesystem::path &root, const std::s
         ImGui::EndPopup();
     }
 
-    if (selectedEntry_ && ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows))
+    if (!selectedEntries_.empty() && ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) &&
+        project_shortcuts_allowed(ImGui::GetIO().WantTextInput, viewState_.renaming))
     {
-        const ImGuiIO &projectIo = ImGui::GetIO();
-        const bool acceptsProjectShortcuts = project_shortcuts_allowed(
-            projectIo.WantTextInput, viewState_.renaming);
-        if (acceptsProjectShortcuts && ImGui::IsKeyPressed(ImGuiKey_F2))
+        if (ImGui::IsKeyPressed(ImGuiKey_Delete))
+            request_delete_selection();
+        else if (const auto entry = selected_entry())
         {
-            viewState_.renaming = true;
-            viewState_.renamingPath = *selectedEntry_;
-            viewState_.renameFocusPending = true;
-            std::snprintf(viewState_.renameBuffer, sizeof(viewState_.renameBuffer), "%s",
-                          selectedEntry_->filename().string().c_str());
-        }
-        else if (acceptsProjectShortcuts && projectIo.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_D))
-        {
-            execute_context_duplicate(*selectedEntry_);
-        }
-        else if (acceptsProjectShortcuts && ImGui::IsKeyPressed(ImGuiKey_Delete))
-        {
-            viewState_.confirmDeletePending = true;
-            viewState_.pendingDeletePath = *selectedEntry_;
+            if (ImGui::IsKeyPressed(ImGuiKey_F2))
+            {
+                viewState_.renaming = true;
+                viewState_.renamingPath = *entry;
+                viewState_.renameFocusPending = true;
+                std::snprintf(viewState_.renameBuffer, sizeof(viewState_.renameBuffer), "%s",
+                              entry->filename().string().c_str());
+            }
+            else if (ImGui::GetIO().KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_D))
+                execute_context_duplicate(*entry);
         }
     }
 
@@ -2496,6 +3054,11 @@ void ProjectPanel::draw_contents(const std::filesystem::path &root, const std::s
     const float sliderX = footerStartX + std::max(0.0f, footerAvailWidth - sliderWidth);
     ImGui::AlignTextToFramePadding();
     ImGui::TextDisabled("%zu items", filteredIndexes.size());
+    if (selected_asset_count() > 1)
+    {
+        ImGui::SameLine();
+        ImGui::TextDisabled("%zu selected", selected_asset_count());
+    }
     if (audioPreview_ != nullptr &&
         (audioPreview_->active_path().has_value() || !audioPreview_->last_error().empty()))
     {
@@ -2558,30 +3121,7 @@ void ProjectPanel::draw_contents(const std::filesystem::path &root, const std::s
     if (ImGui::IsItemHovered())
         ImGui::SetTooltip("Thumbnail scale (0 = compact list, >0 = scalable grid)");
 
-    if (viewState_.confirmDeletePending)
-    {
-        ImGui::OpenPopup("Delete Asset##modal");
-        viewState_.confirmDeletePending = false;
-    }
-    if (ImGui::BeginPopupModal("Delete Asset##modal", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
-    {
-        ImGui::Text("Are you sure you want to delete '%s'?", viewState_.pendingDeletePath.filename().string().c_str());
-        ImGui::TextDisabled("This action cannot be undone.");
-        ImGui::Spacing();
-        if (ImGui::Button("Delete", ImVec2(100.0f * uiScale, 0.0f)) || ImGui::IsKeyPressed(ImGuiKey_Enter))
-        {
-            execute_context_delete(viewState_.pendingDeletePath);
-            viewState_.pendingDeletePath.clear();
-            ImGui::CloseCurrentPopup();
-        }
-        ImGui::SameLine();
-        if (ImGui::Button("Cancel", ImVec2(100.0f * uiScale, 0.0f)) || ImGui::IsKeyPressed(ImGuiKey_Escape))
-        {
-            viewState_.pendingDeletePath.clear();
-            ImGui::CloseCurrentPopup();
-        }
-        ImGui::EndPopup();
-    }
+
 }
 
 std::vector<ProjectPanel::AssetAssignmentTarget> ProjectPanel::asset_assignment_targets(
@@ -2750,12 +3290,13 @@ void ProjectPanel::draw(DocumentSession &document, EditCommandService &,
                                  !filesystemError;
     if (assetRoot_ != assetRoot || projectRoot_ != projectRoot)
     {
+        assetEditError_.clear();
         assetRoot_ = assetRoot;
         projectRoot_ = projectRoot;
         selectedDirectory_ = assetRoot;
         selectedRoot_ = assetRoot;
         selectedRootLabel_ = "Assets";
-        selectedEntry_.reset();
+        clear_asset_selection();
         expandedDirectories_.clear();
         expandedDirectories_.insert(assetRoot.string());
         if (hasBehaviorRoot)
@@ -2767,7 +3308,7 @@ void ProjectPanel::draw(DocumentSession &document, EditCommandService &,
         selectedDirectory_ = assetRoot;
         selectedRoot_ = assetRoot;
         selectedRootLabel_ = "Assets";
-        selectedEntry_.reset();
+        clear_asset_selection();
         expandedDirectories_.insert(assetRoot.string());
     }
 

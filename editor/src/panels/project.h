@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <filesystem>
 #include <chrono>
 #include <cstddef>
@@ -41,8 +42,6 @@ struct ProjectBrowserViewState
     bool renaming = false;
     bool renameFocusPending = false;
     std::filesystem::path renamingPath;
-    bool confirmDeletePending = false;
-    std::filesystem::path pendingDeletePath;
 };
 using ProjectViewState = ProjectBrowserViewState;
 
@@ -103,6 +102,10 @@ class ProjectPanel
     {
         assetRenameCallback_ = std::move(callback);
     }
+    void set_behavior_change_callback(std::function<void(const BehaviorTypeChanges &)> callback)
+    {
+        behaviorChangeCallback_ = std::move(callback);
+    }
     void set_audio_preview_service(AudioPreviewService *service) noexcept
     {
         audioPreview_ = service;
@@ -120,9 +123,13 @@ class ProjectPanel
     const ProjectBrowserViewState &view_state() const noexcept { return viewState_; }
     ProjectBrowserViewState &view_state() noexcept { return viewState_; }
     const std::filesystem::path &selected_directory() const noexcept { return selectedDirectory_; }
-    const std::optional<std::filesystem::path> &selected_entry() const noexcept { return selectedEntry_; }
+    std::optional<std::filesystem::path> selected_entry() const;
+    std::size_t selected_asset_count() const noexcept { return selectedEntries_.size(); }
     bool select_asset(const std::filesystem::path &path);
     bool execute_context_create(std::string_view itemType, const std::filesystem::path &targetDir);
+    void draw_behavior_creation_dialog(bool canCreate);
+    void request_delete_selection();
+    void draw_asset_delete_dialog(bool canDelete);
     bool execute_context_delete(const std::filesystem::path &targetPath);
     bool execute_context_duplicate(const std::filesystem::path &targetPath);
     bool execute_context_rename(const std::filesystem::path &targetPath, const std::string &newName);
@@ -131,6 +138,30 @@ class ProjectPanel
 
   private:
     static bool project_shortcuts_allowed(bool wantTextInput, bool renaming) noexcept;
+    void draw_inline_rename();
+    void clear_asset_selection();
+    void select_only_asset(const std::filesystem::path &path);
+    void select_clicked_asset(const std::filesystem::path &path);
+    bool delete_asset(const std::filesystem::path &path, BehaviorTypeChanges &changes);
+
+    struct AssetDeletion
+    {
+        std::vector<std::filesystem::path> paths;
+        std::uint64_t projectGeneration = 0;
+        bool openPending = true;
+        bool failed = false;
+    };
+
+    struct BehaviorCreation
+    {
+        std::filesystem::path directory;
+        std::uint64_t projectGeneration = 0;
+        std::array<char, 129> name{};
+        std::string error;
+        bool openPending = true;
+        bool focusName = true;
+    };
+    std::string create_behavior_script(const BehaviorCreation &request);
 
     struct ListedEntry
     {
@@ -280,6 +311,8 @@ class ProjectPanel
     std::function<void()> wakeCallback_;
     HierarchyObjectTemplateDropCallback hierarchyObjectTemplateDropCallback_;
     AssetRenameCallback assetRenameCallback_;
+    std::function<void(const BehaviorTypeChanges &)> behaviorChangeCallback_;
+    std::string assetEditError_;
     std::map<std::string, PresentationDependency> presentationDependencies_;
     bool presentationDependenciesSaturated_ = false;
     std::map<std::string, DirectoryState> directories_;
@@ -289,7 +322,8 @@ class ProjectPanel
     std::filesystem::path selectedDirectory_;
     std::filesystem::path selectedRoot_;
     std::string selectedRootLabel_ = "Assets";
-    std::optional<std::filesystem::path> selectedEntry_;
+    std::set<std::filesystem::path> selectedEntries_;
+    std::filesystem::path selectionAnchor_;
     std::set<std::string> expandedDirectories_;
     std::deque<PendingProjectChange> pendingChanges_;
     std::uint64_t lastProjectGeneration_ = 0;
@@ -311,6 +345,8 @@ class ProjectPanel
     std::map<std::string, SemanticProjectTarget> semanticTargets_;
     std::optional<std::string> semanticFocusNode_;
     ProjectBrowserViewState viewState_{};
+    std::optional<BehaviorCreation> behaviorCreation_;
+    std::optional<AssetDeletion> assetDeletion_;
     std::string lastRevealedUrl_;
 };
 } // namespace platformator_editor

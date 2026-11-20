@@ -1,6 +1,10 @@
 #include "platformator/collider.h"
 
 #include <cassert>
+#include <cmath>
+#include <limits>
+#include <stdexcept>
+
 #include "constants.h"
 #include "gamemanager.h"
 #include "localsortarray.h"
@@ -142,10 +146,18 @@ void Collider::setCollisionMask(const uint64_t collisionMask)
 
 void Collider::calculateGridCellRange()
 {
-    int minX = static_cast<int>(std::floor(xProjections.getMin()->getProjectedPosition() / GRID_CELL_SIZE));
-    int maxX = static_cast<int>(std::floor(xProjections.getMax()->getProjectedPosition() / GRID_CELL_SIZE));
-    int minY = static_cast<int>(std::floor(yProjections.getMin()->getProjectedPosition() / GRID_CELL_SIZE));
-    int maxY = static_cast<int>(std::floor(yProjections.getMax()->getProjectedPosition() / GRID_CELL_SIZE));
+    const auto cellIndex = [](float projection) {
+        const double index = std::floor(projection / GRID_CELL_SIZE);
+        // GridCellRange reserves both integer limits and steps past inclusive endpoints.
+        if (!(index > std::numeric_limits<int>::min() && index < std::numeric_limits<int>::max()))
+            throw std::out_of_range("Collider projection is outside the supported grid range");
+        return static_cast<int>(index);
+    };
+
+    const int minX = cellIndex(xProjections.getMin()->getProjectedPosition());
+    const int maxX = cellIndex(xProjections.getMax()->getProjectedPosition());
+    const int minY = cellIndex(yProjections.getMin()->getProjectedPosition());
+    const int maxY = cellIndex(yProjections.getMax()->getProjectedPosition());
 
     gridCellRangeCache = GridCellRange(minX, maxX, minY, maxY);
 }

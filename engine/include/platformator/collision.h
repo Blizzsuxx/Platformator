@@ -83,9 +83,4 @@ class Collision
     mutable const Collider *referenceObject;
     mutable const Collider *incidentObject;
     mutable uint8_t supportState;
-    mutable Eigen::Matrix2f normalK = Eigen::Matrix2f::Zero();
-    mutable Eigen::Matrix2f normalMass = Eigen::Matrix2f::Zero();
-    mutable bool blockSolve = false;
-    mutable float solverFriction = 0;
-
 };

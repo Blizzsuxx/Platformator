@@ -3,6 +3,7 @@
 #include <SDL3/SDL.h>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdlib>
 #include <exception>
@@ -31,6 +32,7 @@
 #include "localsortarray.h"
 #include "pathmanager.h"
 #include "physicsmanager.h"
+#include "runtimeaccess.h"
 #include "platformator/rigidbody.h"
 #include "platformator/scene.h"
 #include "platformator/scriptcomponent.h"
@@ -605,6 +607,39 @@ void testBroadPhasePairTracking()
     gameManager.simulateFrame(kTimeStep);
     require(collisionCounter->exitCount == 1,
             "Broad-phase regression expected a collision exit callback after separation.");
+}
+
+void testGridRejectsOutOfRangeColliderPositions()
+{
+    Runtime &runtime = Runtime::current();
+    SceneScope sceneScope(runtime);
+    const Eigen::Vector2f validPosition{-50'000.0f, 50'000.0f};
+    auto *anchor = createStaticBox(runtime, "Grid range anchor", validPosition.x(), validPosition.y(), 20.0f, 20.0f);
+    auto *moving = createStaticBox(runtime, "Grid range mover", 0.0f, 0.0f, 20.0f, 20.0f);
+    sceneScope.add(anchor);
+    sceneScope.add(moving);
+
+    const auto &grid = platformator_detail::RuntimeAccess::physicsManager()->getGrid();
+    const std::array<Eigen::Vector2f, 4> invalidPositions{
+        Eigen::Vector2f{1e12f, 0.0f}, Eigen::Vector2f{-1e12f, 0.0f},
+        Eigen::Vector2f{0.0f, 1e12f}, Eigen::Vector2f{0.0f, -1e12f}};
+    for (const auto &position : invalidPositions)
+    {
+        bool rejected = false;
+        try
+        {
+            runtime.simulateFrameWithCustomCallback(kTimeStep, [&](double) { moving->setPosition(position); });
+        }
+        catch (const std::out_of_range &)
+        {
+            rejected = true;
+        }
+
+        runtime.simulateFrameWithCustomCallback(kTimeStep, [&](double) { moving->setPosition(validPosition); });
+        require(rejected, "Finite positions outside the supported collision grid must be rejected");
+        require(grid.containsCellPair(anchor->getComponent<BoxCollider>(), moving->getComponent<BoxCollider>()),
+                "The grid must track overlaps after a collider returns to a valid position");
+    }
 }
 
 void testCheckpointFastMotionCancellation()
@@ -1921,6 +1956,7 @@ int main()
         {"sleeping_tall_stack_stays_asleep", testSleepingTallStackStaysAsleep},
         {"sleeping_wide_pile_stays_asleep", testSleepingWidePileStaysAsleep},
         {"broad_phase_pair_tracking", testBroadPhasePairTracking},
+        {"grid_rejects_out_of_range_collider_positions", testGridRejectsOutOfRangeColliderPositions},
         {"checkpoint_fast_motion_cancellation", testCheckpointFastMotionCancellation},
         {"parallel_broad_and_narrow_phase_stress", testParallelBroadAndNarrowPhaseStress},
         {"segmented_interval_fast_motion_across_chunks", testSegmentedIntervalListFastMotionAcrossChunks},

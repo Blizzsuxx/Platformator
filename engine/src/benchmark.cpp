@@ -22,7 +22,8 @@ namespace
 using namespace platformator_detail;
 constexpr std::array<const char *, BENCHMARK_SCOPE_COUNT> scopeNames = {
     "complete_step", "physics",     "cleanup",      "scene_transition",
-    "render",        "broad_phase", "narrow_phase", "resolve_collisions"};
+    "render",        "broad_phase", "narrow_phase", "resolve_collisions",
+    "step_hook",     "retirement",  "deferred_grid_flush"};
 constexpr std::array<const char *, BENCHMARK_COUNTER_COUNT> counterNames = {"object_count",
                                                                             "occupied_cell_count",
                                                                             "candidate_pair_count",
@@ -243,6 +244,9 @@ nlohmann::json BenchmarkRecorder::manifest() const
         {"physics", "transform synchronization, broad/narrow phase, support reduction, forces, solve, movement and "
                     "cache publication; nested in complete_step"},
         {"cleanup", "transient audio and mutation/scene commit including destruction/free; nested in complete_step"},
+        {"step_hook", "custom step callback, when supplied; nested in complete_step"},
+        {"retirement", "retirement drain including destroy callbacks, registry removal and frees; nested in cleanup"},
+        {"deferred_grid_flush", "grid/cell reconciliation during mutation commit; nested in cleanup"},
         {"scene_transition", "selected request preparation through replacement/clear publication; nested in cleanup"},
         {"render", "independent render calls after cleanup; not nested in complete_step"},
         {"broad_phase", "grid/cell/filter/witness reconciliation; nested in physics"},

@@ -22,15 +22,17 @@ struct RetiredWork : test_support::Behavior
     void onDestroy() override
     {
         auto &recorder = BenchmarkRecorder::getInstance();
-        trace.callbacks &=
-            recorder.scopeActive(BenchmarkScopeId::CompleteStep) && recorder.scopeActive(BenchmarkScopeId::Cleanup);
+        trace.callbacks &= recorder.scopeActive(BenchmarkScopeId::CompleteStep) &&
+                           recorder.scopeActive(BenchmarkScopeId::Cleanup) &&
+                           recorder.scopeActive(BenchmarkScopeId::Retirement);
         trace.transition |= recorder.scopeActive(BenchmarkScopeId::SceneTransition);
     }
     ~RetiredWork() override
     {
         auto &recorder = BenchmarkRecorder::getInstance();
-        trace.destructors &=
-            recorder.scopeActive(BenchmarkScopeId::CompleteStep) && recorder.scopeActive(BenchmarkScopeId::Cleanup);
+        trace.destructors &= recorder.scopeActive(BenchmarkScopeId::CompleteStep) &&
+                             recorder.scopeActive(BenchmarkScopeId::Cleanup) &&
+                             recorder.scopeActive(BenchmarkScopeId::Retirement);
         ++trace.destroyed;
     }
     Trace &trace;
@@ -105,18 +107,32 @@ int main()
                                     {"repetitions", 1},
                                     {"rendering", false}});
             const auto capacity = recorder.sampleCapacity();
-            auto *object = runtime.createGameObject()->addComponent<ScriptComponent>();
+            auto *object = runtime.createGameObject()->addComponent<ScriptComponent>()->addComponent<BoxCollider>(20, 20);
             object->getComponent<ScriptComponent>()->addBehavior(new RetiredWork(trace));
-            runtime.simulateFrameWithCustomCallback(dt, [&](double) { object->destroy(); });
+            runtime.simulateFrameWithCustomCallback(dt, [&](double) {
+                require(recorder.scopeActive(BenchmarkScopeId::StepHook), "The custom callback is timed as step hook");
+                object->destroy();
+            });
+            const auto &firstStep = recorder.samples().front().scopeDurationsNanoseconds;
+            const auto duration = [&firstStep](BenchmarkScopeId scope) { return firstStep[static_cast<size_t>(scope)]; };
+            require(duration(BenchmarkScopeId::StepHook) > 0 && duration(BenchmarkScopeId::Retirement) > 0 &&
+                        duration(BenchmarkScopeId::DeferredGridFlush) > 0 &&
+                        duration(BenchmarkScopeId::Retirement) + duration(BenchmarkScopeId::DeferredGridFlush) <=
+                            duration(BenchmarkScopeId::Cleanup),
+                    "Lifecycle timings include work and fit their cleanup parent scope");
             object = runtime.createGameObject()->addComponent<ScriptComponent>();
             object->getComponent<ScriptComponent>()->addBehavior(new RetiredWork(trace));
             runtime.requestClearScene();
             runtime.simulateFrame(dt);
             require(trace.callbacks && trace.destructors && trace.transition && trace.destroyed == 2,
-                    "Complete-step/cleanup/selected-transition scopes must include lifecycle callbacks and actual "
+                    "Complete-step, cleanup, retirement and selected-transition scopes must include callbacks and "
                     "destructors");
             for (int i = 2; i < 64; ++i)
                 runtime.simulateFrame(dt);
+            const auto &idleStep = recorder.samples().back().scopeDurationsNanoseconds;
+            require(idleStep[static_cast<size_t>(BenchmarkScopeId::StepHook)] == 0 &&
+                        idleStep[static_cast<size_t>(BenchmarkScopeId::Retirement)] == 0,
+                    "An idle step has no custom callback or retirement time");
             require(recorder.samples().size() == 64 && recorder.sampleCapacity() == capacity,
                     "Measured steps must reuse reserved sample storage");
             const auto path = std::filesystem::absolute("benchmark-contract.csv");
@@ -130,6 +146,10 @@ int main()
                         manifest.contains("boundaries") && manifest.contains("build") && manifest.contains("machine") &&
                         manifest.contains("dependencies"),
                     "A run must record schema, boundaries, resolved parameters and build/machine/dependency identity");
+            const auto &boundaries = manifest.at("boundaries");
+            require(boundaries.contains("step_hook") && boundaries.contains("retirement") &&
+                        boundaries.contains("deferred_grid_flush"),
+                    "The manifest declares all lifecycle timing scopes");
             require(std::filesystem::is_regular_file(path.parent_path() / "benchmark-contract.samples.csv"),
                     "Raw step samples must accompany the summary");
             require(recorder.renderSampleCount() == 0,

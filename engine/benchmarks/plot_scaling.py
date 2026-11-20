@@ -6,12 +6,11 @@ import math
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Sequence, Tuple, Union
 
-from sweep_scaling import comparison_workload, is_add_remove_scenario, load_manifest
+from sweep_scaling import benchmark_scopes, comparison_workload, is_add_remove_scenario, load_manifest
 
 
 STRING_COLUMNS = {"scenario", "sweep_parameter", "raw_directory", "raw_archive", "validation_mode", "timing_eligible",
                   "comparison_workload"}
-SCOPES = ("complete_step", "physics", "cleanup", "scene_transition", "render", "broad_phase", "narrow_phase", "resolve_collisions")
 
 COMPLEXITY_SPECS: Dict[str, Tuple[str, Callable[[float], float], str]] = {
     "1": ("O(1)", lambda n: 1.0, "#666666"),
@@ -42,11 +41,13 @@ def _legacy_comparison_workload(csv_path, row):
 def load_rows(csv_path, require_workload=False):
     with open(csv_path, newline="", encoding="utf-8") as handle:
         reader = csv.DictReader(handle)
+        columns = set(reader.fieldnames or ())
+        scopes = benchmark_scopes(column.removesuffix("_avg_ms") for column in columns if column.endswith("_avg_ms"))
         required = {"schema_version", "scenario", "sweep_parameter", "swept_value", "requested_count", "workers", "seed", "repetitions",
                     "validation_mode", "timing_eligible", "steady_count", "object_count_avg"}
-        required |= {f"{scope}_{suffix}" for scope in SCOPES for suffix in
+        required |= {f"{scope}_{suffix}" for scope in scopes for suffix in
                      ("avg_ms", "p95_ms", "run_median_ms", "run_stdev_ms", "run_min_ms", "run_max_ms")}
-        if not required <= set(reader.fieldnames or ()):
+        if not required <= columns:
             raise ValueError("Expected schema-v3 aggregate with complete_step and run spread; historical graphs remain separate")
         rows = []
         for row in reader:
@@ -435,7 +436,7 @@ def main() -> int:
     parser.add_argument("--log-log", action="store_true", help="Use logarithmic X and Y axes.")
     parser.add_argument("--two-panel", action="store_true", help="Plot linear Time (ms) alongside log-log scaling with reference lines.")
     parser.add_argument("--normalized", action="store_true", help="Plot amortized cost per item (us / N) on the scaling panel.")
-    parser.add_argument("--include-cleanup", action="store_true", help="Include cleanup_avg_ms series.")
+    parser.add_argument("--include-cleanup", action="store_true", help="Include cleanup and available lifecycle timing series.")
     parser.add_argument("--include-physics", action="store_true", help="Include physics_avg_ms series.")
     parser.add_argument("--references", default="", help="Comma-separated reference complexity curves: 1,logN,N,NlogN,N2")
     parser.add_argument("--ref-target", default="complete_step_avg_ms", help="Metric key to anchor reference curves to.")
@@ -463,6 +464,12 @@ def main() -> int:
 
     counts = [float(row.get(x_axis_key, row["requested_count"])) for row in rows]
     series = _default_series(args.include_cleanup, args.include_physics)
+    if args.include_cleanup and "step_hook_avg_ms" in rows[0]:
+        series.extend([
+            ("step_hook_avg_ms", "Step Hook Avg", "<"),
+            ("retirement_avg_ms", "Retirement Avg", ">"),
+            ("deferred_grid_flush_avg_ms", "Deferred Grid Flush Avg", "h"),
+        ])
     references = parse_references(args.references)
     log_x = args.log_x or args.log_log
     log_y = args.log_y or args.log_log

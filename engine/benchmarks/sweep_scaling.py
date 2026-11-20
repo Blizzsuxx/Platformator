@@ -10,10 +10,19 @@ import subprocess
 import time
 
 SCOPES = ("complete_step", "physics", "cleanup", "scene_transition", "render", "broad_phase", "narrow_phase", "resolve_collisions")
+LIFECYCLE_SCOPES = ("step_hook", "retirement", "deferred_grid_flush")
 COUNTERS = ("object_count", "occupied_cell_count", "candidate_pair_count", "pending_narrow_phase_pair_count", "active_collision_count",
             "awake_dynamic_body_count", "queued_add_count", "queued_sync_count", "queued_remove_count", "collision_enter_event_count",
             "collision_exit_event_count")
 SCENARIOS = ("broad_phase", "broad_phase_stress", "narrow_phase", "rigid_body_container", "add_and_remove", "moving_add_and_remove", "persistent_contacts")
+
+
+def benchmark_scopes(names):
+    """Schema 3 supports archived captures and the complete lifecycle scope extension."""
+    present = set(LIFECYCLE_SCOPES).intersection(names)
+    if present and len(present) != len(LIFECYCLE_SCOPES):
+        raise ValueError("Incomplete benchmark lifecycle scopes")
+    return SCOPES + LIFECYCLE_SCOPES if present else SCOPES
 
 
 def is_add_remove_scenario(scenario):
@@ -64,7 +73,8 @@ def load_manifest(path):
     fingerprint = manifest["build"]["source_sha256"]
     if not isinstance(fingerprint, str) or len(fingerprint) != 64 or any(c not in "0123456789abcdef" for c in fingerprint):
         raise ValueError("Invalid source fingerprint")
-    if not manifest["machine"] or not manifest["dependencies"] or not set(SCOPES) <= manifest["boundaries"].keys():
+    scopes = benchmark_scopes(manifest["boundaries"])
+    if not manifest["machine"] or not manifest["dependencies"] or not set(scopes) <= manifest["boundaries"].keys():
         raise ValueError("Incomplete machine/dependency/scope metadata")
     if any(manifest["physical_invariants"].get(key) is not True for key in ("finite", "populations_valid", "supports_valid")):
         raise ValueError("Benchmark physical/population validation did not pass")
@@ -74,16 +84,17 @@ def load_manifest(path):
 def parse_benchmark_csv(csv_path):
     """Reject legacy/partial/unknown metrics, missing metadata and incomplete raw data."""
     path = Path(csv_path)
-    metrics, seen, sample_counts = {}, set(), {}
+    metrics, seen = {}, set()
     with path.open(newline="", encoding="utf-8") as handle:
         reader = csv.DictReader(handle)
         if not {"schema_version", "category", "name", "samples", "avg", "median", "p95", "p99", "min", "max", "unit"} <= set(reader.fieldnames or ()):
             raise ValueError("Expected schema-v3 benchmark CSV; historical partial frame data is not complete_step")
         manifest = load_manifest(path)
+        scopes = benchmark_scopes(manifest["boundaries"])
         for row in reader:
             category, name = row["category"], row["name"]
             key = (category, name)
-            allowed = SCOPES if category == "scope" else COUNTERS if category == "counter" else ()
+            allowed = scopes if category == "scope" else COUNTERS if category == "counter" else ()
             if row["schema_version"] != "3" or name not in allowed or key in seen:
                 raise ValueError(f"Unknown/duplicate benchmark metric: {key}")
             seen.add(key)
@@ -94,18 +105,17 @@ def parse_benchmark_csv(csv_path):
             expected = manifest["render_samples"] if key == ("scope", "render") else manifest["measured_steps"]
             if samples != expected:
                 raise ValueError(f"Sample count mismatch for {key}")
-            sample_counts[key] = samples
             fields = ("avg", "median", "p95", "p99", "min", "max") if category == "scope" else ("avg", "min", "max")
             for field in fields:
                 metrics[f"{category}.{name}.{field}"] = _number(row[field], f"{category}.{name}.{field}")
-    required = {("scope", name) for name in SCOPES} | {("counter", name) for name in COUNTERS}
+    required = {("scope", name) for name in scopes} | {("counter", name) for name in COUNTERS}
     if seen != required:
         raise ValueError(f"Missing benchmark metrics: {required - seen}")
     raw_counts = {"step": 0, "render": 0}
-    totals = {name: 0 for name in SCOPES}
+    totals = {name: 0 for name in scopes}
     with path.with_suffix(".samples.csv").open(newline="", encoding="utf-8") as handle:
         reader = csv.DictReader(handle)
-        columns = {"schema_version", "sample_kind", "index"} | {name + "_ns" for name in SCOPES} | set(COUNTERS)
+        columns = {"schema_version", "sample_kind", "index"} | {name + "_ns" for name in scopes} | set(COUNTERS)
         if columns != set(reader.fieldnames or ()) or len(reader.fieldnames or ()) != len(columns):
             raise ValueError("Raw sample columns must exactly match benchmark schema 3")
         for row in reader:
@@ -113,7 +123,7 @@ def parse_benchmark_csv(csv_path):
             if row["schema_version"] != "3" or kind not in raw_counts or int(row["index"]) != raw_counts[kind]:
                 raise ValueError("Invalid raw sample order/schema")
             raw_counts[kind] += 1
-            for name in SCOPES:
+            for name in scopes:
                 value = _number(row[name + "_ns"], name)
                 if (kind == "render") == (name == "render"):
                     totals[name] += value
@@ -121,7 +131,7 @@ def parse_benchmark_csv(csv_path):
                 _number(row[name], name)
     if raw_counts != {"step": manifest["measured_steps"], "render": manifest["render_samples"]}:
         raise ValueError("Raw sample count does not match its manifest")
-    for name in SCOPES:
+    for name in scopes:
         count = manifest["render_samples"] if name == "render" else manifest["measured_steps"]
         average = totals[name] / count / 1e6 if count else 0
         if not math.isclose(average, metrics[f"scope.{name}.avg"], rel_tol=1e-6, abs_tol=1e-9):
@@ -170,6 +180,9 @@ def comparison_workload(manifest):
 
 def build_result_row(args, count, metrics):
     # All required keys were checked; a missing metric must never become zero.
+    if any(run.keys() != metrics[0].keys() for run in metrics[1:]):
+        raise ValueError("Benchmarks disagree on the recorded scope layout")
+    scopes = benchmark_scopes(name for name in LIFECYCLE_SCOPES if f"scope.{name}.avg" in metrics[0])
     row = {"schema_version": 3, "scenario": args.scenario, "sweep_parameter": sweep_parameter_name(args.scenario),
            "requested_count": count, "swept_value": count, "workers": args.workers, "seed": args.seed,
            "repetitions": len(metrics), "steady_count": args.steady_count if is_add_remove_scenario(args.scenario) else 0,
@@ -178,7 +191,7 @@ def build_result_row(args, count, metrics):
     row["scripted_endpoints"] = args.scripted_endpoints if args.scenario == "persistent_contacts" else 0
     row["validation_mode"] = "per-step" if args.validate_invariants else "boundary-only"
     row["timing_eligible"] = not args.validate_invariants
-    for name in SCOPES:
+    for name in scopes:
         averages = [run[f"scope.{name}.avg"] for run in metrics]
         row.update({f"{name}_avg_ms": statistics.mean(averages), f"{name}_p95_ms": statistics.mean(run[f"scope.{name}.p95"] for run in metrics),
                     f"{name}_run_median_ms": statistics.median(averages), f"{name}_run_stdev_ms": statistics.stdev(averages) if len(averages) > 1 else 0,
@@ -279,6 +292,8 @@ def main(argv=None):
             row["raw_directory"] = str(directory.relative_to(output.parent))
         except ValueError:
             row["raw_directory"] = str(directory)
+        if rows and row.keys() != rows[0].keys():
+            raise ValueError("Sweep points disagree on the recorded scope layout")
         rows.append(row)
     with output.open("w", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(handle, fieldnames=list(rows[0]))

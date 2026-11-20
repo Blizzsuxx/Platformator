@@ -12,6 +12,7 @@ from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import capture_linear_render as capture
+from sweep_scaling import LIFECYCLE_SCOPES, SCOPES
 
 
 class LinearRenderCaptureTests(unittest.TestCase):
@@ -800,7 +801,7 @@ class LinearRenderCaptureTests(unittest.TestCase):
             root = Path(directory)
             raw = root / "run.samples.csv"
             paired = root / "run.paired.csv"
-            scopes = capture.INCREMENTAL_BENCHMARK_SCOPES
+            scopes = SCOPES + LIFECYCLE_SCOPES
             counters = capture.INCREMENTAL_BENCHMARK_COUNTERS
             headers = ["schema_version", "sample_kind", "index", *[name + "_ns" for name in scopes], *counters]
             with raw.open("w", newline="") as stream:
@@ -1224,7 +1225,7 @@ class LinearRenderCaptureTests(unittest.TestCase):
                             "fixture_sha256": b["fixture_sha256"], "harness_sha256": b["harness_sha256"],
                             "renderer_mapping": self.mapping, "machine": {"cpu": "x"}, "affinity": [0],
                             "dependencies": {"SDL": "3"},
-                            "boundaries": {s: "scope" for s in capture.INCREMENTAL_BENCHMARK_SCOPES},
+                            "boundaries": {s: "scope" for s in SCOPES},
                             "physical_invariants": {"finite": True, "populations_valid": True, "supports_valid": True},
                             "validation_proof": {"sha256": capture.sha256(Path(vp))} if vp else {},
                             "resource_observation": {"sha256": capture.sha256(Path(rp))} if rp else {},
@@ -1234,7 +1235,7 @@ class LinearRenderCaptureTests(unittest.TestCase):
                         with csv_path.open("w", newline="") as f:
                             w = csv.writer(f)
                             w.writerow(["schema_version", "category", "name", "samples", "avg", "median", "p95", "p99", "min", "max", "unit"])
-                            for sc in capture.INCREMENTAL_BENCHMARK_SCOPES:
+                            for sc in SCOPES:
                                 val_ms = (0.5 + render_wait_ms) if sc == "render" else 1.0
                                 w.writerow([3, "scope", sc, meas, val_ms, val_ms, val_ms + 0.1, val_ms + 0.1, 0.4, val_ms + 0.1, "ms"])
                             for ct in capture.INCREMENTAL_BENCHMARK_COUNTERS:
@@ -1242,14 +1243,14 @@ class LinearRenderCaptureTests(unittest.TestCase):
                         with csv_path.with_suffix(".samples.csv").open("w", newline="") as f:
                             w = csv.writer(f)
                             w.writerow(["schema_version", "sample_kind", "index",
-                                        *[s + "_ns" for s in capture.INCREMENTAL_BENCHMARK_SCOPES],
+                                        *[s + "_ns" for s in SCOPES],
                                         *capture.INCREMENTAL_BENCHMARK_COUNTERS])
                             for i in range(meas):
-                                w.writerow([3, "step", i, *[0 if s == "render" else 1_000_000 for s in capture.INCREMENTAL_BENCHMARK_SCOPES],
+                                w.writerow([3, "step", i, *[0 if s == "render" else 1_000_000 for s in SCOPES],
                                             *([0] * len(capture.INCREMENTAL_BENCHMARK_COUNTERS))])
                             for i in range(meas):
                                 r_ns = 500_000 + (0 if is_base else extra_present_wait_ns)
-                                w.writerow([3, "render", i, *[r_ns if s == "render" else 0 for s in capture.INCREMENTAL_BENCHMARK_SCOPES],
+                                w.writerow([3, "render", i, *[r_ns if s == "render" else 0 for s in SCOPES],
                                             *([0] * len(capture.INCREMENTAL_BENCHMARK_COUNTERS))])
                         with csv_path.with_suffix(".paired.csv").open("w", newline="") as f:
                             w = csv.writer(f)
@@ -1871,7 +1872,7 @@ class LinearRenderCaptureTests(unittest.TestCase):
                             "fixture_sha256": tim_id["fixture_sha256"], "harness_sha256": tim_id["harness_sha256"],
                             "renderer_mapping": self.mapping, "machine": {"cpu": "x"}, "affinity": [0],
                             "dependencies": {"SDL": "3"},
-                            "boundaries": {s: "scope" for s in capture.INCREMENTAL_BENCHMARK_SCOPES},
+                            "boundaries": {s: "scope" for s in SCOPES},
                             "physical_invariants": {"finite": True, "populations_valid": True, "supports_valid": True},
                             "resource_observation": {"sha256": capture.sha256(rp)},
                         }
@@ -1879,7 +1880,7 @@ class LinearRenderCaptureTests(unittest.TestCase):
                         with csv_path.open("w", newline="") as f:
                             w = csv.writer(f)
                             w.writerow(["schema_version", "category", "name", "samples", "avg", "median", "p95", "p99", "min", "max", "unit"])
-                            for sc in capture.INCREMENTAL_BENCHMARK_SCOPES:
+                            for sc in SCOPES:
                                 val_ms = 0.5 if sc == "render" else 1.0
                                 w.writerow([3, "scope", sc, meas, val_ms, val_ms, val_ms + 0.1, val_ms + 0.1, 0.4, val_ms + 0.1, "ms"])
                             for ct in capture.INCREMENTAL_BENCHMARK_COUNTERS:
@@ -1887,13 +1888,13 @@ class LinearRenderCaptureTests(unittest.TestCase):
                         with csv_path.with_suffix(".samples.csv").open("w", newline="") as f:
                             w = csv.writer(f)
                             w.writerow(["schema_version", "sample_kind", "index",
-                                        *[s + "_ns" for s in capture.INCREMENTAL_BENCHMARK_SCOPES],
+                                        *[s + "_ns" for s in SCOPES],
                                         *capture.INCREMENTAL_BENCHMARK_COUNTERS])
                             for i in range(meas):
-                                w.writerow([3, "step", i, *[0 if s == "render" else 1_000_000 for s in capture.INCREMENTAL_BENCHMARK_SCOPES],
+                                w.writerow([3, "step", i, *[0 if s == "render" else 1_000_000 for s in SCOPES],
                                             *([0] * len(capture.INCREMENTAL_BENCHMARK_COUNTERS))])
                             for i in range(meas):
-                                w.writerow([3, "render", i, *[500_000 if s == "render" else 0 for s in capture.INCREMENTAL_BENCHMARK_SCOPES],
+                                w.writerow([3, "render", i, *[500_000 if s == "render" else 0 for s in SCOPES],
                                             *([0] * len(capture.INCREMENTAL_BENCHMARK_COUNTERS))])
                         with csv_path.with_suffix(".paired.csv").open("w", newline="") as f:
                             w = csv.writer(f)
@@ -2044,7 +2045,7 @@ class LinearRenderCaptureTests(unittest.TestCase):
                             "fixture_sha256": cand_id["fixture_sha256"], "harness_sha256": cand_id["harness_sha256"],
                             "renderer_mapping": self.mapping, "machine": {"cpu": "x"}, "affinity": [0],
                             "dependencies": {"SDL": "3"},
-                            "boundaries": {s: "scope" for s in capture.INCREMENTAL_BENCHMARK_SCOPES},
+                            "boundaries": {s: "scope" for s in SCOPES},
                             "physical_invariants": {"finite": True, "populations_valid": True, "supports_valid": True},
                             "validation_proof": {"sha256": capture.sha256(Path(vp))},
                             "resource_observation": {"sha256": capture.sha256(Path(rp))},
@@ -2053,7 +2054,7 @@ class LinearRenderCaptureTests(unittest.TestCase):
                         with csv_path.open("w", newline="") as f:
                             w = csv.writer(f)
                             w.writerow(["schema_version", "category", "name", "samples", "avg", "median", "p95", "p99", "min", "max", "unit"])
-                            for sc in capture.INCREMENTAL_BENCHMARK_SCOPES:
+                            for sc in SCOPES:
                                 val_ms = 0.5 if sc == "render" else 1.0
                                 w.writerow([3, "scope", sc, meas, val_ms, val_ms, val_ms + 0.1, val_ms + 0.1, 0.4, val_ms + 0.1, "ms"])
                             for ct in capture.INCREMENTAL_BENCHMARK_COUNTERS:
@@ -2061,13 +2062,13 @@ class LinearRenderCaptureTests(unittest.TestCase):
                         with csv_path.with_suffix(".samples.csv").open("w", newline="") as f:
                             w = csv.writer(f)
                             w.writerow(["schema_version", "sample_kind", "index",
-                                        *[s + "_ns" for s in capture.INCREMENTAL_BENCHMARK_SCOPES],
+                                        *[s + "_ns" for s in SCOPES],
                                         *capture.INCREMENTAL_BENCHMARK_COUNTERS])
                             for i in range(meas):
-                                w.writerow([3, "step", i, *[0 if s == "render" else 1_000_000 for s in capture.INCREMENTAL_BENCHMARK_SCOPES],
+                                w.writerow([3, "step", i, *[0 if s == "render" else 1_000_000 for s in SCOPES],
                                             *([0] * len(capture.INCREMENTAL_BENCHMARK_COUNTERS))])
                             for i in range(meas):
-                                w.writerow([3, "render", i, *[500_000 if s == "render" else 0 for s in capture.INCREMENTAL_BENCHMARK_SCOPES],
+                                w.writerow([3, "render", i, *[500_000 if s == "render" else 0 for s in SCOPES],
                                             *([0] * len(capture.INCREMENTAL_BENCHMARK_COUNTERS))])
                         with csv_path.with_suffix(".paired.csv").open("w", newline="") as f:
                             w = csv.writer(f)
@@ -2238,7 +2239,7 @@ class LinearRenderCaptureTests(unittest.TestCase):
                             "fixture_sha256": cand_id["fixture_sha256"], "harness_sha256": cand_id["harness_sha256"],
                             "renderer_mapping": self.mapping, "machine": {"cpu": "x"}, "affinity": [0],
                             "dependencies": {"SDL": "3"},
-                            "boundaries": {s: "scope" for s in capture.INCREMENTAL_BENCHMARK_SCOPES},
+                            "boundaries": {s: "scope" for s in SCOPES},
                             "physical_invariants": {"finite": True, "populations_valid": True, "supports_valid": True},
                             "validation_proof": {"sha256": capture.sha256(Path(vp))},
                             "resource_observation": {"sha256": capture.sha256(Path(rp))},
@@ -2247,7 +2248,7 @@ class LinearRenderCaptureTests(unittest.TestCase):
                         with csv_path.open("w", newline="") as f:
                             w = csv.writer(f)
                             w.writerow(["schema_version", "category", "name", "samples", "avg", "median", "p95", "p99", "min", "max", "unit"])
-                            for sc in capture.INCREMENTAL_BENCHMARK_SCOPES:
+                            for sc in SCOPES:
                                 val_ms = 0.5 if sc == "render" else 1.0
                                 w.writerow([3, "scope", sc, meas, val_ms, val_ms, val_ms + 0.1, val_ms + 0.1, 0.4, val_ms + 0.1, "ms"])
                             for ct in capture.INCREMENTAL_BENCHMARK_COUNTERS:
@@ -2255,13 +2256,13 @@ class LinearRenderCaptureTests(unittest.TestCase):
                         with csv_path.with_suffix(".samples.csv").open("w", newline="") as f:
                             w = csv.writer(f)
                             w.writerow(["schema_version", "sample_kind", "index",
-                                        *[s + "_ns" for s in capture.INCREMENTAL_BENCHMARK_SCOPES],
+                                        *[s + "_ns" for s in SCOPES],
                                         *capture.INCREMENTAL_BENCHMARK_COUNTERS])
                             for i in range(meas):
-                                w.writerow([3, "step", i, *[0 if s == "render" else 1_000_000 for s in capture.INCREMENTAL_BENCHMARK_SCOPES],
+                                w.writerow([3, "step", i, *[0 if s == "render" else 1_000_000 for s in SCOPES],
                                             *([0] * len(capture.INCREMENTAL_BENCHMARK_COUNTERS))])
                             for i in range(meas):
-                                w.writerow([3, "render", i, *[500_000 if s == "render" else 0 for s in capture.INCREMENTAL_BENCHMARK_SCOPES],
+                                w.writerow([3, "render", i, *[500_000 if s == "render" else 0 for s in SCOPES],
                                             *([0] * len(capture.INCREMENTAL_BENCHMARK_COUNTERS))])
                         with csv_path.with_suffix(".paired.csv").open("w", newline="") as f:
                             w = csv.writer(f)

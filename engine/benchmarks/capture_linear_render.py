@@ -23,7 +23,7 @@ import time
 from capture_budget import BudgetExceeded, CaptureBudget, active_budget_max_bytes, capture_budget, check_budget, wait_for_process
 
 from sweep_scaling import COUNTERS as INCREMENTAL_BENCHMARK_COUNTERS
-from sweep_scaling import SCOPES as INCREMENTAL_BENCHMARK_SCOPES
+from sweep_scaling import benchmark_scopes
 from sweep_scaling import parse_benchmark_csv
 
 
@@ -131,13 +131,18 @@ def validate_incremental_timing_samples(raw_samples: list[dict], paired_samples:
 
 def read_incremental_timing_samples(samples_path: Path, paired_path: Path, expected_steps: int,
                                     expected_renders: int, headless: bool) -> tuple[list[dict], list[float]]:
-    expected_columns = {"schema_version", "sample_kind", "index"} | {
-        name + "_ns" for name in INCREMENTAL_BENCHMARK_SCOPES} | set(INCREMENTAL_BENCHMARK_COUNTERS)
     step_rows: list[dict] = []
     render_rows: list[dict] = []
     with samples_path.open(newline="", encoding="utf-8") as stream:
         reader = csv.DictReader(stream)
-        if set(reader.fieldnames or ()) != expected_columns or len(reader.fieldnames or ()) != len(expected_columns):
+        columns = reader.fieldnames or ()
+        try:
+            scopes = benchmark_scopes(name.removesuffix("_ns") for name in columns if name.endswith("_ns"))
+        except ValueError as error:
+            raise CaptureError("Incremental timing raw columns differ from schema-v3") from error
+        expected_columns = {"schema_version", "sample_kind", "index"} | {
+            name + "_ns" for name in scopes} | set(INCREMENTAL_BENCHMARK_COUNTERS)
+        if set(columns) != expected_columns or len(columns) != len(expected_columns):
             raise CaptureError("Incremental timing raw columns differ from schema-v3")
         for row in reader:
             kind = row["sample_kind"]
@@ -152,7 +157,7 @@ def read_incremental_timing_samples(samples_path: Path, paired_path: Path, expec
             if index != expected_index:
                 raise CaptureError("Incremental timing raw samples are truncated, reordered, or duplicated")
             parsed = {}
-            for field in INCREMENTAL_BENCHMARK_SCOPES:
+            for field in scopes:
                 try:
                     value = int(row[field + "_ns"])
                 except (TypeError, ValueError) as error:
@@ -205,7 +210,7 @@ def read_incremental_timing_samples(samples_path: Path, paired_path: Path, expec
     if len(paired_values) != expected_steps:
         raise CaptureError("Incremental paired timing sample count differs from the requested run")
     for row in render_rows:
-        if any(row[name] != 0.0 for name in INCREMENTAL_BENCHMARK_SCOPES if name != "render"):
+        if any(row[name] != 0.0 for name in scopes if name != "render"):
             raise CaptureError("Incremental render samples contain duration attributed to a non-render scope")
     rows = []
     for index, row in enumerate(step_rows):

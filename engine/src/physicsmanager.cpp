@@ -208,7 +208,10 @@ void PhysicsManager::removeColliderComponent(Collider *colliderComponent)
 
 void PhysicsManager::flushPendingColliderOperations()
 {
-    grid.flushPendingCellUpdates();
+    {
+        PLATFORMATOR_BENCH_SCOPE(DeferredGridFlush);
+        grid.flushPendingCellUpdates();
+    }
     flushSupportDeltas();
 }
 

@@ -22,6 +22,9 @@ enum class BenchmarkScopeId : uint8_t
     BroadPhase,
     NarrowPhase,
     ResolveCollisions,
+    StepHook,
+    Retirement,
+    DeferredGridFlush,
     COUNT
 };
 enum class BenchmarkCounterId : uint8_t

@@ -18,7 +18,9 @@ Use `--validate-invariants --repetitions 1` for separate correctness runs. This 
 
 ## Schema v3 and boundaries
 
-`run.csv` contains all eight scope and eleven counter summaries, units and sample counts. `run.samples.csv` preserves every step duration/counter plus independent rendering rows. `run.manifest.json` records resolved workload, seed/workers/dt, warmup/measurement/repetition parameters, source fingerprint/commit/dirty state, compiler/flags/configuration, instrumentation, machine/OS/dependencies, invariants and scope boundaries. Logs and raw files are retained beside sweep aggregates. Output errors are fatal. Sweeps refuse overwriting prior captures, missing/unknown metrics, invalid invariants, non-Release instrumentation and truncated runs. Plotting accepts only schema-v3 performance aggregates and displays standard deviation across independent run means.
+`run.csv` contains scope and counter summaries, units and sample counts. `run.samples.csv` preserves every step duration/counter plus independent rendering rows. `run.manifest.json` records resolved workload, seed/workers/dt, warmup/measurement/repetition parameters, source fingerprint/commit/dirty state, compiler/flags/configuration, instrumentation, machine/OS/dependencies, invariants and scope boundaries. Logs and raw files are retained beside sweep aggregates. Output errors are fatal. Sweeps refuse overwriting prior captures, missing/unknown metrics, invalid invariants, non-Release instrumentation and truncated runs. Plotting accepts only schema-v3 performance aggregates and displays standard deviation across independent run means.
+
+Current captures report eleven scopes and eleven counters. Readers also accept the original eight-scope schema-v3 layout. `plot_scaling.py --include-cleanup` includes the lifecycle scopes when present in the input.
 
 Schema 3 removes the recurring contact metric and counts Enter/Exit **pair events generated within the complete step**, including cleanup, independently of script availability and delivered callback count. Current readers reject schema-2 or mixed captures; historical files remain unchanged and require their recorded tooling revision. Timing comparisons across versions require equivalent workloads/boundaries; the event counters have intentionally changed meaning.
 
@@ -27,6 +29,9 @@ The `persistent_contacts` scenario accepts `--contact-pair-count N --scripted-en
 - `complete_step`: ordered runtime step through final retirement/transient cleanup, including object destruction. Recorder storage and outer host-call overhead are outside it. Rendering is outside it.
 - `physics`: transform synchronization, broad/narrow work, forces/solver/movement and cache publication within the step.
 - `cleanup`: final scene/lifecycle reconciliation and retirement; nested in complete_step.
+- `step_hook`: the custom simulation-step callback, including object creation and retirement requests in churn workloads. This scope is part of `complete_step`.
+- `retirement`: the retirement drain, including destruction callbacks, registry erasure, and deallocation. This scope is part of `cleanup`.
+- `deferred_grid_flush`: wall time for grid and cell reconciliation during mutation commit. This scope is part of `cleanup` and covers repeated flushes within a step.
 - `scene_transition`: selected scene request preparation/commit, nested in cleanup.
 - `render`: actual renderer work measured separately after simulation/cleanup. Headless runs have zero render samples.
 - `broad_phase`, `narrow_phase`, `resolve_collisions`: named physics subscopes. Nested scopes must not be added together as total wall time.

@@ -340,6 +340,7 @@ void GameManager::runSimulationStepWithCustomCallback(const std::function<void(d
         stage(Phase::StepHook, [&] {
             if (customCallback)
             {
+                PLATFORMATOR_BENCH_SCOPE(StepHook);
                 customCallback(timeDelta);
             }
         });
@@ -944,6 +945,7 @@ void GameManager::drainRetirements(std::exception_ptr &error)
         return;
     }
 
+    PLATFORMATOR_BENCH_SCOPE(Retirement);
     bool hasScriptDestruction = false;
     for (auto *component : retiredComponents)
     {

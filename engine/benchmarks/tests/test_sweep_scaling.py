@@ -17,11 +17,12 @@ COUNTERS = ["object_count", "occupied_cell_count", "candidate_pair_count", "pend
             "collision_exit_event_count"]
 
 
-def fixture(path, value=1, workers=1, seed=0, warmup=0, repetition=0):
+def fixture(path, value=1, workers=1, seed=0, warmup=0, repetition=0, lifecycle=False):
+    scopes = SCOPES + list(sweep.LIFECYCLE_SCOPES) if lifecycle else SCOPES
     with path.open("w", newline="") as handle:
         writer = csv.writer(handle)
         writer.writerow(["schema_version", "category", "name", "samples", "avg", "median", "p95", "p99", "min", "max", "unit"])
-        for scope in SCOPES:
+        for scope in scopes:
             metric = 0 if scope == "render" else value
             writer.writerow([3, "scope", scope, 0 if scope == "render" else 10, metric, metric, metric, metric, metric, metric, "ms"])
         for counter in COUNTERS:
@@ -31,16 +32,30 @@ def fixture(path, value=1, workers=1, seed=0, warmup=0, repetition=0):
         "rendering": False, "render_samples": 0, "complete_capture": True, "scenario": "broad_phase",
         "validation_mode": "boundary-only", "timing_eligible": True,
         "build": {"commit": "fixture", "dirty": False, "source_sha256": "a" * 64, "compiler": "fixture", "flags": "-O3", "configuration": "Release", "sanitizer": "none", "work_probes": False, "debug_tools": False},
-        "machine": {"cpu": "fixture"}, "dependencies": {"test": "fixture"}, "boundaries": {name: "fixture" for name in SCOPES},
+        "machine": {"cpu": "fixture"}, "dependencies": {"test": "fixture"}, "boundaries": {name: "fixture" for name in scopes},
         "physical_invariants": {"finite": True, "populations_valid": True, "supports_valid": True}}))
     with path.with_suffix(".samples.csv").open("w", newline="") as handle:
         writer = csv.writer(handle)
-        writer.writerow(["schema_version", "sample_kind", "index"] + [name + "_ns" for name in SCOPES] + COUNTERS)
+        writer.writerow(["schema_version", "sample_kind", "index"] + [name + "_ns" for name in scopes] + COUNTERS)
         for index in range(10):
-            writer.writerow([3, "step", index] + [0 if name == "render" else int(value * 1e6) for name in SCOPES] + [1] * len(COUNTERS))
+            writer.writerow([3, "step", index] + [0 if name == "render" else int(value * 1e6) for name in scopes] + [1] * len(COUNTERS))
 
 
 class SweepContract(unittest.TestCase):
+    def test_lifecycle_scopes_require_complete_matching_capture(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "run.csv"
+            fixture(path, lifecycle=True)
+            metrics = sweep.parse_benchmark_csv(path)
+            for scope in sweep.LIFECYCLE_SCOPES:
+                self.assertEqual(metrics[f"scope.{scope}.avg"], 1)
+            manifest_path = path.with_suffix(".manifest.json")
+            manifest = json.loads(manifest_path.read_text())
+            del manifest["boundaries"]["retirement"]
+            manifest_path.write_text(json.dumps(manifest))
+            with self.assertRaisesRegex(ValueError, "Incomplete benchmark lifecycle scopes"):
+                sweep.parse_benchmark_csv(path)
+
     def test_schema_three_is_live_and_two_is_historical(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "run.csv"
@@ -246,7 +261,7 @@ class PlotAndFailureContract(unittest.TestCase):
                 rows = []
                 for idx, count in enumerate((50, 100, 200)):
                     src = Path(directory) / f"run_w{workers}_{idx}.csv"
-                    fixture(src, value=mult * (count / 50.0), workers=workers)
+                    fixture(src, value=mult * (count / 50.0), workers=workers, lifecycle=workers == 1)
                     rows.append(sweep.build_result_row(
                         SimpleNamespace(scenario="broad_phase", workers=workers, seed=0, validate_invariants=False),
                         count, [sweep.parse_benchmark_csv(src)] * 5))

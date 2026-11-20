@@ -13,6 +13,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <json.hpp>
@@ -23,6 +24,7 @@
 #include "platformator/camera.h"
 #include "platformator/circlecollider.h"
 #include "constants.h"
+#include "flatidmap.h"
 #include "grid.h"
 #include "aabb.h"
 #include "platformator/audio.h"
@@ -1871,6 +1873,32 @@ void testColliderOffsetAffectsGeometry()
             "Collider offset regression expected the circle collider Y projection center to include its offset.");
 }
 
+void testFlatIdMapMovesLeaveSourceReusable()
+{
+    struct Object : BaseObject
+    {
+    };
+    Object object;
+    platformator_detail::FlatIdMap source;
+    source.insertOrAssign(1, &object);
+
+    platformator_detail::FlatIdMap constructed(std::move(source));
+    require(constructed.size() == 1 && constructed.find(1) == &object, "Move construction transfers the entry");
+    require(source.empty() && source.find(1) == nullptr, "Move construction empties the source");
+    source.insertOrAssign(2, &object);
+    source.erase(2);
+    require(source.empty(), "The move-constructed source supports insertion and erase");
+
+    source.insertOrAssign(3, &object);
+    constructed = std::move(source);
+    require(constructed.size() == 1 && constructed.find(3) == &object && constructed.find(1) == nullptr,
+            "Move assignment replaces the destination entries");
+    require(source.empty() && source.find(3) == nullptr, "Move assignment empties the source");
+    source.insertOrAssign(4, &object);
+    source.erase(4);
+    require(source.empty(), "The move-assigned source supports insertion and erase");
+}
+
 struct TestCase
 {
     const char *name;
@@ -1897,6 +1925,7 @@ int main()
         {"parallel_broad_and_narrow_phase_stress", testParallelBroadAndNarrowPhaseStress},
         {"segmented_interval_fast_motion_across_chunks", testSegmentedIntervalListFastMotionAcrossChunks},
         {"segmented_interval_merges_underfull_chunks", testSegmentedIntervalListMergesUnderfullChunks},
+        {"flat_id_map_moves_leave_source_reusable", testFlatIdMapMovesLeaveSourceReusable},
         {"scene_loading", testSceneLoading},
         {"scene_saving_round_trip", testSceneSavingRoundTrip},
         {"restitution_bounce", testRestitutionBounce},

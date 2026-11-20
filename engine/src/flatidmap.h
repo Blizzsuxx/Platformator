@@ -4,6 +4,7 @@
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
+#include <utility>
 #include <vector>
 
 class BaseObject;
@@ -16,6 +17,20 @@ class FlatIdMap
 {
   public:
     FlatIdMap() = default;
+    FlatIdMap(const FlatIdMap &) = default;
+    FlatIdMap &operator=(const FlatIdMap &) = default;
+
+    FlatIdMap(FlatIdMap &&other) noexcept
+    {
+        swap(other);
+    }
+
+    FlatIdMap &operator=(FlatIdMap &&other) noexcept
+    {
+        FlatIdMap moved(std::move(other));
+        swap(moved);
+        return *this;
+    }
 
     BaseObject *find(int key) const noexcept
     {

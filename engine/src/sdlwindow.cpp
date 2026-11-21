@@ -221,6 +221,9 @@ SDLWindow::SDLWindow(const WindowSettings &windowSettings, const DebugSettings &
                     PLATFORMATOR_LOG("Advancing one frame\n");
                 }
                 break;
+            case SDLK_F9:
+                debugDraw.toggleShowFps();
+                break;
             default:
                 break;
             }

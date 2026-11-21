@@ -996,6 +996,12 @@ void buildPersistentContacts(platformator::Runtime &runtime, const BenchmarkRunn
                                ->setPosition({float(i % 32) * 80 + endpoint, float(i / 32) * 80})
                                ->addComponent<BoxCollider>(4, 4);
             object->getComponent<BoxCollider>()->setIsTrigger(true);
+            if (options.renderFrames)
+            {
+                const char *texturePath =
+                    endpoint == 0 ? "assets/textures/black_square.png" : "assets/textures/red_circle.png";
+                object->addComponent<Sprite>(texturePath, 4.0f, 4.0f);
+            }
             if (endpoint < options.scriptedEndpoints)
                 object->addComponent<ScriptComponent>()->getComponent<ScriptComponent>()->addBehavior(
                     new ContactObserver);
@@ -1231,9 +1237,18 @@ void configureScenarioCamera(platformator::Runtime &runtime, const BenchmarkRunn
                                         options.runtimeOptions.windowSettings));
         return;
     }
-    case BenchmarkScenario::PersistentContacts:
-        mainCamera->setCamera(SDL_FRect{-10, -10, 2600, 2600});
+    case BenchmarkScenario::PersistentContacts: {
+        const int count = std::max(1, options.contactPairCount);
+        const int cols = std::min(32, count);
+        const int rows = (count + 31) / 32;
+        const float maxX = static_cast<float>(cols - 1) * 80.0f + 5.0f;
+        const float maxY = static_cast<float>(rows - 1) * 80.0f + 4.0f;
+        const float pad = 40.0f;
+        mainCamera->setCamera(fitCameraRectToWindowAspect(
+            SDL_FRect{-pad, -pad, std::max(120.0f, maxX + 2.0f * pad), std::max(120.0f, maxY + 2.0f * pad)},
+            options.runtimeOptions.windowSettings));
         return;
+    }
     case BenchmarkScenario::IdealWorld: {
         const size_t chamberCount = idealWorldChamberCount(options.idealWorldBodyCount);
         const size_t cols =
@@ -1466,6 +1481,16 @@ BenchmarkRunnerOptions parseBenchmarkRunnerOptions(int argc, char *args[])
         if (argument == "--csv-output" || argument == "--csv")
         {
             options.csvOutputPath = requireArgumentValue(argc, args, index, argument);
+            continue;
+        }
+
+        if (argument == "--debug-draw")
+        {
+            std::string categories = requireArgumentValue(argc, args, index, argument);
+            char arg0[] = "platformator_benchmark_runner";
+            char arg1[] = "--debug-draw";
+            char *debugArgs[] = {arg0, arg1, categories.data()};
+            options.runtimeOptions.debugSettings = parseRuntimeOptions(3, debugArgs, "").debugSettings;
             continue;
         }
 
@@ -1854,7 +1879,7 @@ void printUsage(FILE *output)
         "[--contact-pair-count N] [--scripted-endpoints 0|1|2] [--narrow-count N] [--ideal-count N] [--steady-count N] [--add-count N] "
         "[--remove-count N] [--churn-count N] [--csv-output "
         "path] [--workers N] [--seed N] [--validate-invariants] [--asset-root path] [--render] "
-        "[--no-render-culling]\n");
+        "[--no-render-culling] [--debug-draw <categories>]\n");
 }
 } // namespace
 

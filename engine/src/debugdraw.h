@@ -2,6 +2,7 @@
 
 #include "buildconfig.h"
 
+#include <chrono>
 #include <list>
 #include <string>
 #include <vector>
@@ -64,14 +65,14 @@ class DebugDraw
     void toggleShowCollisionPoints();
     void toggleShowCollisionNormals();
     void toggleShowGridCells();
+    void toggleShowFps();
 
   private:
     DebugDraw();
     ~DebugDraw();
 
     void render(SDL_Renderer *renderer, Camera *camera, int outputWidth, int outputHeight);
-
-
+    void renderFpsOverlay(SDL_Renderer *renderer);
 
     std::vector<DebugObject> debugObjectsBuffer;
 
@@ -79,6 +80,14 @@ class DebugDraw
     bool showCollisionPoints;
     bool showCollisionNormals;
     bool showGridCells;
+    bool showFps;
+
+    bool hasLastFrameTime;
+    std::chrono::steady_clock::time_point lastFrameTime;
+    double fpsSampleAccumSeconds;
+    int fpsSampleFrames;
+    double displayedFps;
+    double displayedFrameMs;
 
     friend class SDLWindow;
 };
@@ -144,6 +153,9 @@ class DebugDraw
     {
     }
     void toggleShowGridCells()
+    {
+    }
+    void toggleShowFps()
     {
     }
 

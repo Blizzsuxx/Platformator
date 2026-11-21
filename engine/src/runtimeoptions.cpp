@@ -93,6 +93,12 @@ namespace
             return;
         }
 
+        if (token == "fps")
+        {
+            debugSettings.showFps = true;
+            return;
+        }
+
         throw std::runtime_error("Unknown debug draw category: " + token);
     }
 
@@ -101,7 +107,7 @@ namespace
         const std::string normalizedValue = normalizeArgumentValue(value);
         if (normalizedValue == "all")
         {
-            return {false, true, true, true, true};
+            return {false, true, true, true, true, true};
         }
 
         if (normalizedValue == "none" || normalizedValue == "default")
@@ -109,7 +115,7 @@ namespace
             return {};
         }
 
-        DebugSettings debugSettings{false, false, false, false, false};
+        DebugSettings debugSettings{false, false, false, false, false, false};
         size_t tokenStart = 0;
 
         while (tokenStart <= value.size())

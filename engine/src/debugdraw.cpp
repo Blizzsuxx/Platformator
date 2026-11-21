@@ -2,12 +2,15 @@
 #include "constants.h"
 #include "gridcell.h"
 #include <cmath>
+#include <cstdio>
 #include <numbers>
 
 #if PLATFORMATOR_ENABLE_DEBUG_TOOLS
 
 DebugDraw::DebugDraw()
-    : debugObjectsBuffer(), showColliders(true), showCollisionPoints(true), showCollisionNormals(true), showGridCells(true)
+    : debugObjectsBuffer(), showColliders(true), showCollisionPoints(true), showCollisionNormals(true),
+      showGridCells(true), showFps(false), hasLastFrameTime(false), lastFrameTime(), fpsSampleAccumSeconds(0.0),
+      fpsSampleFrames(0), displayedFps(0.0), displayedFrameMs(0.0)
 {
 }
 
@@ -21,6 +24,12 @@ void DebugDraw::setSettings(const DebugSettings &debugSettings)
     showCollisionPoints = debugSettings.showCollisionPoints;
     showCollisionNormals = debugSettings.showCollisionNormals;
     showGridCells = debugSettings.showGridCells;
+    showFps = debugSettings.showFps;
+    hasLastFrameTime = false;
+    fpsSampleAccumSeconds = 0.0;
+    fpsSampleFrames = 0;
+    displayedFps = 0.0;
+    displayedFrameMs = 0.0;
 }
 
 void DebugDraw::render(SDL_Renderer *renderer, Camera *camera, int outputWidth, int outputHeight)
@@ -65,8 +74,88 @@ void DebugDraw::render(SDL_Renderer *renderer, Camera *camera, int outputWidth, 
         }
     }
 
+    if (showFps)
+    {
+        renderFpsOverlay(renderer);
+    }
+
     SDL_SetRenderDrawBlendMode(renderer, prevBlend);
     // clearDebugObjects();
+}
+
+void DebugDraw::renderFpsOverlay(SDL_Renderer *renderer)
+{
+    const auto now = std::chrono::steady_clock::now();
+    if (hasLastFrameTime)
+    {
+        const double dtSeconds = std::chrono::duration<double>(now - lastFrameTime).count();
+        if (dtSeconds > 0.0 && dtSeconds < 5.0)
+        {
+            fpsSampleAccumSeconds += dtSeconds;
+            ++fpsSampleFrames;
+            if (fpsSampleAccumSeconds >= 0.25)
+            {
+                displayedFrameMs = (fpsSampleAccumSeconds / static_cast<double>(fpsSampleFrames)) * 1000.0;
+                displayedFps = static_cast<double>(fpsSampleFrames) / fpsSampleAccumSeconds;
+                fpsSampleAccumSeconds = 0.0;
+                fpsSampleFrames = 0;
+            }
+            else if (displayedFps == 0.0)
+            {
+                displayedFrameMs = dtSeconds * 1000.0;
+                displayedFps = 1.0 / dtSeconds;
+            }
+        }
+    }
+    lastFrameTime = now;
+    hasLastFrameTime = true;
+
+    char label[64];
+    if (displayedFps > 0.0)
+    {
+        std::snprintf(label, sizeof(label), "FPS: %.1f (%.2f ms)", displayedFps, displayedFrameMs);
+    }
+    else
+    {
+        std::snprintf(label, sizeof(label), "FPS: ...");
+    }
+
+    float prevScaleX = 1.0f;
+    float prevScaleY = 1.0f;
+    SDL_GetRenderScale(renderer, &prevScaleX, &prevScaleY);
+    Uint8 prevR = 0, prevG = 0, prevB = 0, prevA = 255;
+    SDL_GetRenderDrawColor(renderer, &prevR, &prevG, &prevB, &prevA);
+
+    constexpr float textScale = 2.0f;
+    constexpr float padX = 6.0f;
+    constexpr float padY = 4.0f;
+    constexpr float boxX = 6.0f;
+    constexpr float boxY = 6.0f;
+    const float textW = static_cast<float>(std::char_traits<char>::length(label)) * 8.0f;
+    const SDL_FRect bgRect{boxX, boxY, textW + padX * 2.0f, 8.0f + padY * 2.0f};
+
+    SDL_SetRenderScale(renderer, textScale, textScale);
+    SDL_SetRenderDrawColor(renderer, 0x10, 0x10, 0x14, 0xC8);
+    SDL_RenderFillRect(renderer, &bgRect);
+    SDL_SetRenderDrawColor(renderer, 0x60, 0x68, 0x78, 0xE0);
+    SDL_RenderRect(renderer, &bgRect);
+
+    if (displayedFps == 0.0 || displayedFps >= 55.0)
+    {
+        SDL_SetRenderDrawColor(renderer, 0x50, 0xFF, 0x78, 0xFF);
+    }
+    else if (displayedFps >= 30.0)
+    {
+        SDL_SetRenderDrawColor(renderer, 0xFF, 0xD4, 0x40, 0xFF);
+    }
+    else
+    {
+        SDL_SetRenderDrawColor(renderer, 0xFF, 0x55, 0x55, 0xFF);
+    }
+    SDL_RenderDebugText(renderer, boxX + padX, boxY + padY, label);
+
+    SDL_SetRenderScale(renderer, prevScaleX, prevScaleY);
+    SDL_SetRenderDrawColor(renderer, prevR, prevG, prevB, prevA);
 }
 
 void DebugDraw::addDebugObject(const std::vector<Eigen::Vector2f> &vertices, std::string name)
@@ -227,6 +316,17 @@ void DebugDraw::toggleShowCollisionNormals()
 void DebugDraw::toggleShowGridCells()
 {
     showGridCells = !showGridCells;
+}
+
+void DebugDraw::toggleShowFps()
+{
+    showFps = !showFps;
+    if (showFps)
+    {
+        hasLastFrameTime = false;
+        fpsSampleAccumSeconds = 0.0;
+        fpsSampleFrames = 0;
+    }
 }
 
 void DebugDraw::addPointDebugObject(const Eigen::Vector2f &point, Uint8 r, Uint8 g, Uint8 b, Uint8 a, bool showLabel, std::string name)

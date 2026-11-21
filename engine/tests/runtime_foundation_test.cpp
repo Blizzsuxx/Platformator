@@ -631,7 +631,7 @@ namespace
     {
         DebugSettings defaults;
         require(!defaults.startPaused && !defaults.showColliders && !defaults.showCollisionPoints &&
-                    !defaults.showCollisionNormals && !defaults.showGridCells,
+                    !defaults.showCollisionNormals && !defaults.showGridCells && !defaults.showFps,
                 "DebugSettings visual overlays must default to false");
 
         char arg0[] = "runner";
@@ -641,15 +641,15 @@ namespace
         const RuntimeOptions parsedAll = parseRuntimeOptions(3, allDebugArgs, "");
         require(!parsedAll.debugSettings.startPaused && parsedAll.debugSettings.showColliders &&
                     parsedAll.debugSettings.showCollisionPoints && parsedAll.debugSettings.showCollisionNormals &&
-                    parsedAll.debugSettings.showGridCells,
-                "--debug-draw all must enable all four visual overlays");
+                    parsedAll.debugSettings.showGridCells && parsedAll.debugSettings.showFps,
+                "--debug-draw all must enable all five visual overlays");
 
-        char editorOverlays[] = "colliders,gridcells,normals";
+        char editorOverlays[] = "colliders,gridcells,normals,fps";
         char startPaused[] = "--start-paused";
         char *editorDebugArgs[] = {arg0, arg1, editorOverlays, startPaused};
         const DebugSettings editorDebug = parseRuntimeOptions(4, editorDebugArgs, "").debugSettings;
         require(editorDebug.startPaused && editorDebug.showColliders && !editorDebug.showCollisionPoints &&
-                    editorDebug.showCollisionNormals && editorDebug.showGridCells,
+                    editorDebug.showCollisionNormals && editorDebug.showGridCells && editorDebug.showFps,
                 "Editor debug launch arguments must enable the selected overlays and start paused");
 
         Runtime runtime(test_support::physicsOnly());

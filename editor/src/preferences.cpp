@@ -1271,7 +1271,7 @@ bool is_valid_run_overlay(const std::string &name)
 {
     // Must match the categories accepted by --debug-draw (engine/src/runtimeoptions.cpp).
     return name == "colliders" || name == "points" || name == "normals" || name == "collisions" ||
-           name == "gridcells";
+           name == "gridcells" || name == "fps";
 }
 
 void WorkspacePreferencePersistence::mark_settings_dirty()

@@ -7,4 +7,5 @@ struct DebugSettings
     bool showCollisionPoints = false;
     bool showCollisionNormals = false;
     bool showGridCells = false;
+    bool showFps = false;
 };

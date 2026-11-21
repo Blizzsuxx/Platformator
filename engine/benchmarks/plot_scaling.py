@@ -69,9 +69,11 @@ SERIES_LABELS: Dict[str, Dict[str, str]] = {
         "complete_step_avg_ms": "Complete step mean",
         "complete_step_p95_ms": "Complete step p95",
         "broad_phase_avg_ms": "Broad Phase Avg",
+        "broad_phase_grid_avg_ms": "Broad Phase (grid)",
         "narrow_phase_avg_ms": "Narrow Phase Avg",
         "resolve_collisions_avg_ms": "Collision Resolution Avg",
         "cleanup_avg_ms": "Cleanup Avg",
+        "cleanup_non_grid_avg_ms": "Cleanup (excl. grid)",
         "physics_avg_ms": "Physics Total Avg",
         "step_hook_avg_ms": "Step Hook Avg",
         "retirement_avg_ms": "Retirement Avg",
@@ -81,9 +83,11 @@ SERIES_LABELS: Dict[str, Dict[str, str]] = {
         "complete_step_avg_ms": "Ukupan korak (prosek)",
         "complete_step_p95_ms": "Ukupan korak (p95)",
         "broad_phase_avg_ms": "Široka faza (prosek)",
+        "broad_phase_grid_avg_ms": "Široka faza (mreža)",
         "narrow_phase_avg_ms": "Uska faza (prosek)",
         "resolve_collisions_avg_ms": "Rešavanje kolizija (prosek)",
         "cleanup_avg_ms": "Čišćenje / završna faza",
+        "cleanup_non_grid_avg_ms": "Čišćenje (bez mreže)",
         "physics_avg_ms": "Fizika ukupno (prosek)",
         "step_hook_avg_ms": "Korisnički korak (step hook)",
         "retirement_avg_ms": "Uklanjanje objekata",
@@ -324,17 +328,44 @@ def fit_power_law_slope(counts: Sequence[float], values: Sequence[float], tail_f
     return numer / denom
 
 
-def _default_series(include_cleanup: bool, include_physics: bool, lang: str = "en") -> List[Tuple[str, str, str]]:
+def apply_deferred_grid_merge(
+    rows: List[Dict[str, Union[str, float]]],
+) -> List[Dict[str, Union[str, float]]]:
+    """Combine broad_phase + deferred_grid_flush into a single total grid-update series
+    and subtract deferred_grid_flush from cleanup to avoid nested double-counting."""
+    merged: List[Dict[str, Union[str, float]]] = []
+    for row in rows:
+        out = dict(row)
+        bp = float(row.get("broad_phase_avg_ms", 0.0))
+        dgf = float(row.get("deferred_grid_flush_avg_ms", 0.0))
+        cln = float(row.get("cleanup_avg_ms", 0.0))
+        out["broad_phase_grid_avg_ms"] = bp + dgf
+        bp_sd = float(row.get("broad_phase_run_stdev_ms", 0.0))
+        dgf_sd = float(row.get("deferred_grid_flush_run_stdev_ms", 0.0))
+        out["broad_phase_grid_run_stdev_ms"] = math.hypot(bp_sd, dgf_sd)
+        out["cleanup_non_grid_avg_ms"] = max(0.0, cln - dgf)
+        merged.append(out)
+    return merged
+
+
+def _default_series(
+    include_cleanup: bool,
+    include_physics: bool,
+    lang: str = "en",
+    merge_deferred_grid: bool = False,
+) -> List[Tuple[str, str, str]]:
     labels = SERIES_LABELS.get(lang, SERIES_LABELS["en"])
+    bp_key = "broad_phase_grid_avg_ms" if merge_deferred_grid else "broad_phase_avg_ms"
+    cln_key = "cleanup_non_grid_avg_ms" if merge_deferred_grid else "cleanup_avg_ms"
     series = [
         ("complete_step_avg_ms", labels["complete_step_avg_ms"], "o"),
         ("complete_step_p95_ms", labels["complete_step_p95_ms"], "s"),
-        ("broad_phase_avg_ms", labels["broad_phase_avg_ms"], "^"),
+        (bp_key, labels[bp_key], "^"),
         ("narrow_phase_avg_ms", labels["narrow_phase_avg_ms"], "D"),
         ("resolve_collisions_avg_ms", labels["resolve_collisions_avg_ms"], "v"),
     ]
     if include_cleanup:
-        series.append(("cleanup_avg_ms", labels["cleanup_avg_ms"], "P"))
+        series.append((cln_key, labels[cln_key], "P"))
     if include_physics:
         series.append(("physics_avg_ms", labels["physics_avg_ms"], "X"))
     return series
@@ -462,11 +493,12 @@ def _plot_series_panel(
                 continue
         if vals:
             max_plotted = max(max_plotted, max(vals))
+        spread = None
         if key.endswith("_avg_ms"):
-            raw_spread = [float(row[key.replace("_avg_ms", "_run_stdev_ms")]) for row in rows]
-            spread = transform(raw_spread)
-        else:
-            spread = None
+            spread_key = key.replace("_avg_ms", "_run_stdev_ms")
+            if spread_key in rows[0]:
+                raw_spread = [float(row[spread_key]) for row in rows]
+                spread = transform(raw_spread)
         prefix = f"{primary_label} " if compare_rows else ""
         slope_suffix = ""
         if fit_slope and log_x and log_y and not normalized and key == ref_target:
@@ -676,6 +708,7 @@ def main() -> int:
     parser.add_argument("--fit-slope", action="store_true", help="Annotate empirical log-log power-law slope alpha.")
     parser.add_argument("--budget-lines", action="store_true", help="Overlay 120 Hz (8.33 ms) and 60 Hz (16.67 ms) lines when relevant.")
     parser.add_argument("--hide-zero-series", action="store_true", help="Hide inactive subscopes (<0.002 ms) on the linear panel.")
+    parser.add_argument("--merge-deferred-grid", action="store_true", help="Merge broad_phase and deferred_grid_flush into one grid-update series and subtract it from cleanup.")
     parser.add_argument("--log-x", action="store_true", help="Use logarithmic X axis for counts.")
     parser.add_argument("--log-y", action="store_true", help="Use logarithmic Y axis for durations.")
     parser.add_argument("--log-log", action="store_true", help="Use logarithmic X and Y axes.")
@@ -710,15 +743,22 @@ def main() -> int:
     if compare_rows is not None:
         compare_rows.sort(key=lambda item: float(item.get(x_axis_key, item["requested_count"])))
 
+    merge_grid = args.merge_deferred_grid and "deferred_grid_flush_avg_ms" in rows[0]
+    if merge_grid:
+        rows = apply_deferred_grid_merge(rows)
+        if compare_rows is not None:
+            compare_rows = apply_deferred_grid_merge(compare_rows)
+
     counts = [float(row.get(x_axis_key, row["requested_count"])) for row in rows]
-    series = _default_series(args.include_cleanup, args.include_physics, lang=args.lang)
+    series = _default_series(args.include_cleanup, args.include_physics, lang=args.lang, merge_deferred_grid=merge_grid)
     if args.include_cleanup and "step_hook_avg_ms" in rows[0]:
         labels = SERIES_LABELS.get(args.lang, SERIES_LABELS["en"])
         series.extend([
             ("step_hook_avg_ms", labels["step_hook_avg_ms"], "<"),
             ("retirement_avg_ms", labels["retirement_avg_ms"], ">"),
-            ("deferred_grid_flush_avg_ms", labels["deferred_grid_flush_avg_ms"], "h"),
         ])
+        if not merge_grid:
+            series.append(("deferred_grid_flush_avg_ms", labels["deferred_grid_flush_avg_ms"], "h"))
     references = parse_references(args.references)
     log_x = args.log_x or args.log_log
     log_y = args.log_y or args.log_log

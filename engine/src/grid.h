@@ -52,6 +52,10 @@ class Grid
 
     const GridCellRange &getActiveCellBounds() const noexcept
     {
+        if (activeCellBoundsDirty)
+        {
+            recomputeActiveCellBounds();
+        }
         return activeCellBounds;
     }
 
@@ -59,11 +63,11 @@ class Grid
     void flushPendingWork();
     static bool rangeFitsCellCache(const GridCellRange &range) noexcept;
     void expandActiveCellBounds(const GridCellRange &range) noexcept;
-    void recomputeActiveCellBounds() noexcept;
+    void recomputeActiveCellBounds() const noexcept;
     void addColliderInternal(Collider *collider, bool geometryPrepared = false);
     void syncColliderInternal(Collider *collider, bool geometryPrepared);
     void removeColliderInternal(Collider *collider);
-    void removeGridCellIfEmpty(GridCell *cell);
+    bool removeGridCellIfEmpty(GridCell *cell);
     void dequeuePairFromNarrowPhase(const ColliderPair *pair);
     void queuePairForNarrowPhase(const ColliderPair *pair);
     void queuePairsForCollider(Collider *collider);
@@ -76,7 +80,7 @@ class Grid
     void recordPairDelta(Collider *colliderA, Collider *colliderB, int delta);
     void applyCollectedPairDeltas();
     void applyPairWitnessDelta(Collider *colliderA, Collider *colliderB, int delta);
-    void queueCollider(Collider *collider);
+    bool queueCollider(Collider *collider);
     PhysicsManager *owner;
     std::vector<PairDelta> pairDeltaScratch;
 
@@ -88,5 +92,6 @@ class Grid
     std::vector<GridCell *> cellsWithOperations;
     std::vector<Collider *> pendingColliderOperations;
     PairDeltaCollector activePairDeltaCollector;
-    GridCellRange activeCellBounds{};
+    mutable GridCellRange activeCellBounds{};
+    mutable bool activeCellBoundsDirty = false;
 };

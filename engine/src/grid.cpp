@@ -28,11 +28,11 @@ Grid::~Grid()
 {
 }
 
-void Grid::removeGridCellIfEmpty(GridCell *cell)
+bool Grid::removeGridCellIfEmpty(GridCell *cell)
 {
     if (!cell->getAABB()->getIsEmpty())
     {
-        return;
+        return false;
     }
 
     if (freeCellNodes.size() < MAX_RECYCLED_GRID_CELLS)
@@ -41,11 +41,12 @@ void Grid::removeGridCellIfEmpty(GridCell *cell)
         if (!node.empty())
         {
             freeCellNodes.push_back(std::move(node));
+            return true;
         }
-        return;
+        return false;
     }
 
-    cells.erase(cell->getCellKey());
+    return cells.erase(cell->getCellKey()) > 0;
 }
 
 GridCell *Grid::findCell(const GridCellKey &key)
@@ -154,13 +155,17 @@ void Grid::removeColliderInternal(Collider *collider)
 
 void Grid::expandActiveCellBounds(const GridCellRange &range) noexcept
 {
+    if (activeCellBoundsDirty)
+    {
+        return;
+    }
     activeCellBounds.minX = std::min(activeCellBounds.minX, range.minX);
     activeCellBounds.maxX = std::max(activeCellBounds.maxX, range.maxX);
     activeCellBounds.minY = std::min(activeCellBounds.minY, range.minY);
     activeCellBounds.maxY = std::max(activeCellBounds.maxY, range.maxY);
 }
 
-void Grid::recomputeActiveCellBounds() noexcept
+void Grid::recomputeActiveCellBounds() const noexcept
 {
     activeCellBounds = GridCellRange{};
     for (const auto &entry : cells)
@@ -171,6 +176,7 @@ void Grid::recomputeActiveCellBounds() noexcept
         activeCellBounds.minY = std::min(activeCellBounds.minY, key.y);
         activeCellBounds.maxY = std::max(activeCellBounds.maxY, key.y);
     }
+    activeCellBoundsDirty = false;
 }
 
 void Grid::dequeuePairFromNarrowPhase(const ColliderPair *pair)
@@ -465,8 +471,19 @@ void Grid::syncColliderInternal(Collider *collider, bool geometryPrepared)
     collider->cachedCellCount = 0;
     const bool canCache = rangeFitsCellCache(newRange);
 
+    const auto findOldCell = [&](const GridCellKey &key) -> GridCell * {
+        for (uint8_t i = 0; i < oldCachedCount; ++i)
+        {
+            if (oldCached[i]->getCellKey() == key)
+            {
+                return oldCached[i];
+            }
+        }
+        return findCell(key);
+    };
+
     const auto remove = [&](const GridCellKey &key) {
-        if (auto *cell = findCell(key))
+        if (auto *cell = findOldCell(key))
         {
             cell->queueRemoveCollider(collider);
             queueForEmptyCheck(cell);
@@ -505,7 +522,7 @@ void Grid::syncColliderInternal(Collider *collider, bool geometryPrepared)
         oldRange.forEachDifference(newRange, remove);
         newRange.forEachDifference(oldRange, add);
         newRange.forEachSame(oldRange, [&](const GridCellKey &key) {
-            if (auto *cell = findCell(key))
+            if (auto *cell = findOldCell(key))
             {
                 cell->queueSyncCollider(collider);
                 queueForOperations(cell);
@@ -544,7 +561,7 @@ void Grid::flushPendingWork()
             collider->prepareSyncFromCache();
         }
     };
-    if (pendingColliderOperations.size() < GRID_UPDATE_PARALLEL_THRESHOLD)
+    if (pendingColliderOperations.size() < GRID_GEOMETRY_PREP_PARALLEL_THRESHOLD)
     {
         for (auto *collider : pendingColliderOperations)
             prepareColliderGeometry(collider);
@@ -582,17 +599,18 @@ void Grid::flushPendingWork()
     }
     cellsWithOperations.clear();
     applyCollectedPairDeltas();
-    bool erasedBoundaryCell = false;
     for (auto *cell : potentiallyEmptyCells)
     {
         const GridCellKey key = cell->getCellKey();
         const bool wasBoundary =
-            key.x <= activeCellBounds.minX || key.x >= activeCellBounds.maxX ||
-            key.y <= activeCellBounds.minY || key.y >= activeCellBounds.maxY;
+            !activeCellBoundsDirty &&
+            (key.x <= activeCellBounds.minX || key.x >= activeCellBounds.maxX ||
+             key.y <= activeCellBounds.minY || key.y >= activeCellBounds.maxY);
         cell->clearQueuedForEmpty();
-        removeGridCellIfEmpty(cell);
-        if (wasBoundary && findCell(key) == nullptr)
-            erasedBoundaryCell = true;
+        if (removeGridCellIfEmpty(cell) && wasBoundary)
+        {
+            activeCellBoundsDirty = true;
+        }
     }
     potentiallyEmptyCells.clear();
     for (auto *collider : pendingColliderOperations)
@@ -600,7 +618,7 @@ void Grid::flushPendingWork()
         if (collider->desiredInGrid)
         {
             queuePairsForCollider(collider);
-            if (!erasedBoundaryCell && collider->getIsRegisteredInGrid())
+            if (!activeCellBoundsDirty && collider->getIsRegisteredInGrid())
                 expandActiveCellBounds(collider->getGridCellRange());
         }
         if (owner && (collider->dirty & Collider::Response))
@@ -609,8 +627,6 @@ void Grid::flushPendingWork()
         collider->dirty = 0;
     }
     pendingColliderOperations.clear();
-    if (erasedBoundaryCell)
-        recomputeActiveCellBounds();
 }
 
 void Grid::clearAll()
@@ -646,6 +662,7 @@ void Grid::clearAll()
         local.clear();
     }
     activeCellBounds = GridCellRange{};
+    activeCellBoundsDirty = false;
 }
 
 void Grid::queueForOperations(GridCell *cell)
@@ -675,13 +692,16 @@ void Grid::queueRemoveCollider(Collider *collider)
 
 void Grid::queueSyncCollider(Collider *collider)
 {
-    queueCollider(collider);
-    PLATFORMATOR_BENCH_ADD_COUNTER(QueuedSyncCount, 1);
+    if (queueCollider(collider))
+    {
+        PLATFORMATOR_BENCH_ADD_COUNTER(QueuedSyncCount, 1);
+    }
 }
-void Grid::queueCollider(Collider *collider)
+bool Grid::queueCollider(Collider *collider)
 {
     if (collider->gridQueueIndex != SIZE_MAX)
-        return;
+        return false;
     collider->gridQueueIndex = pendingColliderOperations.size();
     pendingColliderOperations.push_back(collider);
+    return true;
 }

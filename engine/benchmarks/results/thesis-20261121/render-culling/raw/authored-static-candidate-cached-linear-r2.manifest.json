@@ -28,14 +28,14 @@
     "step_hook": "custom step callback, when supplied; nested in complete_step"
   },
   "build": {
-    "commit": "3fbd4a760d4526fbbc01b8eea0084d6241722248",
+    "commit": "f163f3f883aa2f16198096453178f025d8b67f97",
     "compiler": "GNU 16.2.1",
     "configuration": "Release",
     "debug_tools": false,
     "dirty": true,
     "flags": " -O3 -DNDEBUG",
     "sanitizer": "none",
-    "source_sha256": "4209c77c1ee8513976426ed67811e3809f9c55b95f4f7121afdcc14a47ae8eeb",
+    "source_sha256": "3795ab7e64f00e2b64665fcca04e11d168466a581ffa309147bff4d304505497",
     "work_probes": false
   },
   "complete_capture": true,
@@ -139,7 +139,7 @@
   },
   "resource_observation": {
     "path": "/home/user/Projects/Platformator/engine/benchmarks/results/thesis-20261121/render-culling/resources/authored-static-candidate-cached-linear.resources.json",
-    "sha256": "7d6e5dbac2538a8d41f55d0a6ba275fa9146e1becbae4fca8e50088cff6ff636"
+    "sha256": "bc1678b04eeda939c35f39d989bb3c79591fe1639056e05715a467d90d369b44"
   },
   "sample_capacity": 4096,
   "scenario": "linear_render_culling",
@@ -152,7 +152,7 @@
   "validation_mode": "boundary-only",
   "validation_proof": {
     "path": "/home/user/Projects/Platformator/engine/benchmarks/results/thesis-20261121/render-culling/proofs/authored-static-candidate-cached-linear.evidence.json",
-    "sha256": "cb8cb527a8968316325b5f0c6911d63884a2a0a59435975e9cf78da0ef20b134"
+    "sha256": "36295ddc271dd6a74ed3c3f98f6e000dfd2ef9682dcac2c6de736ae1358b6097"
   },
   "visible_selection_clock": {
     "boundary": "SDLWindow::prepareVisibleSelection CPU elapsed time excluding draw ordering, submission, and presentation",

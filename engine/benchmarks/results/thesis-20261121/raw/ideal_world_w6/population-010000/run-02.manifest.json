@@ -15,14 +15,14 @@
     "step_hook": "custom step callback, when supplied; nested in complete_step"
   },
   "build": {
-    "commit": "3fbd4a760d4526fbbc01b8eea0084d6241722248",
+    "commit": "f163f3f883aa2f16198096453178f025d8b67f97",
     "compiler": "GNU 16.2.1",
     "configuration": "Release",
     "debug_tools": false,
     "dirty": true,
     "flags": " -O3 -DNDEBUG",
     "sanitizer": "none",
-    "source_sha256": "4209c77c1ee8513976426ed67811e3809f9c55b95f4f7121afdcc14a47ae8eeb",
+    "source_sha256": "3795ab7e64f00e2b64665fcca04e11d168466a581ffa309147bff4d304505497",
     "work_probes": false
   },
   "complete_capture": true,
@@ -75,7 +75,7 @@
     "objects": 12000,
     "population_model": "resolved scenario count",
     "populations_valid": true,
-    "support_total": 6725,
+    "support_total": 6736,
     "supports_valid": true
   },
   "render_samples": 0,

@@ -28,14 +28,14 @@
     "step_hook": "custom step callback, when supplied; nested in complete_step"
   },
   "build": {
-    "commit": "3fbd4a760d4526fbbc01b8eea0084d6241722248",
+    "commit": "f163f3f883aa2f16198096453178f025d8b67f97",
     "compiler": "GNU 16.2.1",
     "configuration": "Release",
     "debug_tools": false,
     "dirty": true,
     "flags": " -O3 -DNDEBUG",
     "sanitizer": "none",
-    "source_sha256": "4209c77c1ee8513976426ed67811e3809f9c55b95f4f7121afdcc14a47ae8eeb",
+    "source_sha256": "3795ab7e64f00e2b64665fcca04e11d168466a581ffa309147bff4d304505497",
     "work_probes": false
   },
   "complete_capture": true,
@@ -139,7 +139,7 @@
   },
   "resource_observation": {
     "path": "/home/user/Projects/Platformator/engine/benchmarks/results/thesis-20261121/render-culling/resources/dense-z-edit-candidate-rebuild-w6.resources.json",
-    "sha256": "3a2ac31a449f55340bd34a9533626675ae0988d78692ab987b2500e0bfc05368"
+    "sha256": "2da77a9f061d19293df6a5e1bab37b0761cfa509ef9a3d57e852604269b5f3a7"
   },
   "sample_capacity": 4096,
   "scenario": "linear_render_culling",
@@ -152,7 +152,7 @@
   "validation_mode": "boundary-only",
   "validation_proof": {
     "path": "/home/user/Projects/Platformator/engine/benchmarks/results/thesis-20261121/render-culling/proofs/dense-z-edit-candidate-rebuild-w6.evidence.json",
-    "sha256": "fe9add671799832ffe9923005ac735f63b2b8bec21a9baf08773bcaa0bb6c5cb"
+    "sha256": "76c78f9865a0d868769a1a70859952297eb4cd799ceb0db7616e1847ce185273"
   },
   "visible_selection_clock": {
     "boundary": "SDLWindow::prepareVisibleSelection CPU elapsed time excluding draw ordering, submission, and presentation",

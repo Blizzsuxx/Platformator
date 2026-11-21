@@ -66,7 +66,9 @@ void PhysicsManager::applyMovement(double timeDelta)
     }
     auto &manager = platformator_detail::RuntimeAccess::gameManager();
     const auto publishMoved = [&](GameObject *object, bool translated, bool rotated) {
-        if (rotated)
+        const bool handledBySubtreeSync =
+            translated && object->parent == nullptr && object->position != object->worldPosition;
+        if (rotated && !handledBySubtreeSync)
         {
             manager.publishRenderGeometryChange(object);
             object->updateCollider();

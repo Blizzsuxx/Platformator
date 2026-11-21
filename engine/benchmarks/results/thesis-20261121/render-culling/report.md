@@ -14,7 +14,7 @@ Note: candidate-only `cached-linear` capture (no frozen `--baseline-probe` suppl
 
 | Arm | Slice | Selection Median/p95 (ms) | Order Prep Mean (ms) | Paired Mean/Median/p95 (ms) | Render Mean (ms) | Step Mean (ms) |
 |---|---|---:|---:|---:|---:|---:|
-| candidate-cached-linear | combined | 0.0004/0.0008 | 0.0002 | 16.6360/16.6666/16.6688 | 16.6251 | 0.0041 |
+| candidate-cached-linear | combined | 0.0006/0.0009 | 0.0004 | 16.6371/16.6664/16.6676 | 16.6227 | 0.0057 |
 
 ## Case: sparse-camera-pan
 
@@ -23,7 +23,7 @@ Note: candidate-only `cached-linear` capture (no frozen `--baseline-probe` suppl
 
 | Arm | Slice | Selection Median/p95 (ms) | Order Prep Mean (ms) | Paired Mean/Median/p95 (ms) | Render Mean (ms) | Step Mean (ms) |
 |---|---|---:|---:|---:|---:|---:|
-| candidate-cached-linear | combined | 0.0446/0.0629 | 0.0014 | 16.6385/16.6669/16.6686 | 16.6294 | 0.0043 |
+| candidate-cached-linear | combined | 0.0530/0.0813 | 0.0018 | 16.6393/16.6666/16.6683 | 16.6263 | 0.0061 |
 
 ## Case: dense-z-edit
 
@@ -31,15 +31,15 @@ Note: candidate-only `cached-linear` capture (no frozen `--baseline-probe` suppl
 
 | Arm | Slice | Selection Median/p95 (ms) | Order Prep Mean (ms) | Paired Mean/Median/p95 (ms) | Render Mean (ms) | Step Mean (ms) |
 |---|---|---:|---:|---:|---:|---:|
-| candidate-rebuild-w1 | combined | 0.0002/0.0007 | 0.3301 | 16.6361/16.6667/16.6688 | 16.6257 | 0.0044 |
-| candidate-rebuild-w1 | clean_frames | 0.0002/0.0006 | 0.0002 | 16.6039/16.6667/16.6686 | 16.5939 | 0.0041 |
-| candidate-rebuild-w1 | edit_frames | 0.0002/0.0007 | 0.6599 | 16.6682/16.6668/16.6688 | 16.6575 | 0.0047 |
-| candidate-forced-sort-w1 | combined | 0.0005/0.0009 | 0.6837 | 16.6368/16.6666/16.6690 | 16.6234 | 0.0056 |
-| candidate-forced-sort-w1 | clean_frames | 0.0005/0.0009 | 0.6813 | 16.5492/16.6665/16.6682 | 16.5368 | 0.0053 |
-| candidate-forced-sort-w1 | edit_frames | 0.0005/0.0009 | 0.6862 | 16.7244/16.6666/16.6706 | 16.7101 | 0.0060 |
-| candidate-repair-w1 | combined | 0.0004/0.0008 | 0.0050 | 16.6329/16.6667/16.6692 | 16.6212 | 0.0049 |
-| candidate-repair-w1 | clean_frames | 0.0004/0.0007 | 0.0003 | 16.5979/16.6667/16.6687 | 16.5868 | 0.0046 |
-| candidate-repair-w1 | edit_frames | 0.0004/0.0008 | 0.0098 | 16.6679/16.6668/16.6702 | 16.6557 | 0.0053 |
-| candidate-rebuild-w6 | combined | 0.0003/0.0008 | 0.3347 | 16.6359/16.6668/16.7269 | 16.6252 | 0.0047 |
-| candidate-rebuild-w6 | clean_frames | 0.0003/0.0008 | 0.0002 | 16.6043/16.6665/16.7961 | 16.5940 | 0.0044 |
-| candidate-rebuild-w6 | edit_frames | 0.0003/0.0008 | 0.6692 | 16.6675/16.6669/16.7114 | 16.6563 | 0.0050 |
+| candidate-rebuild-w1 | combined | 0.0006/0.0009 | 0.3593 | 16.6350/16.6665/16.6685 | 16.6205 | 0.0059 |
+| candidate-rebuild-w1 | clean_frames | 0.0006/0.0009 | 0.0004 | 16.6046/16.6666/16.6731 | 16.5911 | 0.0054 |
+| candidate-rebuild-w1 | edit_frames | 0.0006/0.0009 | 0.7183 | 16.6654/16.6664/16.6679 | 16.6500 | 0.0065 |
+| candidate-forced-sort-w1 | combined | 0.0006/0.0010 | 0.7094 | 16.6387/16.6664/16.6684 | 16.6225 | 0.0070 |
+| candidate-forced-sort-w1 | clean_frames | 0.0006/0.0010 | 0.7127 | 16.6058/16.6664/16.6680 | 16.5910 | 0.0062 |
+| candidate-forced-sort-w1 | edit_frames | 0.0006/0.0010 | 0.7061 | 16.6716/16.6663/16.6687 | 16.6540 | 0.0079 |
+| candidate-repair-w1 | combined | 0.0006/0.0012 | 0.0067 | 16.6430/16.6665/16.6686 | 16.6272 | 0.0067 |
+| candidate-repair-w1 | clean_frames | 0.0006/0.0012 | 0.0005 | 16.6119/16.6665/16.6680 | 16.5968 | 0.0063 |
+| candidate-repair-w1 | edit_frames | 0.0006/0.0010 | 0.0129 | 16.6742/16.6665/16.6689 | 16.6576 | 0.0071 |
+| candidate-rebuild-w6 | combined | 0.0006/0.0010 | 0.3677 | 16.6398/16.6663/16.6681 | 16.6229 | 0.0072 |
+| candidate-rebuild-w6 | clean_frames | 0.0006/0.0009 | 0.0005 | 16.6134/16.6662/16.6685 | 16.5975 | 0.0066 |
+| candidate-rebuild-w6 | edit_frames | 0.0006/0.0010 | 0.7349 | 16.6662/16.6665/16.6675 | 16.6484 | 0.0077 |

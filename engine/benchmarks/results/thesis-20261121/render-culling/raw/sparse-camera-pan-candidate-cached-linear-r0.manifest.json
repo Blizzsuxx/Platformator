@@ -28,14 +28,14 @@
     "step_hook": "custom step callback, when supplied; nested in complete_step"
   },
   "build": {
-    "commit": "3fbd4a760d4526fbbc01b8eea0084d6241722248",
+    "commit": "f163f3f883aa2f16198096453178f025d8b67f97",
     "compiler": "GNU 16.2.1",
     "configuration": "Release",
     "debug_tools": false,
     "dirty": true,
     "flags": " -O3 -DNDEBUG",
     "sanitizer": "none",
-    "source_sha256": "4209c77c1ee8513976426ed67811e3809f9c55b95f4f7121afdcc14a47ae8eeb",
+    "source_sha256": "3795ab7e64f00e2b64665fcca04e11d168466a581ffa309147bff4d304505497",
     "work_probes": false
   },
   "complete_capture": true,
@@ -139,7 +139,7 @@
   },
   "resource_observation": {
     "path": "/home/user/Projects/Platformator/engine/benchmarks/results/thesis-20261121/render-culling/resources/sparse-camera-pan-candidate-cached-linear.resources.json",
-    "sha256": "21a6299d9c9cbbf47dc187cc42ee6c3bf9b7354c26a88e13775fcffb18ba2979"
+    "sha256": "698b9eecd495e12e7f5bd107954f257b68cb5f14529f1daee7b2e048280b37a6"
   },
   "sample_capacity": 4096,
   "scenario": "linear_render_culling",
@@ -152,7 +152,7 @@
   "validation_mode": "boundary-only",
   "validation_proof": {
     "path": "/home/user/Projects/Platformator/engine/benchmarks/results/thesis-20261121/render-culling/proofs/sparse-camera-pan-candidate-cached-linear.evidence.json",
-    "sha256": "a10176e0a206a6fc57fd032e4b828f531f9cdc6214cf0b84d51a08e90df39817"
+    "sha256": "5068b8cd25958d63f80dc7e39feba04397c66db5c6386245bc556bc838d4f1c0"
   },
   "visible_selection_clock": {
     "boundary": "SDLWindow::prepareVisibleSelection CPU elapsed time excluding draw ordering, submission, and presentation",

@@ -1,0 +1,4717 @@
+{
+  "asset_root": "/home/user/Projects/Platformator/build/benchmark/assets",
+  "boundaries": {
+    "broad_phase": "grid/cell/filter/witness reconciliation; nested in physics",
+    "cleanup": "transient audio and mutation/scene commit including destruction/free; nested in complete_step",
+    "complete_step": "starts/hook/fixed/synchronization/physics/events/update/animation/late/commit/destructors/transient cleanup; excludes event pumping, render and recorder storage",
+    "deferred_grid_flush": "grid/cell reconciliation during mutation commit; nested in cleanup",
+    "legacy_frame": "historical partial metric; absent from schema v2; not equivalent to complete_step",
+    "narrow_phase": "changed geometry, serial support reduction and subscribed events; nested in physics",
+    "physics": "transform synchronization, broad/narrow phase, support reduction, forces, solve, movement and cache publication; nested in complete_step",
+    "render": "independent render calls after cleanup; not nested in complete_step",
+    "resolve_collisions": "contact solving and sleep reduction; nested in physics",
+    "retirement": "retirement drain including destroy callbacks, registry removal and frees; nested in cleanup",
+    "scene_transition": "selected request preparation through replacement/clear publication; nested in cleanup",
+    "step_hook": "custom step callback, when supplied; nested in complete_step"
+  },
+  "build": {
+    "commit": "3fbd4a760d4526fbbc01b8eea0084d6241722248",
+    "compiler": "GNU 16.2.1",
+    "configuration": "Release",
+    "debug_tools": false,
+    "dirty": true,
+    "flags": " -O3 -DNDEBUG",
+    "sanitizer": "none",
+    "source_sha256": "4209c77c1ee8513976426ed67811e3809f9c55b95f4f7121afdcc14a47ae8eeb",
+    "work_probes": false
+  },
+  "complete_capture": true,
+  "dependencies": {
+    "Eigen": "5.0.1",
+    "JSON": "3.12.0",
+    "SDL": "3.4.18",
+    "SDL_image": "3.4.8",
+    "SDL_mixer": "3.2.4",
+    "oneTBB": "2022.3.0"
+  },
+  "dt": 0.008333333333333333,
+  "initial_state": {
+    "bodies": 240,
+    "colliders": 240,
+    "finite": true,
+    "maximum_supports": 0,
+    "objects": 240,
+    "population_model": "resolved scenario count",
+    "populations_valid": true,
+    "support_total": 0,
+    "supports_valid": true
+  },
+  "linear_render_culling": {
+    "disabled": false,
+    "effective_enabled": false,
+    "effective_policy": "headless-no-rendering",
+    "headless": true,
+    "observed_frame_fallbacks": 0,
+    "observed_mapping_fallbacks": 0,
+    "observed_numeric_fallbacks": 0,
+    "requested_enabled": true,
+    "requested_mode": "cached-linear",
+    "requested_selector": "cached-linear",
+    "resolved_startup_strategy": "headless-no-rendering"
+  },
+  "machine": {
+    "architecture": "x86_64",
+    "cpu": "AMD Ryzen 5 7535HS with Radeon Graphics",
+    "kernel": "6.12.112-1-MANJARO",
+    "logical_cpus": 12,
+    "os": "Linux"
+  },
+  "measured_steps": 30,
+  "physical_invariants": {
+    "bodies": 240,
+    "body_snapshots": [
+      {
+        "angular_velocity": 0.0,
+        "id": 0,
+        "name": "Chamber Floor 00",
+        "position": [
+          -900.0,
+          -438.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 3,
+        "name": "Chamber Ceiling 00",
+        "position": [
+          -900.0,
+          -762.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 6,
+        "name": "Chamber Left 00",
+        "position": [
+          -1062.0,
+          -600.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 9,
+        "name": "Chamber Right 00",
+        "position": [
+          -738.0,
+          -600.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": -1.399999976158142,
+        "id": 12,
+        "name": "Ideal Box 00",
+        "position": [
+          -1017.50146484375,
+          -657.533203125
+        ],
+        "rotation": -0.6999996304512024,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -48.0,
+          49.05000686645508
+        ]
+      },
+      {
+        "angular_velocity": -0.6685276031494141,
+        "id": 15,
+        "name": "Ideal Circle 01",
+        "position": [
+          -933.4345703125,
+          -665.6297607421875
+        ],
+        "rotation": 0.21472060680389404,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -0.22590065002441406,
+          30.406333923339844
+        ]
+      },
+      {
+        "angular_velocity": 1.4779114723205566,
+        "id": 18,
+        "name": "Ideal Box 02",
+        "position": [
+          -907.06640625,
+          -661.4365844726562
+        ],
+        "rotation": -0.02331317961215973,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          8.225900650024414,
+          37.69364547729492
+        ]
+      },
+      {
+        "angular_velocity": -0.4216676950454712,
+        "id": 21,
+        "name": "Ideal Circle 03",
+        "position": [
+          -843.576904296875,
+          -648.6914672851562
+        ],
+        "rotation": 0.24566635489463806,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -6.381250381469727,
+          66.25830841064453
+        ]
+      },
+      {
+        "angular_velocity": -1.6981697082519531,
+        "id": 24,
+        "name": "Ideal Box 04",
+        "position": [
+          -817.923583984375,
+          -662.374755859375
+        ],
+        "rotation": -0.6996337175369263,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          10.381250381469727,
+          33.841678619384766
+        ]
+      },
+      {
+        "angular_velocity": -0.19333183765411377,
+        "id": 27,
+        "name": "Ideal Circle 05",
+        "position": [
+          -983.654052734375,
+          -603.3485717773438
+        ],
+        "rotation": 0.2509998679161072,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -10.363658905029297,
+          64.28052520751953
+        ]
+      },
+      {
+        "angular_velocity": -0.9510803818702698,
+        "id": 30,
+        "name": "Ideal Box 06",
+        "position": [
+          -958.344970703125,
+          -609.7177734375
+        ],
+        "rotation": -0.3526619076728821,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          2.363658905029297,
+          47.81950378417969
+        ]
+      },
+      {
+        "angular_velocity": -0.9021074771881104,
+        "id": 33,
+        "name": "Ideal Circle 07",
+        "position": [
+          -890.3662109375,
+          -615.7083740234375
+        ],
+        "rotation": 0.062771275639534,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -9.371899604797363,
+          37.892662048339844
+        ]
+      },
+      {
+        "angular_velocity": 0.9511966705322266,
+        "id": 36,
+        "name": "Ideal Box 08",
+        "position": [
+          -860.13427734375,
+          -619.3578491210938
+        ],
+        "rotation": -0.07301410287618637,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          13.371899604797363,
+          30.207319259643555
+        ]
+      },
+      {
+        "angular_velocity": 0.8999999761581421,
+        "id": 39,
+        "name": "Ideal Circle 09",
+        "position": [
+          -791.500732421875,
+          -606.5330810546875
+        ],
+        "rotation": 0.44999969005584717,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          36.0,
+          57.050018310546875
+        ]
+      },
+      {
+        "angular_velocity": -0.699999988079071,
+        "id": 42,
+        "name": "Ideal Box 10",
+        "position": [
+          -1006.000244140625,
+          -566.5330810546875
+        ],
+        "rotation": -0.3499998152256012,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -28.0,
+          43.04999923706055
+        ]
+      },
+      {
+        "angular_velocity": -0.10354506969451904,
+        "id": 45,
+        "name": "Ideal Circle 11",
+        "position": [
+          -935.2392578125,
+          -553.6788330078125
+        ],
+        "rotation": 0.23908434808254242,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -5.307554244995117,
+          70.22820281982422
+        ]
+      },
+      {
+        "angular_velocity": -1.8784806728363037,
+        "id": 48,
+        "name": "Ideal Box 12",
+        "position": [
+          -908.76123046875,
+          -567.3875122070312
+        ],
+        "rotation": -0.7752744555473328,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          9.307554244995117,
+          41.87178421020508
+        ]
+      },
+      {
+        "angular_velocity": -0.5852434635162354,
+        "id": 51,
+        "name": "Ideal Circle 13",
+        "position": [
+          -845.2138671875,
+          -573.602294921875
+        ],
+        "rotation": 0.26147547364234924,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -8.142796516418457,
+          30.359107971191406
+        ]
+      },
+      {
+        "angular_velocity": 1.3966991901397705,
+        "id": 54,
+        "name": "Ideal Box 14",
+        "position": [
+          -819.285888671875,
+          -569.4640502929688
+        ],
+        "rotation": -0.10032996535301208,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.14279627799987793,
+          37.740875244140625
+        ]
+      },
+      {
+        "angular_velocity": -0.5276480913162231,
+        "id": 57,
+        "name": "Ideal Circle 15",
+        "position": [
+          -982.5997314453125,
+          -509.939453125
+        ],
+        "rotation": 0.19308802485466003,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -8.401458740234375,
+          67.42449188232422
+        ]
+      },
+      {
+        "angular_velocity": -1.6875958442687988,
+        "id": 60,
+        "name": "Ideal Box 16",
+        "position": [
+          -954.9007568359375,
+          -525.1267700195312
+        ],
+        "rotation": -0.7718989253044128,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          12.401458740234375,
+          32.67549514770508
+        ]
+      },
+      {
+        "angular_velocity": -0.24291153252124786,
+        "id": 63,
+        "name": "Ideal Circle 17",
+        "position": [
+          -887.779541015625,
+          -511.3839111328125
+        ],
+        "rotation": 0.22141754627227783,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -0.3974132239818573,
+          63.79637145996094
+        ]
+      },
+      {
+        "angular_velocity": -0.8710334300994873,
+        "id": 66,
+        "name": "Ideal Box 18",
+        "position": [
+          -862.219970703125,
+          -517.682373046875
+        ],
+        "rotation": -0.3842068314552307,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          8.397414207458496,
+          48.303653717041016
+        ]
+      },
+      {
+        "angular_velocity": 1.100000023841858,
+        "id": 69,
+        "name": "Ideal Circle 19",
+        "position": [
+          -786.001708984375,
+          -525.5331420898438
+        ],
+        "rotation": 0.5499998331069946,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          44.0,
+          31.049985885620117
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 72,
+        "name": "Chamber Floor 01",
+        "position": [
+          -300.0,
+          -438.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 75,
+        "name": "Chamber Ceiling 01",
+        "position": [
+          -300.0,
+          -762.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 78,
+        "name": "Chamber Left 01",
+        "position": [
+          -462.0,
+          -600.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 81,
+        "name": "Chamber Right 01",
+        "position": [
+          -138.0,
+          -600.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": -1.2000000476837158,
+        "id": 84,
+        "name": "Ideal Box 20",
+        "position": [
+          -410.5006103515625,
+          -663.5331420898438
+        ],
+        "rotation": -0.599999725818634,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -40.0,
+          37.04999542236328
+        ]
+      },
+      {
+        "angular_velocity": -0.26486217975616455,
+        "id": 87,
+        "name": "Ideal Circle 21",
+        "position": [
+          -337.70068359375,
+          -652.3882446289062
+        ],
+        "rotation": 0.32900896668434143,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -9.020865440368652,
+          59.222877502441406
+        ]
+      },
+      {
+        "angular_velocity": -1.0182623863220215,
+        "id": 90,
+        "name": "Ideal Box 22",
+        "position": [
+          -313.79833984375,
+          -658.677978515625
+        ],
+        "rotation": -0.32788410782814026,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          1.0208656787872314,
+          40.877140045166016
+        ]
+      },
+      {
+        "angular_velocity": -0.1052483320236206,
+        "id": 93,
+        "name": "Ideal Circle 23",
+        "position": [
+          -243.71331787109375,
+          -645.2152709960938
+        ],
+        "rotation": 0.22842542827129364,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -5.377606391906738,
+          70.77609252929688
+        ]
+      },
+      {
+        "angular_velocity": -1.9615650177001953,
+        "id": 96,
+        "name": "Ideal Box 24",
+        "position": [
+          -216.28680419921875,
+          -659.8509521484375
+        ],
+        "rotation": -0.8684698343276978,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          9.377606391906738,
+          41.323890686035156
+        ]
+      },
+      {
+        "angular_velocity": -0.6685277223587036,
+        "id": 99,
+        "name": "Ideal Circle 25",
+        "position": [
+          -379.4345703125,
+          -619.6297607421875
+        ],
+        "rotation": 0.21472060680389404,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -0.22590065002441406,
+          30.406333923339844
+        ]
+      },
+      {
+        "angular_velocity": 1.4779117107391357,
+        "id": 102,
+        "name": "Ideal Box 26",
+        "position": [
+          -353.06640625,
+          -615.4365844726562
+        ],
+        "rotation": -0.023313166573643684,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          8.225900650024414,
+          37.69364547729492
+        ]
+      },
+      {
+        "angular_velocity": -0.42179441452026367,
+        "id": 105,
+        "name": "Ideal Circle 27",
+        "position": [
+          -289.5802001953125,
+          -602.6900024414062
+        ],
+        "rotation": 0.24564129114151,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -6.40302848815918,
+          66.26568603515625
+        ]
+      },
+      {
+        "angular_velocity": -1.698194980621338,
+        "id": 108,
+        "name": "Ideal Box 28",
+        "position": [
+          -263.9194641113281,
+          -616.376220703125
+        ],
+        "rotation": -0.6996391415596008,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          10.40302848815918,
+          33.83429718017578
+        ]
+      },
+      {
+        "angular_velocity": 0.800000011920929,
+        "id": 111,
+        "name": "Ideal Circle 29",
+        "position": [
+          -194.50018310546875,
+          -603.5331420898438
+        ],
+        "rotation": 0.3999997675418854,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          24.0,
+          63.05002212524414
+        ]
+      },
+      {
+        "angular_velocity": -0.6000000238418579,
+        "id": 114,
+        "name": "Ideal Box 30",
+        "position": [
+          -409.499755859375,
+          -563.533203125
+        ],
+        "rotation": -0.299999862909317,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -32.0,
+          49.05000686645508
+        ]
+      },
+      {
+        "angular_velocity": -0.9018023014068604,
+        "id": 117,
+        "name": "Ideal Circle 31",
+        "position": [
+          -336.3621826171875,
+          -569.70947265625
+        ],
+        "rotation": 0.06285282224416733,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -9.3550386428833,
+          37.88888168334961
+        ]
+      },
+      {
+        "angular_velocity": 0.9504191875457764,
+        "id": 120,
+        "name": "Ideal Box 32",
+        "position": [
+          -306.1383056640625,
+          -573.3567504882812
+        ],
+        "rotation": -0.07322157919406891,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          13.3550386428833,
+          30.21109962463379
+        ]
+      },
+      {
+        "angular_velocity": -0.3743860721588135,
+        "id": 123,
+        "name": "Ideal Circle 33",
+        "position": [
+          -242.18296813964844,
+          -560.2644653320312
+        ],
+        "rotation": 0.2907015085220337,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -1.464268684387207,
+          59.199153900146484
+        ]
+      },
+      {
+        "angular_velocity": -0.8767019510269165,
+        "id": 126,
+        "name": "Ideal Box 34",
+        "position": [
+          -217.3170928955078,
+          -566.8017578125
+        ],
+        "rotation": -0.3720878064632416,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          9.464264869689941,
+          40.90085983276367
+        ]
+      },
+      {
+        "angular_velocity": -0.1036224365234375,
+        "id": 129,
+        "name": "Ideal Circle 35",
+        "position": [
+          -381.24310302734375,
+          -507.677490234375
+        ],
+        "rotation": 0.23906421661376953,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -5.326696395874023,
+          70.23341369628906
+        ]
+      },
+      {
+        "angular_velocity": -1.878596544265747,
+        "id": 132,
+        "name": "Ideal Box 36",
+        "position": [
+          -354.75738525390625,
+          -521.3888549804688
+        ],
+        "rotation": -0.7753044366836548,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          9.326700210571289,
+          41.866573333740234
+        ]
+      },
+      {
+        "angular_velocity": -0.5852434635162354,
+        "id": 135,
+        "name": "Ideal Circle 37",
+        "position": [
+          -291.2138671875,
+          -527.602294921875
+        ],
+        "rotation": 0.26147547364234924,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -8.142796516418457,
+          30.359107971191406
+        ]
+      },
+      {
+        "angular_velocity": 1.3966991901397705,
+        "id": 138,
+        "name": "Ideal Box 38",
+        "position": [
+          -265.2855224609375,
+          -523.4640502929688
+        ],
+        "rotation": -0.10032996535301208,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.14279627799987793,
+          37.740875244140625
+        ]
+      },
+      {
+        "angular_velocity": 1.2999999523162842,
+        "id": 141,
+        "name": "Ideal Circle 39",
+        "position": [
+          -183.49993896484375,
+          -512.5330810546875
+        ],
+        "rotation": 0.6499996781349182,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          52.0,
+          57.050018310546875
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 144,
+        "name": "Chamber Floor 02",
+        "position": [
+          300.0,
+          -438.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 147,
+        "name": "Chamber Ceiling 02",
+        "position": [
+          300.0,
+          -762.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 150,
+        "name": "Chamber Left 02",
+        "position": [
+          138.0,
+          -600.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 153,
+        "name": "Chamber Right 02",
+        "position": [
+          462.0,
+          -600.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": -1.399999976158142,
+        "id": 156,
+        "name": "Ideal Box 40",
+        "position": [
+          184.0003662109375,
+          -660.5330810546875
+        ],
+        "rotation": -0.6999996304512024,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -48.0,
+          43.04999923706055
+        ]
+      },
+      {
+        "angular_velocity": -0.24291448295116425,
+        "id": 159,
+        "name": "Ideal Circle 41",
+        "position": [
+          266.2197570800781,
+          -649.3839111328125
+        ],
+        "rotation": 0.22141683101654053,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -0.39774826169013977,
+          63.79642868041992
+        ]
+      },
+      {
+        "angular_velocity": -0.8710289597511292,
+        "id": 162,
+        "name": "Ideal Box 42",
+        "position": [
+          291.779296875,
+          -655.6824340820312
+        ],
+        "rotation": -0.38420554995536804,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          8.397747993469238,
+          48.30359649658203
+        ]
+      },
+      {
+        "angular_velocity": -0.7807040214538574,
+        "id": 165,
+        "name": "Ideal Circle 43",
+        "position": [
+          356.5229797363281,
+          -662.285888671875
+        ],
+        "rotation": 0.12684164941310883,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -7.007855415344238,
+          36.59349822998047
+        ]
+      },
+      {
+        "angular_velocity": 0.9021965265274048,
+        "id": 168,
+        "name": "Ideal Box 44",
+        "position": [
+          384.9765319824219,
+          -664.7803955078125
+        ],
+        "rotation": -0.12700586020946503,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          11.007855415344238,
+          31.5064754486084
+        ]
+      },
+      {
+        "angular_velocity": -0.2648082971572876,
+        "id": 171,
+        "name": "Ideal Circle 45",
+        "position": [
+          216.29901123046875,
+          -606.3883666992188
+        ],
+        "rotation": 0.32901254296302795,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -9.012022972106934,
+          59.220863342285156
+        ]
+      },
+      {
+        "angular_velocity": -1.0183064937591553,
+        "id": 174,
+        "name": "Ideal Box 46",
+        "position": [
+          240.2010498046875,
+          -612.6777954101562
+        ],
+        "rotation": -0.3278869688510895,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          1.012022614479065,
+          40.87915802001953
+        ]
+      },
+      {
+        "angular_velocity": -0.10522627830505371,
+        "id": 177,
+        "name": "Ideal Circle 47",
+        "position": [
+          310.2879638671875,
+          -599.215576171875
+        ],
+        "rotation": 0.22843219339847565,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -5.373624324798584,
+          70.77509307861328
+        ]
+      },
+      {
+        "angular_velocity": -1.9615507125854492,
+        "id": 180,
+        "name": "Ideal Box 48",
+        "position": [
+          337.712646484375,
+          -613.8505859375
+        ],
+        "rotation": -0.8684655427932739,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          9.373624801635742,
+          41.32489013671875
+        ]
+      },
+      {
+        "angular_velocity": 0.8999999761581421,
+        "id": 183,
+        "name": "Ideal Circle 49",
+        "position": [
+          409.999267578125,
+          -619.5331420898438
+        ],
+        "rotation": 0.44999969005584717,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          36.0,
+          31.049985885620117
+        ]
+      },
+      {
+        "angular_velocity": -0.699999988079071,
+        "id": 186,
+        "name": "Ideal Box 50",
+        "position": [
+          195.499755859375,
+          -569.5331420898438
+        ],
+        "rotation": -0.3499998152256012,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -28.0,
+          37.04999542236328
+        ]
+      },
+      {
+        "angular_velocity": -0.4218006134033203,
+        "id": 189,
+        "name": "Ideal Circle 51",
+        "position": [
+          264.4190673828125,
+          -556.6898803710938
+        ],
+        "rotation": 0.2456398904323578,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -6.403954982757568,
+          66.26600646972656
+        ]
+      },
+      {
+        "angular_velocity": -1.698196291923523,
+        "id": 192,
+        "name": "Ideal Box 52",
+        "position": [
+          290.0804443359375,
+          -570.3763427734375
+        ],
+        "rotation": -0.6996391415596008,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          10.403955459594727,
+          33.833988189697266
+        ]
+      },
+      {
+        "angular_velocity": -0.19333183765411377,
+        "id": 195,
+        "name": "Ideal Circle 53",
+        "position": [
+          354.345947265625,
+          -557.3485717773438
+        ],
+        "rotation": 0.2509998679161072,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -10.363659858703613,
+          64.28053283691406
+        ]
+      },
+      {
+        "angular_velocity": -0.9510793685913086,
+        "id": 198,
+        "name": "Ideal Box 54",
+        "position": [
+          379.65447998046875,
+          -563.7177734375
+        ],
+        "rotation": -0.3526618182659149,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          2.3636598587036133,
+          47.81949996948242
+        ]
+      },
+      {
+        "angular_velocity": -0.9018807411193848,
+        "id": 201,
+        "name": "Ideal Circle 55",
+        "position": [
+          217.63775634765625,
+          -523.7091674804688
+        ],
+        "rotation": 0.06283184140920639,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -9.359245300292969,
+          37.88982009887695
+        ]
+      },
+      {
+        "angular_velocity": 0.9506139755249023,
+        "id": 204,
+        "name": "Ideal Box 56",
+        "position": [
+          247.8626708984375,
+          -527.3570556640625
+        ],
+        "rotation": -0.07316949963569641,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          13.359245300292969,
+          30.210159301757812
+        ]
+      },
+      {
+        "angular_velocity": -0.3743157386779785,
+        "id": 207,
+        "name": "Ideal Circle 57",
+        "position": [
+          311.8172607421875,
+          -514.2646484375
+        ],
+        "rotation": 0.29071044921875,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -1.456662654876709,
+          59.197540283203125
+        ]
+      },
+      {
+        "angular_velocity": -0.8767958283424377,
+        "id": 210,
+        "name": "Ideal Box 58",
+        "position": [
+          336.6817626953125,
+          -520.801513671875
+        ],
+        "rotation": -0.3720994293689728,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          9.456663131713867,
+          40.9024658203125
+        ]
+      },
+      {
+        "angular_velocity": 1.100000023841858,
+        "id": 213,
+        "name": "Ideal Circle 59",
+        "position": [
+          415.5001220703125,
+          -509.53314208984375
+        ],
+        "rotation": 0.5499998331069946,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          44.0,
+          63.05002212524414
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 216,
+        "name": "Chamber Floor 03",
+        "position": [
+          900.0,
+          -438.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 219,
+        "name": "Chamber Ceiling 03",
+        "position": [
+          900.0,
+          -762.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 222,
+        "name": "Chamber Left 03",
+        "position": [
+          738.0,
+          -600.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 225,
+        "name": "Chamber Right 03",
+        "position": [
+          1062.0,
+          -600.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": -1.2000000476837158,
+        "id": 228,
+        "name": "Ideal Box 60",
+        "position": [
+          786.501220703125,
+          -657.533203125
+        ],
+        "rotation": -0.599999725818634,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -40.0,
+          49.05000686645508
+        ]
+      },
+      {
+        "angular_velocity": -0.5852434635162354,
+        "id": 231,
+        "name": "Ideal Circle 61",
+        "position": [
+          862.7861328125,
+          -665.602294921875
+        ],
+        "rotation": 0.26147547364234924,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -8.142796516418457,
+          30.359107971191406
+        ]
+      },
+      {
+        "angular_velocity": 1.3966991901397705,
+        "id": 234,
+        "name": "Ideal Box 62",
+        "position": [
+          888.714111328125,
+          -661.4640502929688
+        ],
+        "rotation": -0.10032996535301208,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.14279627799987793,
+          37.740875244140625
+        ]
+      },
+      {
+        "angular_velocity": -0.5276480913162231,
+        "id": 237,
+        "name": "Ideal Circle 63",
+        "position": [
+          955.4002685546875,
+          -647.939453125
+        ],
+        "rotation": 0.19308802485466003,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -8.401458740234375,
+          67.42449188232422
+        ]
+      },
+      {
+        "angular_velocity": -1.6875958442687988,
+        "id": 240,
+        "name": "Ideal Box 64",
+        "position": [
+          983.0992431640625,
+          -663.1267700195312
+        ],
+        "rotation": -0.7718989253044128,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          12.401458740234375,
+          32.67549514770508
+        ]
+      },
+      {
+        "angular_velocity": -0.24291153252124786,
+        "id": 243,
+        "name": "Ideal Circle 65",
+        "position": [
+          820.220458984375,
+          -603.3839111328125
+        ],
+        "rotation": 0.22141754627227783,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -0.3974132239818573,
+          63.79637145996094
+        ]
+      },
+      {
+        "angular_velocity": -0.8710334300994873,
+        "id": 246,
+        "name": "Ideal Box 66",
+        "position": [
+          845.780029296875,
+          -609.682373046875
+        ],
+        "rotation": -0.3842068314552307,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          8.397414207458496,
+          48.303653717041016
+        ]
+      },
+      {
+        "angular_velocity": -0.7803119421005249,
+        "id": 249,
+        "name": "Ideal Circle 67",
+        "position": [
+          910.5269165039062,
+          -616.286865234375
+        ],
+        "rotation": 0.1269298791885376,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -6.988277435302734,
+          36.58929443359375
+        ]
+      },
+      {
+        "angular_velocity": 0.9012248516082764,
+        "id": 252,
+        "name": "Ideal Box 68",
+        "position": [
+          938.9725952148438,
+          -618.779541015625
+        ],
+        "rotation": -0.12722443044185638,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          10.988277435302734,
+          31.510683059692383
+        ]
+      },
+      {
+        "angular_velocity": 0.800000011920929,
+        "id": 255,
+        "name": "Ideal Circle 69",
+        "position": [
+          1002.500732421875,
+          -606.5330810546875
+        ],
+        "rotation": 0.3999997675418854,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          24.0,
+          57.050018310546875
+        ]
+      },
+      {
+        "angular_velocity": -0.6000000238418579,
+        "id": 258,
+        "name": "Ideal Box 70",
+        "position": [
+          792.000244140625,
+          -566.5330810546875
+        ],
+        "rotation": -0.299999862909317,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -32.0,
+          43.04999923706055
+        ]
+      },
+      {
+        "angular_velocity": -0.10531651973724365,
+        "id": 261,
+        "name": "Ideal Circle 71",
+        "position": [
+          864.283203125,
+          -553.2144165039062
+        ],
+        "rotation": 0.22840504348278046,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -5.389602184295654,
+          70.77912139892578
+        ]
+      },
+      {
+        "angular_velocity": -1.96160089969635,
+        "id": 264,
+        "name": "Ideal Box 72",
+        "position": [
+          891.71630859375,
+          -567.851806640625
+        ],
+        "rotation": -0.8684805631637573,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          9.389602661132812,
+          41.32086181640625
+        ]
+      },
+      {
+        "angular_velocity": -0.6685276031494141,
+        "id": 267,
+        "name": "Ideal Circle 73",
+        "position": [
+          958.5654296875,
+          -573.6297607421875
+        ],
+        "rotation": 0.21472060680389404,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -0.22590065002441406,
+          30.406333923339844
+        ]
+      },
+      {
+        "angular_velocity": 1.4779114723205566,
+        "id": 270,
+        "name": "Ideal Box 74",
+        "position": [
+          984.93359375,
+          -569.4365844726562
+        ],
+        "rotation": -0.02331317961215973,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          8.225900650024414,
+          37.69364547729492
+        ]
+      },
+      {
+        "angular_velocity": -0.4216676950454712,
+        "id": 273,
+        "name": "Ideal Circle 75",
+        "position": [
+          818.423095703125,
+          -510.6914367675781
+        ],
+        "rotation": 0.24566635489463806,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -6.381250381469727,
+          66.25830841064453
+        ]
+      },
+      {
+        "angular_velocity": -1.6981697082519531,
+        "id": 276,
+        "name": "Ideal Box 76",
+        "position": [
+          844.076416015625,
+          -524.374755859375
+        ],
+        "rotation": -0.6996337175369263,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          10.381250381469727,
+          33.841678619384766
+        ]
+      },
+      {
+        "angular_velocity": -0.19333183765411377,
+        "id": 279,
+        "name": "Ideal Circle 77",
+        "position": [
+          908.345947265625,
+          -511.3485412597656
+        ],
+        "rotation": 0.2509998679161072,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -10.363658905029297,
+          64.28052520751953
+        ]
+      },
+      {
+        "angular_velocity": -0.9510803818702698,
+        "id": 282,
+        "name": "Ideal Box 78",
+        "position": [
+          933.655029296875,
+          -517.7177734375
+        ],
+        "rotation": -0.3526619076728821,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          2.363658905029297,
+          47.81950378417969
+        ]
+      },
+      {
+        "angular_velocity": 1.2999999523162842,
+        "id": 285,
+        "name": "Ideal Circle 79",
+        "position": [
+          1018.0009765625,
+          -525.5331420898438
+        ],
+        "rotation": 0.6499996781349182,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          52.0,
+          31.049985885620117
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 288,
+        "name": "Chamber Floor 04",
+        "position": [
+          -900.0,
+          162.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 291,
+        "name": "Chamber Ceiling 04",
+        "position": [
+          -900.0,
+          -162.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 294,
+        "name": "Chamber Left 04",
+        "position": [
+          -1062.0,
+          0.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 297,
+        "name": "Chamber Right 04",
+        "position": [
+          -738.0,
+          0.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": -1.399999976158142,
+        "id": 300,
+        "name": "Ideal Box 80",
+        "position": [
+          -1014.50146484375,
+          -63.533111572265625
+        ],
+        "rotation": -0.6999996304512024,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -48.0,
+          37.04999542236328
+        ]
+      },
+      {
+        "angular_velocity": -0.37431538105010986,
+        "id": 303,
+        "name": "Ideal Circle 81",
+        "position": [
+          -934.1827392578125,
+          -52.264686584472656
+        ],
+        "rotation": 0.29071044921875,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -1.456691026687622,
+          59.197547912597656
+        ]
+      },
+      {
+        "angular_velocity": -0.8767948746681213,
+        "id": 306,
+        "name": "Ideal Box 82",
+        "position": [
+          -909.3182373046875,
+          -58.80155944824219
+        ],
+        "rotation": -0.3720994293689728,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          9.456686973571777,
+          40.9024658203125
+        ]
+      },
+      {
+        "angular_velocity": -0.10351598262786865,
+        "id": 309,
+        "name": "Ideal Circle 83",
+        "position": [
+          -843.2392578125,
+          -45.678749084472656
+        ],
+        "rotation": 0.2390919327735901,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -5.307314395904541,
+          70.22817993164062
+        ]
+      },
+      {
+        "angular_velocity": -1.8785152435302734,
+        "id": 312,
+        "name": "Ideal Box 84",
+        "position": [
+          -816.76123046875,
+          -59.38750457763672
+        ],
+        "rotation": -0.7752826809883118,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          9.307313919067383,
+          41.871803283691406
+        ]
+      },
+      {
+        "angular_velocity": -0.58524489402771,
+        "id": 315,
+        "name": "Ideal Circle 85",
+        "position": [
+          -983.2138671875,
+          -19.60221290588379
+        ],
+        "rotation": 0.26147547364234924,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -8.142743110656738,
+          30.359127044677734
+        ]
+      },
+      {
+        "angular_velocity": 1.3966950178146362,
+        "id": 318,
+        "name": "Ideal Box 86",
+        "position": [
+          -957.285888671875,
+          -15.464040756225586
+        ],
+        "rotation": -0.10033046454191208,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.14274334907531738,
+          37.74085235595703
+        ]
+      },
+      {
+        "angular_velocity": -0.5276844501495361,
+        "id": 321,
+        "name": "Ideal Circle 87",
+        "position": [
+          -890.5997314453125,
+          -1.9394978284835815
+        ],
+        "rotation": 0.1930788904428482,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -8.401752471923828,
+          67.42450714111328
+        ]
+      },
+      {
+        "angular_velocity": -1.687545895576477,
+        "id": 324,
+        "name": "Ideal Box 88",
+        "position": [
+          -862.9007568359375,
+          -17.126752853393555
+        ],
+        "rotation": -0.77188640832901,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          12.401752471923828,
+          32.675479888916016
+        ]
+      },
+      {
+        "angular_velocity": 0.8999999761581421,
+        "id": 327,
+        "name": "Ideal Circle 89",
+        "position": [
+          -788.500732421875,
+          -3.5331249237060547
+        ],
+        "rotation": 0.44999969005584717,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          36.0,
+          63.05002212524414
+        ]
+      },
+      {
+        "angular_velocity": -0.699999988079071,
+        "id": 330,
+        "name": "Ideal Box 90",
+        "position": [
+          -1007.500244140625,
+          36.466880798339844
+        ],
+        "rotation": -0.3499998152256012,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -28.0,
+          49.05000686645508
+        ]
+      },
+      {
+        "angular_velocity": -0.7803221940994263,
+        "id": 333,
+        "name": "Ideal Circle 91",
+        "position": [
+          -935.4730834960938,
+          29.713218688964844
+        ],
+        "rotation": 0.1269274652004242,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -6.988161087036133,
+          36.58931350708008
+        ]
+      },
+      {
+        "angular_velocity": 0.9012261629104614,
+        "id": 336,
+        "name": "Ideal Box 92",
+        "position": [
+          -907.0274047851562,
+          27.22052574157715
+        ],
+        "rotation": -0.1272241771221161,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          10.988161087036133,
+          31.510663986206055
+        ]
+      },
+      {
+        "angular_velocity": -0.2648613452911377,
+        "id": 339,
+        "name": "Ideal Circle 93",
+        "position": [
+          -845.700927734375,
+          39.611732482910156
+        ],
+        "rotation": 0.32900896668434143,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -9.020788192749023,
+          59.222877502441406
+        ]
+      },
+      {
+        "angular_velocity": -1.0182665586471558,
+        "id": 342,
+        "name": "Ideal Box 94",
+        "position": [
+          -821.798583984375,
+          33.322017669677734
+        ],
+        "rotation": -0.32788434624671936,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          1.0207878351211548,
+          40.877140045166016
+        ]
+      },
+      {
+        "angular_velocity": -0.10530388355255127,
+        "id": 345,
+        "name": "Ideal Circle 95",
+        "position": [
+          -981.716796875,
+          92.78560638427734
+        ],
+        "rotation": 0.22840896248817444,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -5.389556884765625,
+          70.77911376953125
+        ]
+      },
+      {
+        "angular_velocity": -1.9616141319274902,
+        "id": 348,
+        "name": "Ideal Box 96",
+        "position": [
+          -954.28369140625,
+          78.14813232421875
+        ],
+        "rotation": -0.8684848546981812,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          9.38956069946289,
+          41.320865631103516
+        ]
+      },
+      {
+        "angular_velocity": -0.6685347557067871,
+        "id": 351,
+        "name": "Ideal Circle 97",
+        "position": [
+          -887.4345703125,
+          72.37033081054688
+        ],
+        "rotation": 0.21471953392028809,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -0.2258012294769287,
+          30.406352996826172
+        ]
+      },
+      {
+        "angular_velocity": 1.4779120683670044,
+        "id": 354,
+        "name": "Ideal Box 98",
+        "position": [
+          -861.06640625,
+          76.56343841552734
+        ],
+        "rotation": -0.0233131255954504,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          8.225801467895508,
+          37.693626403808594
+        ]
+      },
+      {
+        "angular_velocity": 1.100000023841858,
+        "id": 357,
+        "name": "Ideal Circle 99",
+        "position": [
+          -787.501708984375,
+          87.46687316894531
+        ],
+        "rotation": 0.5499998331069946,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          44.0,
+          57.050018310546875
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 360,
+        "name": "Chamber Floor 05",
+        "position": [
+          -300.0,
+          162.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 363,
+        "name": "Chamber Ceiling 05",
+        "position": [
+          -300.0,
+          -162.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 366,
+        "name": "Chamber Left 05",
+        "position": [
+          -462.0,
+          0.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 369,
+        "name": "Chamber Right 05",
+        "position": [
+          -138.0,
+          0.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": -1.2000000476837158,
+        "id": 372,
+        "name": "Ideal Box 100",
+        "position": [
+          -412.0006103515625,
+          -60.53313064575195
+        ],
+        "rotation": -0.599999725818634,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -40.0,
+          43.04999923706055
+        ]
+      },
+      {
+        "angular_velocity": -0.1933240294456482,
+        "id": 375,
+        "name": "Ideal Circle 101",
+        "position": [
+          -337.654052734375,
+          -49.34855270385742
+        ],
+        "rotation": 0.2510014474391937,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -10.363576889038086,
+          64.28053283691406
+        ]
+      },
+      {
+        "angular_velocity": -0.9510911703109741,
+        "id": 378,
+        "name": "Ideal Box 102",
+        "position": [
+          -312.34552001953125,
+          -55.71770095825195
+        ],
+        "rotation": -0.352663516998291,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          2.363576889038086,
+          47.81949234008789
+        ]
+      },
+      {
+        "angular_velocity": -0.9018816947937012,
+        "id": 381,
+        "name": "Ideal Circle 103",
+        "position": [
+          -244.36224365234375,
+          -61.709163665771484
+        ],
+        "rotation": 0.06283153593540192,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -9.359185218811035,
+          37.889835357666016
+        ]
+      },
+      {
+        "angular_velocity": 0.9506090879440308,
+        "id": 384,
+        "name": "Ideal Box 104",
+        "position": [
+          -214.1373291015625,
+          -65.35707092285156
+        ],
+        "rotation": -0.07317079603672028,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          13.359185218811035,
+          30.210145950317383
+        ]
+      },
+      {
+        "angular_velocity": -0.3743135929107666,
+        "id": 387,
+        "name": "Ideal Circle 105",
+        "position": [
+          -380.1827392578125,
+          -6.264684200286865
+        ],
+        "rotation": 0.29071044921875,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -1.4566619396209717,
+          59.19754409790039
+        ]
+      },
+      {
+        "angular_velocity": -0.8767976760864258,
+        "id": 390,
+        "name": "Ideal Box 106",
+        "position": [
+          -355.3182373046875,
+          -12.801566123962402
+        ],
+        "rotation": -0.3720994293689728,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          9.45666217803955,
+          40.90247344970703
+        ]
+      },
+      {
+        "angular_velocity": -0.10359704494476318,
+        "id": 393,
+        "name": "Ideal Circle 107",
+        "position": [
+          -289.2421569824219,
+          0.3225638270378113
+        ],
+        "rotation": 0.23907068371772766,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -5.326231956481934,
+          70.23330688476562
+        ]
+      },
+      {
+        "angular_velocity": -1.8786213397979736,
+        "id": 396,
+        "name": "Ideal Box 108",
+        "position": [
+          -262.7573547363281,
+          -13.388816833496094
+        ],
+        "rotation": -0.7753103971481323,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          9.326231956481934,
+          41.866676330566406
+        ]
+      },
+      {
+        "angular_velocity": 0.800000011920929,
+        "id": 399,
+        "name": "Ideal Circle 109",
+        "position": [
+          -196.00018310546875,
+          -19.533126831054688
+        ],
+        "rotation": 0.3999997675418854,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          24.0,
+          31.049985885620117
+        ]
+      },
+      {
+        "angular_velocity": -0.6000000238418579,
+        "id": 402,
+        "name": "Ideal Box 110",
+        "position": [
+          -406.499755859375,
+          30.466873168945312
+        ],
+        "rotation": -0.299999862909317,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -32.0,
+          37.04999542236328
+        ]
+      },
+      {
+        "angular_velocity": -0.5275458097457886,
+        "id": 405,
+        "name": "Ideal Circle 111",
+        "position": [
+          -336.5960693359375,
+          44.058982849121094
+        ],
+        "rotation": 0.19311372935771942,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -8.382660865783691,
+          67.4184341430664
+        ]
+      },
+      {
+        "angular_velocity": -1.6875847578048706,
+        "id": 408,
+        "name": "Ideal Box 112",
+        "position": [
+          -308.9044189453125,
+          28.874767303466797
+        ],
+        "rotation": -0.7718956470489502,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          12.382660865783691,
+          32.68156051635742
+        ]
+      },
+      {
+        "angular_velocity": -0.2429666519165039,
+        "id": 411,
+        "name": "Ideal Circle 113",
+        "position": [
+          -241.78045654296875,
+          42.61634063720703
+        ],
+        "rotation": 0.22140659391880035,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -0.40370532870292664,
+          63.79734802246094
+        ]
+      },
+      {
+        "angular_velocity": -0.8709572553634644,
+        "id": 414,
+        "name": "Ideal Box 114",
+        "position": [
+          -216.21923828125,
+          36.31740951538086
+        ],
+        "rotation": -0.38419124484062195,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          8.403704643249512,
+          48.30267333984375
+        ]
+      },
+      {
+        "angular_velocity": -0.7807191610336304,
+        "id": 417,
+        "name": "Ideal Circle 115",
+        "position": [
+          -381.4770202636719,
+          75.71416473388672
+        ],
+        "rotation": 0.12683814764022827,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -7.007768630981445,
+          36.593509674072266
+        ]
+      },
+      {
+        "angular_velocity": 0.9022077322006226,
+        "id": 420,
+        "name": "Ideal Box 116",
+        "position": [
+          -353.0234680175781,
+          73.21959686279297
+        ],
+        "rotation": -0.12700314819812775,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          11.007768630981445,
+          31.506465911865234
+        ]
+      },
+      {
+        "angular_velocity": -0.2648637294769287,
+        "id": 423,
+        "name": "Ideal Circle 117",
+        "position": [
+          -291.70068359375,
+          85.61173248291016
+        ],
+        "rotation": 0.32900896668434143,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -9.020817756652832,
+          59.22288131713867
+        ]
+      },
+      {
+        "angular_velocity": -1.0182639360427856,
+        "id": 426,
+        "name": "Ideal Box 118",
+        "position": [
+          -267.79833984375,
+          79.322021484375
+        ],
+        "rotation": -0.32788410782814026,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          1.0208179950714111,
+          40.87713623046875
+        ]
+      },
+      {
+        "angular_velocity": 1.2999999523162842,
+        "id": 429,
+        "name": "Ideal Circle 119",
+        "position": [
+          -180.49993896484375,
+          90.46688079833984
+        ],
+        "rotation": 0.6499996781349182,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          52.0,
+          63.05002212524414
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 432,
+        "name": "Chamber Floor 06",
+        "position": [
+          300.0,
+          162.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 435,
+        "name": "Chamber Ceiling 06",
+        "position": [
+          300.0,
+          -162.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 438,
+        "name": "Chamber Left 06",
+        "position": [
+          138.0,
+          0.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 441,
+        "name": "Chamber Right 06",
+        "position": [
+          462.0,
+          0.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": -1.399999976158142,
+        "id": 444,
+        "name": "Ideal Box 120",
+        "position": [
+          182.5003662109375,
+          -57.53312683105469
+        ],
+        "rotation": -0.6999996304512024,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -48.0,
+          49.05000686645508
+        ]
+      },
+      {
+        "angular_velocity": -0.6685580015182495,
+        "id": 447,
+        "name": "Ideal Circle 121",
+        "position": [
+          266.5655212402344,
+          -65.62966918945312
+        ],
+        "rotation": 0.21471621096134186,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -0.22661304473876953,
+          30.406410217285156
+        ]
+      },
+      {
+        "angular_velocity": 1.4779717922210693,
+        "id": 450,
+        "name": "Ideal Box 122",
+        "position": [
+          292.93359375,
+          -61.436580657958984
+        ],
+        "rotation": -0.023304112255573273,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          8.226609230041504,
+          37.693572998046875
+        ]
+      },
+      {
+        "angular_velocity": -0.42179715633392334,
+        "id": 453,
+        "name": "Ideal Circle 123",
+        "position": [
+          356.4190673828125,
+          -48.68992614746094
+        ],
+        "rotation": 0.2456406056880951,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -6.404004096984863,
+          66.26600646972656
+        ]
+      },
+      {
+        "angular_velocity": -1.6981971263885498,
+        "id": 456,
+        "name": "Ideal Box 124",
+        "position": [
+          382.0804443359375,
+          -62.376338958740234
+        ],
+        "rotation": -0.6996391415596008,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          10.404004096984863,
+          33.833980560302734
+        ]
+      },
+      {
+        "angular_velocity": -0.1932787299156189,
+        "id": 459,
+        "name": "Ideal Circle 125",
+        "position": [
+          216.34640502929688,
+          -3.3487401008605957
+        ],
+        "rotation": 0.25100788474082947,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -10.356263160705566,
+          64.27925109863281
+        ]
+      },
+      {
+        "angular_velocity": -0.9511334896087646,
+        "id": 462,
+        "name": "Ideal Box 126",
+        "position": [
+          241.65365600585938,
+          -9.717510223388672
+        ],
+        "rotation": -0.3526698648929596,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          2.356266975402832,
+          47.82077407836914
+        ]
+      },
+      {
+        "angular_velocity": -0.9017996788024902,
+        "id": 465,
+        "name": "Ideal Circle 127",
+        "position": [
+          309.6378173828125,
+          -15.709417343139648
+        ],
+        "rotation": 0.06285347044467926,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -9.35496711730957,
+          37.8889045715332
+        ]
+      },
+      {
+        "angular_velocity": 0.9504085779190063,
+        "id": 468,
+        "name": "Ideal Box 128",
+        "position": [
+          339.8616943359375,
+          -19.35683822631836
+        ],
+        "rotation": -0.07322423160076141,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          13.35496711730957,
+          30.211074829101562
+        ]
+      },
+      {
+        "angular_velocity": 0.8999999761581421,
+        "id": 471,
+        "name": "Ideal Circle 129",
+        "position": [
+          408.499267578125,
+          -6.533122539520264
+        ],
+        "rotation": 0.44999969005584717,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          36.0,
+          57.050018310546875
+        ]
+      },
+      {
+        "angular_velocity": -0.699999988079071,
+        "id": 474,
+        "name": "Ideal Box 130",
+        "position": [
+          193.999755859375,
+          33.46687316894531
+        ],
+        "rotation": -0.3499998152256012,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -28.0,
+          43.04999923706055
+        ]
+      },
+      {
+        "angular_velocity": -0.10359752178192139,
+        "id": 477,
+        "name": "Ideal Circle 131",
+        "position": [
+          264.75689697265625,
+          46.32258605957031
+        ],
+        "rotation": 0.23907068371772766,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -5.326554298400879,
+          70.23339080810547
+        ]
+      },
+      {
+        "angular_velocity": -1.8786242008209229,
+        "id": 480,
+        "name": "Ideal Box 132",
+        "position": [
+          291.24261474609375,
+          32.61116027832031
+        ],
+        "rotation": -0.7753114104270935,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          9.326554298400879,
+          41.86658477783203
+        ]
+      },
+      {
+        "angular_velocity": -0.58524489402771,
+        "id": 483,
+        "name": "Ideal Circle 133",
+        "position": [
+          354.7861328125,
+          26.39778709411621
+        ],
+        "rotation": 0.26147547364234924,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -8.142743110656738,
+          30.359127044677734
+        ]
+      },
+      {
+        "angular_velocity": 1.3966957330703735,
+        "id": 486,
+        "name": "Ideal Box 134",
+        "position": [
+          380.7144775390625,
+          30.535959243774414
+        ],
+        "rotation": -0.10033032298088074,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.14274334907531738,
+          37.74085235595703
+        ]
+      },
+      {
+        "angular_velocity": -0.5275758504867554,
+        "id": 489,
+        "name": "Ideal Circle 135",
+        "position": [
+          217.40301513671875,
+          90.05935668945312
+        ],
+        "rotation": 0.19310590624809265,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -8.387421607971191,
+          67.41993713378906
+        ]
+      },
+      {
+        "angular_velocity": -1.6875801086425781,
+        "id": 492,
+        "name": "Ideal Box 136",
+        "position": [
+          245.09695434570312,
+          74.87437438964844
+        ],
+        "rotation": -0.7718952894210815,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          12.387421607971191,
+          32.680049896240234
+        ]
+      },
+      {
+        "angular_velocity": -0.2429114729166031,
+        "id": 495,
+        "name": "Ideal Circle 137",
+        "position": [
+          312.2197265625,
+          88.61613464355469
+        ],
+        "rotation": 0.22141754627227783,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -0.3974936902523041,
+          63.79636764526367
+        ]
+      },
+      {
+        "angular_velocity": -0.8710286021232605,
+        "id": 498,
+        "name": "Ideal Box 138",
+        "position": [
+          337.779296875,
+          82.31761169433594
+        ],
+        "rotation": -0.38420549035072327,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          8.397493362426758,
+          48.30365753173828
+        ]
+      },
+      {
+        "angular_velocity": 1.100000023841858,
+        "id": 501,
+        "name": "Ideal Circle 139",
+        "position": [
+          414.0001220703125,
+          74.46687316894531
+        ],
+        "rotation": 0.5499998331069946,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          44.0,
+          31.049985885620117
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 504,
+        "name": "Chamber Floor 07",
+        "position": [
+          900.0,
+          162.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 507,
+        "name": "Chamber Ceiling 07",
+        "position": [
+          900.0,
+          -162.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 510,
+        "name": "Chamber Left 07",
+        "position": [
+          738.0,
+          0.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 513,
+        "name": "Chamber Right 07",
+        "position": [
+          1062.0,
+          0.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": -1.2000000476837158,
+        "id": 516,
+        "name": "Ideal Box 140",
+        "position": [
+          789.501220703125,
+          -63.533111572265625
+        ],
+        "rotation": -0.599999725818634,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -40.0,
+          37.04999542236328
+        ]
+      },
+      {
+        "angular_velocity": -0.2648625373840332,
+        "id": 519,
+        "name": "Ideal Circle 141",
+        "position": [
+          862.299072265625,
+          -52.388267517089844
+        ],
+        "rotation": 0.32900896668434143,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -9.020816802978516,
+          59.222877502441406
+        ]
+      },
+      {
+        "angular_velocity": -1.0182644128799438,
+        "id": 522,
+        "name": "Ideal Box 142",
+        "position": [
+          886.201416015625,
+          -58.677982330322266
+        ],
+        "rotation": -0.32788410782814026,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          1.0208169221878052,
+          40.87713623046875
+        ]
+      },
+      {
+        "angular_velocity": -0.10530030727386475,
+        "id": 525,
+        "name": "Ideal Circle 143",
+        "position": [
+          956.283203125,
+          -45.214378356933594
+        ],
+        "rotation": 0.2284100353717804,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -5.389493942260742,
+          70.77911376953125
+        ]
+      },
+      {
+        "angular_velocity": -1.9616206884384155,
+        "id": 528,
+        "name": "Ideal Box 144",
+        "position": [
+          983.71630859375,
+          -59.851863861083984
+        ],
+        "rotation": -0.8684856295585632,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          9.389490127563477,
+          41.32086181640625
+        ]
+      },
+      {
+        "angular_velocity": -0.6685326099395752,
+        "id": 531,
+        "name": "Ideal Circle 145",
+        "position": [
+          820.5654296875,
+          -19.629671096801758
+        ],
+        "rotation": 0.2147199660539627,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -0.22578835487365723,
+          30.406360626220703
+        ]
+      },
+      {
+        "angular_velocity": 1.477907419204712,
+        "id": 534,
+        "name": "Ideal Box 146",
+        "position": [
+          846.93359375,
+          -15.43658447265625
+        ],
+        "rotation": -0.023313768208026886,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          8.225788116455078,
+          37.69361114501953
+        ]
+      },
+      {
+        "angular_velocity": -0.4216669797897339,
+        "id": 537,
+        "name": "Ideal Circle 147",
+        "position": [
+          910.423095703125,
+          -2.6914610862731934
+        ],
+        "rotation": 0.24566638469696045,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -6.381326675415039,
+          66.2583236694336
+        ]
+      },
+      {
+        "angular_velocity": -1.6981672048568726,
+        "id": 540,
+        "name": "Ideal Box 148",
+        "position": [
+          936.076416015625,
+          -16.374788284301758
+        ],
+        "rotation": -0.6996334195137024,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          10.381326675415039,
+          33.841670989990234
+        ]
+      },
+      {
+        "angular_velocity": 0.800000011920929,
+        "id": 543,
+        "name": "Ideal Circle 149",
+        "position": [
+          1005.500732421875,
+          -3.5331249237060547
+        ],
+        "rotation": 0.3999997675418854,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          24.0,
+          63.05002212524414
+        ]
+      },
+      {
+        "angular_velocity": -0.6000000238418579,
+        "id": 546,
+        "name": "Ideal Box 150",
+        "position": [
+          790.500244140625,
+          36.466880798339844
+        ],
+        "rotation": -0.299999862909317,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -32.0,
+          49.05000686645508
+        ]
+      },
+      {
+        "angular_velocity": -0.9021046161651611,
+        "id": 549,
+        "name": "Ideal Circle 151",
+        "position": [
+          863.6337890625,
+          30.29159164428711
+        ],
+        "rotation": 0.06277213245630264,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -9.371831893920898,
+          37.8926887512207
+        ]
+      },
+      {
+        "angular_velocity": 0.9511866569519043,
+        "id": 552,
+        "name": "Ideal Box 152",
+        "position": [
+          893.86572265625,
+          26.64215660095215
+        ],
+        "rotation": -0.07301691174507141,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          13.371831893920898,
+          30.207294464111328
+        ]
+      },
+      {
+        "angular_velocity": -0.3743131160736084,
+        "id": 555,
+        "name": "Ideal Circle 153",
+        "position": [
+          957.8172607421875,
+          39.73531723022461
+        ],
+        "rotation": 0.29071044921875,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -1.4566619396209717,
+          59.197547912597656
+        ]
+      },
+      {
+        "angular_velocity": -0.8767983317375183,
+        "id": 558,
+        "name": "Ideal Box 154",
+        "position": [
+          982.6817626953125,
+          33.19843292236328
+        ],
+        "rotation": -0.3720998764038086,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          9.45666217803955,
+          40.902469635009766
+        ]
+      },
+      {
+        "angular_velocity": -0.10351765155792236,
+        "id": 561,
+        "name": "Ideal Circle 155",
+        "position": [
+          818.7607421875,
+          92.32125091552734
+        ],
+        "rotation": 0.2390912026166916,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -5.307350158691406,
+          70.22818756103516
+        ]
+      },
+      {
+        "angular_velocity": -1.8785122632980347,
+        "id": 564,
+        "name": "Ideal Box 156",
+        "position": [
+          845.23876953125,
+          78.61249542236328
+        ],
+        "rotation": -0.7752822637557983,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          9.30734634399414,
+          41.87179946899414
+        ]
+      },
+      {
+        "angular_velocity": -0.5852466821670532,
+        "id": 567,
+        "name": "Ideal Circle 157",
+        "position": [
+          908.7861328125,
+          72.39778900146484
+        ],
+        "rotation": 0.2614751160144806,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -8.142745971679688,
+          30.35912322998047
+        ]
+      },
+      {
+        "angular_velocity": 1.396698236465454,
+        "id": 570,
+        "name": "Ideal Box 158",
+        "position": [
+          934.714111328125,
+          76.53597259521484
+        ],
+        "rotation": -0.10033012181520462,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.14274978637695312,
+          37.7408561706543
+        ]
+      },
+      {
+        "angular_velocity": 1.2999999523162842,
+        "id": 573,
+        "name": "Ideal Circle 159",
+        "position": [
+          1016.5009765625,
+          87.46687316894531
+        ],
+        "rotation": 0.6499996781349182,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          52.0,
+          57.050018310546875
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 576,
+        "name": "Chamber Floor 08",
+        "position": [
+          -900.0,
+          762.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 579,
+        "name": "Chamber Ceiling 08",
+        "position": [
+          -900.0,
+          438.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 582,
+        "name": "Chamber Left 08",
+        "position": [
+          -1062.0,
+          600.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 585,
+        "name": "Chamber Right 08",
+        "position": [
+          -738.0,
+          600.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": -1.399999976158142,
+        "id": 588,
+        "name": "Ideal Box 160",
+        "position": [
+          -1016.00146484375,
+          539.4669189453125
+        ],
+        "rotation": -0.6999996304512024,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -48.0,
+          43.04999923706055
+        ]
+      },
+      {
+        "angular_velocity": -0.24291153252124786,
+        "id": 591,
+        "name": "Ideal Circle 161",
+        "position": [
+          -933.779541015625,
+          550.6160888671875
+        ],
+        "rotation": 0.22141754627227783,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -0.3974132239818573,
+          63.79637145996094
+        ]
+      },
+      {
+        "angular_velocity": -0.8710334300994873,
+        "id": 594,
+        "name": "Ideal Box 162",
+        "position": [
+          -908.219970703125,
+          544.317626953125
+        ],
+        "rotation": -0.3842068314552307,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          8.397414207458496,
+          48.303653717041016
+        ]
+      },
+      {
+        "angular_velocity": -0.7803119421005249,
+        "id": 597,
+        "name": "Ideal Circle 163",
+        "position": [
+          -843.4730834960938,
+          537.713134765625
+        ],
+        "rotation": 0.1269298791885376,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -6.988277435302734,
+          36.58929443359375
+        ]
+      },
+      {
+        "angular_velocity": 0.9012248516082764,
+        "id": 600,
+        "name": "Ideal Box 164",
+        "position": [
+          -815.0274047851562,
+          535.220458984375
+        ],
+        "rotation": -0.12722443044185638,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          10.988277435302734,
+          31.510683059692383
+        ]
+      },
+      {
+        "angular_velocity": -0.2648622989654541,
+        "id": 603,
+        "name": "Ideal Circle 165",
+        "position": [
+          -983.700927734375,
+          593.6117553710938
+        ],
+        "rotation": 0.32900896668434143,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -9.020865440368652,
+          59.222877502441406
+        ]
+      },
+      {
+        "angular_velocity": -1.018262505531311,
+        "id": 606,
+        "name": "Ideal Box 166",
+        "position": [
+          -959.798583984375,
+          587.322021484375
+        ],
+        "rotation": -0.32788410782814026,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          1.0208656787872314,
+          40.877140045166016
+        ]
+      },
+      {
+        "angular_velocity": -0.10531651973724365,
+        "id": 609,
+        "name": "Ideal Circle 167",
+        "position": [
+          -889.716796875,
+          600.7855834960938
+        ],
+        "rotation": 0.22840504348278046,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -5.389602184295654,
+          70.77912139892578
+        ]
+      },
+      {
+        "angular_velocity": -1.96160089969635,
+        "id": 612,
+        "name": "Ideal Box 168",
+        "position": [
+          -862.28369140625,
+          586.148193359375
+        ],
+        "rotation": -0.8684805631637573,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          9.389602661132812,
+          41.32086181640625
+        ]
+      },
+      {
+        "angular_velocity": 0.8999999761581421,
+        "id": 615,
+        "name": "Ideal Circle 169",
+        "position": [
+          -790.000732421875,
+          580.4668579101562
+        ],
+        "rotation": 0.44999969005584717,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          36.0,
+          31.049985885620117
+        ]
+      },
+      {
+        "angular_velocity": -0.699999988079071,
+        "id": 618,
+        "name": "Ideal Box 170",
+        "position": [
+          -1004.500244140625,
+          630.4668579101562
+        ],
+        "rotation": -0.3499998152256012,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -28.0,
+          37.04999542236328
+        ]
+      },
+      {
+        "angular_velocity": -0.4216676950454712,
+        "id": 621,
+        "name": "Ideal Circle 171",
+        "position": [
+          -935.576904296875,
+          643.3085327148438
+        ],
+        "rotation": 0.24566635489463806,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -6.381250381469727,
+          66.25830841064453
+        ]
+      },
+      {
+        "angular_velocity": -1.6981697082519531,
+        "id": 624,
+        "name": "Ideal Box 172",
+        "position": [
+          -909.923583984375,
+          629.625244140625
+        ],
+        "rotation": -0.6996337175369263,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          10.381250381469727,
+          33.841678619384766
+        ]
+      },
+      {
+        "angular_velocity": -0.19333183765411377,
+        "id": 627,
+        "name": "Ideal Circle 173",
+        "position": [
+          -845.654052734375,
+          642.6514282226562
+        ],
+        "rotation": 0.2509998679161072,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -10.363658905029297,
+          64.28052520751953
+        ]
+      },
+      {
+        "angular_velocity": -0.9510803818702698,
+        "id": 630,
+        "name": "Ideal Box 174",
+        "position": [
+          -820.344970703125,
+          636.2822265625
+        ],
+        "rotation": -0.3526619076728821,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          2.363658905029297,
+          47.81950378417969
+        ]
+      },
+      {
+        "angular_velocity": -0.9021074771881104,
+        "id": 633,
+        "name": "Ideal Circle 175",
+        "position": [
+          -982.3662109375,
+          676.2916259765625
+        ],
+        "rotation": 0.062771275639534,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -9.371899604797363,
+          37.892662048339844
+        ]
+      },
+      {
+        "angular_velocity": 0.9511966705322266,
+        "id": 636,
+        "name": "Ideal Box 176",
+        "position": [
+          -952.13427734375,
+          672.6421508789062
+        ],
+        "rotation": -0.07301410287618637,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          13.371899604797363,
+          30.207319259643555
+        ]
+      },
+      {
+        "angular_velocity": -0.3743157386779785,
+        "id": 639,
+        "name": "Ideal Circle 177",
+        "position": [
+          -888.1827392578125,
+          685.7353515625
+        ],
+        "rotation": 0.29071044921875,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -1.456662654876709,
+          59.197540283203125
+        ]
+      },
+      {
+        "angular_velocity": -0.8767958283424377,
+        "id": 642,
+        "name": "Ideal Box 178",
+        "position": [
+          -863.3182373046875,
+          679.198486328125
+        ],
+        "rotation": -0.3720994293689728,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          9.456663131713867,
+          40.9024658203125
+        ]
+      },
+      {
+        "angular_velocity": 1.100000023841858,
+        "id": 645,
+        "name": "Ideal Circle 179",
+        "position": [
+          -784.501708984375,
+          690.4668579101562
+        ],
+        "rotation": 0.5499998331069946,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          44.0,
+          63.05002212524414
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 648,
+        "name": "Chamber Floor 09",
+        "position": [
+          -300.0,
+          762.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 651,
+        "name": "Chamber Ceiling 09",
+        "position": [
+          -300.0,
+          438.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 654,
+        "name": "Chamber Left 09",
+        "position": [
+          -462.0,
+          600.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 657,
+        "name": "Chamber Right 09",
+        "position": [
+          -138.0,
+          600.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": -1.2000000476837158,
+        "id": 660,
+        "name": "Ideal Box 180",
+        "position": [
+          -413.5006103515625,
+          542.466796875
+        ],
+        "rotation": -0.599999725818634,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -40.0,
+          49.05000686645508
+        ]
+      },
+      {
+        "angular_velocity": -0.5852434635162354,
+        "id": 663,
+        "name": "Ideal Circle 181",
+        "position": [
+          -337.2138671875,
+          534.397705078125
+        ],
+        "rotation": 0.26147547364234924,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -8.142796516418457,
+          30.359107971191406
+        ]
+      },
+      {
+        "angular_velocity": 1.3966991901397705,
+        "id": 666,
+        "name": "Ideal Box 182",
+        "position": [
+          -311.2855224609375,
+          538.5359497070312
+        ],
+        "rotation": -0.10032996535301208,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.14279627799987793,
+          37.740875244140625
+        ]
+      },
+      {
+        "angular_velocity": -0.527542233467102,
+        "id": 669,
+        "name": "Ideal Circle 183",
+        "position": [
+          -244.59652709960938,
+          552.0593872070312
+        ],
+        "rotation": 0.19311417639255524,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -8.387128829956055,
+          67.419921875
+        ]
+      },
+      {
+        "angular_velocity": -1.6876273155212402,
+        "id": 672,
+        "name": "Ideal Box 184",
+        "position": [
+          -216.90304565429688,
+          536.8743896484375
+        ],
+        "rotation": -0.7719063758850098,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          12.387128829956055,
+          32.68006134033203
+        ]
+      },
+      {
+        "angular_velocity": -0.2429112046957016,
+        "id": 675,
+        "name": "Ideal Circle 185",
+        "position": [
+          -379.7802734375,
+          596.6160888671875
+        ],
+        "rotation": 0.22141754627227783,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -0.3974160850048065,
+          63.79637145996094
+        ]
+      },
+      {
+        "angular_velocity": -0.8710326552391052,
+        "id": 678,
+        "name": "Ideal Box 186",
+        "position": [
+          -354.220703125,
+          590.317626953125
+        ],
+        "rotation": -0.38420626521110535,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          8.397415161132812,
+          48.303646087646484
+        ]
+      },
+      {
+        "angular_velocity": -0.780673623085022,
+        "id": 681,
+        "name": "Ideal Circle 187",
+        "position": [
+          -289.4761962890625,
+          583.7139892578125
+        ],
+        "rotation": 0.12684860825538635,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -7.006368637084961,
+          36.59318542480469
+        ]
+      },
+      {
+        "angular_velocity": 0.9021223783493042,
+        "id": 684,
+        "name": "Ideal Box 188",
+        "position": [
+          -261.0241394042969,
+          581.2196044921875
+        ],
+        "rotation": -0.12702246010303497,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          11.006372451782227,
+          31.506792068481445
+        ]
+      },
+      {
+        "angular_velocity": 0.800000011920929,
+        "id": 687,
+        "name": "Ideal Circle 189",
+        "position": [
+          -197.50018310546875,
+          593.4669189453125
+        ],
+        "rotation": 0.3999997675418854,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          24.0,
+          57.050018310546875
+        ]
+      },
+      {
+        "angular_velocity": -0.6000000238418579,
+        "id": 690,
+        "name": "Ideal Box 190",
+        "position": [
+          -407.999755859375,
+          633.4669189453125
+        ],
+        "rotation": -0.299999862909317,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -32.0,
+          43.04999923706055
+        ]
+      },
+      {
+        "angular_velocity": -0.10522627830505371,
+        "id": 693,
+        "name": "Ideal Circle 191",
+        "position": [
+          -335.7120361328125,
+          646.784423828125
+        ],
+        "rotation": 0.22843219339847565,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -5.373624324798584,
+          70.77509307861328
+        ]
+      },
+      {
+        "angular_velocity": -1.9615507125854492,
+        "id": 696,
+        "name": "Ideal Box 192",
+        "position": [
+          -308.287353515625,
+          632.1494140625
+        ],
+        "rotation": -0.8684655427932739,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          9.373624801635742,
+          41.32489013671875
+        ]
+      },
+      {
+        "angular_velocity": -0.6686931848526001,
+        "id": 699,
+        "name": "Ideal Circle 193",
+        "position": [
+          -241.43447875976562,
+          626.370361328125
+        ],
+        "rotation": 0.21469593048095703,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -0.23162364959716797,
+          30.406734466552734
+        ]
+      },
+      {
+        "angular_velocity": 1.4783313274383545,
+        "id": 702,
+        "name": "Ideal Box 194",
+        "position": [
+          -215.0653076171875,
+          630.5633544921875
+        ],
+        "rotation": -0.023250162601470947,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          8.231619834899902,
+          37.69324493408203
+        ]
+      },
+      {
+        "angular_velocity": -0.4218006134033203,
+        "id": 705,
+        "name": "Ideal Circle 195",
+        "position": [
+          -381.5809326171875,
+          689.3101196289062
+        ],
+        "rotation": 0.2456398904323578,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -6.403954982757568,
+          66.26600646972656
+        ]
+      },
+      {
+        "angular_velocity": -1.698196291923523,
+        "id": 708,
+        "name": "Ideal Box 196",
+        "position": [
+          -355.9195556640625,
+          675.6236572265625
+        ],
+        "rotation": -0.6996391415596008,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          10.403955459594727,
+          33.833988189697266
+        ]
+      },
+      {
+        "angular_velocity": -0.19333183765411377,
+        "id": 711,
+        "name": "Ideal Circle 197",
+        "position": [
+          -291.654052734375,
+          688.6514282226562
+        ],
+        "rotation": 0.2509998679161072,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -10.363659858703613,
+          64.28053283691406
+        ]
+      },
+      {
+        "angular_velocity": -0.9510793685913086,
+        "id": 714,
+        "name": "Ideal Box 198",
+        "position": [
+          -266.34552001953125,
+          682.2822265625
+        ],
+        "rotation": -0.3526618182659149,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          2.3636598587036133,
+          47.81949996948242
+        ]
+      },
+      {
+        "angular_velocity": 1.2999999523162842,
+        "id": 717,
+        "name": "Ideal Circle 199",
+        "position": [
+          -181.99993896484375,
+          674.4668579101562
+        ],
+        "rotation": 0.6499996781349182,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          52.0,
+          31.049985885620117
+        ]
+      }
+    ],
+    "colliders": 240,
+    "contact_snapshots": [
+      {
+        "a": 2,
+        "b": 8,
+        "features": [
+          [
+            67305472,
+            -24.0
+          ],
+          [
+            67174401,
+            -24.0
+          ]
+        ],
+        "normal": [
+          -1.0,
+          -0.0
+        ],
+        "reference": 2
+      },
+      {
+        "a": 2,
+        "b": 11,
+        "features": [
+          [
+            33751040,
+            -24.0
+          ],
+          [
+            33620224,
+            -24.0
+          ]
+        ],
+        "normal": [
+          1.0,
+          0.0
+        ],
+        "reference": 2
+      },
+      {
+        "a": 5,
+        "b": 8,
+        "features": [
+          [
+            67174400,
+            -24.0
+          ],
+          [
+            67306240,
+            -24.0
+          ]
+        ],
+        "normal": [
+          -1.0,
+          -0.0
+        ],
+        "reference": 5
+      },
+      {
+        "a": 5,
+        "b": 11,
+        "features": [
+          [
+            33619968,
+            -24.0
+          ],
+          [
+            33751043,
+            -24.0
+          ]
+        ],
+        "normal": [
+          1.0,
+          0.0
+        ],
+        "reference": 5
+      },
+      {
+        "a": 74,
+        "b": 80,
+        "features": [
+          [
+            67305472,
+            -24.0
+          ],
+          [
+            67174401,
+            -24.0
+          ]
+        ],
+        "normal": [
+          -1.0,
+          -0.0
+        ],
+        "reference": 74
+      },
+      {
+        "a": 74,
+        "b": 83,
+        "features": [
+          [
+            33751040,
+            -24.0
+          ],
+          [
+            33620224,
+            -24.0
+          ]
+        ],
+        "normal": [
+          1.0,
+          0.0
+        ],
+        "reference": 74
+      },
+      {
+        "a": 77,
+        "b": 80,
+        "features": [
+          [
+            67174400,
+            -24.0
+          ],
+          [
+            67306240,
+            -24.0
+          ]
+        ],
+        "normal": [
+          -1.0,
+          -0.0
+        ],
+        "reference": 77
+      },
+      {
+        "a": 77,
+        "b": 83,
+        "features": [
+          [
+            33619968,
+            -24.0
+          ],
+          [
+            33751043,
+            -24.0
+          ]
+        ],
+        "normal": [
+          1.0,
+          0.0
+        ],
+        "reference": 77
+      },
+      {
+        "a": 146,
+        "b": 152,
+        "features": [
+          [
+            67305472,
+            -24.0
+          ],
+          [
+            67174401,
+            -24.0
+          ]
+        ],
+        "normal": [
+          -1.0,
+          -0.0
+        ],
+        "reference": 146
+      },
+      {
+        "a": 146,
+        "b": 155,
+        "features": [
+          [
+            33751040,
+            -24.0
+          ],
+          [
+            33620224,
+            -24.0
+          ]
+        ],
+        "normal": [
+          1.0,
+          0.0
+        ],
+        "reference": 146
+      },
+      {
+        "a": 149,
+        "b": 152,
+        "features": [
+          [
+            67174400,
+            -24.0
+          ],
+          [
+            67306240,
+            -24.0
+          ]
+        ],
+        "normal": [
+          -1.0,
+          -0.0
+        ],
+        "reference": 149
+      },
+      {
+        "a": 149,
+        "b": 155,
+        "features": [
+          [
+            33619968,
+            -24.0
+          ],
+          [
+            33751043,
+            -24.0
+          ]
+        ],
+        "normal": [
+          1.0,
+          0.0
+        ],
+        "reference": 149
+      },
+      {
+        "a": 218,
+        "b": 224,
+        "features": [
+          [
+            67305472,
+            -24.0
+          ],
+          [
+            67174401,
+            -24.0
+          ]
+        ],
+        "normal": [
+          -1.0,
+          -0.0
+        ],
+        "reference": 218
+      },
+      {
+        "a": 218,
+        "b": 227,
+        "features": [
+          [
+            33751040,
+            -24.0
+          ],
+          [
+            33620224,
+            -24.0
+          ]
+        ],
+        "normal": [
+          1.0,
+          0.0
+        ],
+        "reference": 218
+      },
+      {
+        "a": 221,
+        "b": 224,
+        "features": [
+          [
+            67174400,
+            -24.0
+          ],
+          [
+            67306240,
+            -24.0
+          ]
+        ],
+        "normal": [
+          -1.0,
+          -0.0
+        ],
+        "reference": 221
+      },
+      {
+        "a": 221,
+        "b": 227,
+        "features": [
+          [
+            33619968,
+            -24.0
+          ],
+          [
+            33751043,
+            -24.0
+          ]
+        ],
+        "normal": [
+          1.0,
+          0.0
+        ],
+        "reference": 221
+      },
+      {
+        "a": 290,
+        "b": 296,
+        "features": [
+          [
+            67305472,
+            -24.0
+          ],
+          [
+            67174401,
+            -24.0
+          ]
+        ],
+        "normal": [
+          -1.0,
+          -0.0
+        ],
+        "reference": 290
+      },
+      {
+        "a": 290,
+        "b": 299,
+        "features": [
+          [
+            33751040,
+            -24.0
+          ],
+          [
+            33620224,
+            -24.0
+          ]
+        ],
+        "normal": [
+          1.0,
+          0.0
+        ],
+        "reference": 290
+      },
+      {
+        "a": 293,
+        "b": 296,
+        "features": [
+          [
+            67174400,
+            -24.0
+          ],
+          [
+            67306240,
+            -24.0
+          ]
+        ],
+        "normal": [
+          -1.0,
+          -0.0
+        ],
+        "reference": 293
+      },
+      {
+        "a": 293,
+        "b": 299,
+        "features": [
+          [
+            33619968,
+            -24.0
+          ],
+          [
+            33751043,
+            -24.0
+          ]
+        ],
+        "normal": [
+          1.0,
+          0.0
+        ],
+        "reference": 293
+      },
+      {
+        "a": 362,
+        "b": 368,
+        "features": [
+          [
+            67305472,
+            -24.0
+          ],
+          [
+            67174401,
+            -24.0
+          ]
+        ],
+        "normal": [
+          -1.0,
+          -0.0
+        ],
+        "reference": 362
+      },
+      {
+        "a": 362,
+        "b": 371,
+        "features": [
+          [
+            33751040,
+            -24.0
+          ],
+          [
+            33620224,
+            -24.0
+          ]
+        ],
+        "normal": [
+          1.0,
+          0.0
+        ],
+        "reference": 362
+      },
+      {
+        "a": 365,
+        "b": 368,
+        "features": [
+          [
+            67174400,
+            -24.0
+          ],
+          [
+            67306240,
+            -24.0
+          ]
+        ],
+        "normal": [
+          -1.0,
+          -0.0
+        ],
+        "reference": 365
+      },
+      {
+        "a": 365,
+        "b": 371,
+        "features": [
+          [
+            33619968,
+            -24.0
+          ],
+          [
+            33751043,
+            -24.0
+          ]
+        ],
+        "normal": [
+          1.0,
+          0.0
+        ],
+        "reference": 365
+      },
+      {
+        "a": 434,
+        "b": 440,
+        "features": [
+          [
+            67305472,
+            -24.0
+          ],
+          [
+            67174401,
+            -24.0
+          ]
+        ],
+        "normal": [
+          -1.0,
+          -0.0
+        ],
+        "reference": 434
+      },
+      {
+        "a": 434,
+        "b": 443,
+        "features": [
+          [
+            33751040,
+            -24.0
+          ],
+          [
+            33620224,
+            -24.0
+          ]
+        ],
+        "normal": [
+          1.0,
+          0.0
+        ],
+        "reference": 434
+      },
+      {
+        "a": 437,
+        "b": 440,
+        "features": [
+          [
+            67174400,
+            -24.0
+          ],
+          [
+            67306240,
+            -24.0
+          ]
+        ],
+        "normal": [
+          -1.0,
+          -0.0
+        ],
+        "reference": 437
+      },
+      {
+        "a": 437,
+        "b": 443,
+        "features": [
+          [
+            33619968,
+            -24.0
+          ],
+          [
+            33751043,
+            -24.0
+          ]
+        ],
+        "normal": [
+          1.0,
+          0.0
+        ],
+        "reference": 437
+      },
+      {
+        "a": 506,
+        "b": 512,
+        "features": [
+          [
+            67305472,
+            -24.0
+          ],
+          [
+            67174401,
+            -24.0
+          ]
+        ],
+        "normal": [
+          -1.0,
+          -0.0
+        ],
+        "reference": 506
+      },
+      {
+        "a": 506,
+        "b": 515,
+        "features": [
+          [
+            33751040,
+            -24.0
+          ],
+          [
+            33620224,
+            -24.0
+          ]
+        ],
+        "normal": [
+          1.0,
+          0.0
+        ],
+        "reference": 506
+      },
+      {
+        "a": 509,
+        "b": 512,
+        "features": [
+          [
+            67174400,
+            -24.0
+          ],
+          [
+            67306240,
+            -24.0
+          ]
+        ],
+        "normal": [
+          -1.0,
+          -0.0
+        ],
+        "reference": 509
+      },
+      {
+        "a": 509,
+        "b": 515,
+        "features": [
+          [
+            33619968,
+            -24.0
+          ],
+          [
+            33751043,
+            -24.0
+          ]
+        ],
+        "normal": [
+          1.0,
+          0.0
+        ],
+        "reference": 509
+      },
+      {
+        "a": 578,
+        "b": 584,
+        "features": [
+          [
+            67305472,
+            -24.0
+          ],
+          [
+            67174401,
+            -24.0
+          ]
+        ],
+        "normal": [
+          -1.0,
+          -0.0
+        ],
+        "reference": 578
+      },
+      {
+        "a": 578,
+        "b": 587,
+        "features": [
+          [
+            33751040,
+            -24.0
+          ],
+          [
+            33620224,
+            -24.0
+          ]
+        ],
+        "normal": [
+          1.0,
+          0.0
+        ],
+        "reference": 578
+      },
+      {
+        "a": 581,
+        "b": 584,
+        "features": [
+          [
+            67174400,
+            -24.0
+          ],
+          [
+            67306240,
+            -24.0
+          ]
+        ],
+        "normal": [
+          -1.0,
+          -0.0
+        ],
+        "reference": 581
+      },
+      {
+        "a": 581,
+        "b": 587,
+        "features": [
+          [
+            33619968,
+            -24.0
+          ],
+          [
+            33751043,
+            -24.0
+          ]
+        ],
+        "normal": [
+          1.0,
+          0.0
+        ],
+        "reference": 581
+      },
+      {
+        "a": 650,
+        "b": 656,
+        "features": [
+          [
+            67305472,
+            -24.0
+          ],
+          [
+            67174401,
+            -24.0
+          ]
+        ],
+        "normal": [
+          -1.0,
+          -0.0
+        ],
+        "reference": 650
+      },
+      {
+        "a": 650,
+        "b": 659,
+        "features": [
+          [
+            33751040,
+            -24.0
+          ],
+          [
+            33620224,
+            -24.0
+          ]
+        ],
+        "normal": [
+          1.0,
+          0.0
+        ],
+        "reference": 650
+      },
+      {
+        "a": 653,
+        "b": 656,
+        "features": [
+          [
+            67174400,
+            -24.0
+          ],
+          [
+            67306240,
+            -24.0
+          ]
+        ],
+        "normal": [
+          -1.0,
+          -0.0
+        ],
+        "reference": 653
+      },
+      {
+        "a": 653,
+        "b": 659,
+        "features": [
+          [
+            33619968,
+            -24.0
+          ],
+          [
+            33751043,
+            -24.0
+          ]
+        ],
+        "normal": [
+          1.0,
+          0.0
+        ],
+        "reference": 653
+      }
+    ],
+    "finite": true,
+    "maximum_supports": 0,
+    "objects": 240,
+    "population_model": "resolved scenario count",
+    "populations_valid": true,
+    "support_total": 0,
+    "supports_valid": true
+  },
+  "render_samples": 0,
+  "rendering": false,
+  "repetition_index": 0,
+  "repetitions": 1,
+  "requested_measured_steps": 30,
+  "resolved_parameters": {
+    "bodies_per_chamber": 20,
+    "chamber_count": 10,
+    "chamber_interior": 300.0,
+    "chamber_pitch": 600.0,
+    "dynamic_body_count": 200,
+    "friction": 0.800000011920929,
+    "gravity": [
+      0.0,
+      98.0999984741211
+    ],
+    "restitution": 0.15000000596046448,
+    "seed_policy": "deterministic velocity/pattern phase; seed zero preserves historical layouts",
+    "solver_iterations": 10,
+    "static_wall_count": 40
+  },
+  "sample_capacity": 4096,
+  "scenario": "ideal_world",
+  "schema_version": 3,
+  "seed": 0,
+  "stopped_on_quit": false,
+  "timing_eligible": false,
+  "total_render_samples": 0,
+  "total_steps": 30,
+  "validation_mode": "per-step",
+  "warmup_steps": 30,
+  "workers": 6
+}

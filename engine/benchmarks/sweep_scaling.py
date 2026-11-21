@@ -14,7 +14,7 @@ LIFECYCLE_SCOPES = ("step_hook", "retirement", "deferred_grid_flush")
 COUNTERS = ("object_count", "occupied_cell_count", "candidate_pair_count", "pending_narrow_phase_pair_count", "active_collision_count",
             "awake_dynamic_body_count", "queued_add_count", "queued_sync_count", "queued_remove_count", "collision_enter_event_count",
             "collision_exit_event_count")
-SCENARIOS = ("broad_phase", "broad_phase_stress", "narrow_phase", "rigid_body_container", "add_and_remove", "moving_add_and_remove", "persistent_contacts")
+SCENARIOS = ("broad_phase", "broad_phase_stress", "narrow_phase", "rigid_body_container", "add_and_remove", "moving_add_and_remove", "persistent_contacts", "ideal_world")
 
 
 def benchmark_scopes(names):
@@ -149,6 +149,8 @@ def apply_count_argument(base_command, args, count):
         command += ["--narrow-count", str(count)]
     elif args.scenario == "rigid_body_container":
         command += ["--box-count", str(count // 2), "--circle-count", str(count - count // 2)]
+    elif args.scenario == "ideal_world":
+        command += ["--ideal-count", str(count)]
     elif is_add_remove_scenario(args.scenario):
         command += ["--steady-count", str(args.steady_count), "--churn-count", str(count)]
         if args.box_mix is not None:
@@ -164,7 +166,7 @@ def sweep_parameter_name(scenario):
     if is_broad_phase_scenario(scenario):
         return "broad_count"
     return {"persistent_contacts": "contact_pair_count", "narrow_phase": "narrow_count", "rigid_body_container": "total_body_count",
-            "add_and_remove": "churn_count", "moving_add_and_remove": "churn_count"}[scenario]
+            "add_and_remove": "churn_count", "moving_add_and_remove": "churn_count", "ideal_world": "ideal_count"}[scenario]
 
 
 def comparison_workload(manifest):

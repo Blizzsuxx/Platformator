@@ -1,0 +1,3325 @@
+{
+  "asset_root": "/home/user/Projects/Platformator/build/benchmark/assets",
+  "boundaries": {
+    "broad_phase": "grid/cell/filter/witness reconciliation; nested in physics",
+    "cleanup": "transient audio and mutation/scene commit including destruction/free; nested in complete_step",
+    "complete_step": "starts/hook/fixed/synchronization/physics/events/update/animation/late/commit/destructors/transient cleanup; excludes event pumping, render and recorder storage",
+    "deferred_grid_flush": "grid/cell reconciliation during mutation commit; nested in cleanup",
+    "legacy_frame": "historical partial metric; absent from schema v2; not equivalent to complete_step",
+    "narrow_phase": "changed geometry, serial support reduction and subscribed events; nested in physics",
+    "physics": "transform synchronization, broad/narrow phase, support reduction, forces, solve, movement and cache publication; nested in complete_step",
+    "render": "independent render calls after cleanup; not nested in complete_step",
+    "resolve_collisions": "contact solving and sleep reduction; nested in physics",
+    "retirement": "retirement drain including destroy callbacks, registry removal and frees; nested in cleanup",
+    "scene_transition": "selected request preparation through replacement/clear publication; nested in cleanup",
+    "step_hook": "custom step callback, when supplied; nested in complete_step"
+  },
+  "build": {
+    "commit": "3fbd4a760d4526fbbc01b8eea0084d6241722248",
+    "compiler": "GNU 16.2.1",
+    "configuration": "Release",
+    "debug_tools": false,
+    "dirty": true,
+    "flags": " -O3 -DNDEBUG",
+    "sanitizer": "none",
+    "source_sha256": "4209c77c1ee8513976426ed67811e3809f9c55b95f4f7121afdcc14a47ae8eeb",
+    "work_probes": false
+  },
+  "complete_capture": true,
+  "dependencies": {
+    "Eigen": "5.0.1",
+    "JSON": "3.12.0",
+    "SDL": "3.4.18",
+    "SDL_image": "3.4.8",
+    "SDL_mixer": "3.2.4",
+    "oneTBB": "2022.3.0"
+  },
+  "dt": 0.008333333333333333,
+  "initial_state": {
+    "bodies": 200,
+    "colliders": 200,
+    "finite": true,
+    "maximum_supports": 0,
+    "objects": 200,
+    "population_model": "resolved scenario count",
+    "populations_valid": true,
+    "support_total": 0,
+    "supports_valid": true
+  },
+  "linear_render_culling": {
+    "disabled": false,
+    "effective_enabled": false,
+    "effective_policy": "headless-no-rendering",
+    "headless": true,
+    "observed_frame_fallbacks": 0,
+    "observed_mapping_fallbacks": 0,
+    "observed_numeric_fallbacks": 0,
+    "requested_enabled": true,
+    "requested_mode": "cached-linear",
+    "requested_selector": "cached-linear",
+    "resolved_startup_strategy": "headless-no-rendering"
+  },
+  "machine": {
+    "architecture": "x86_64",
+    "cpu": "AMD Ryzen 5 7535HS with Radeon Graphics",
+    "kernel": "6.12.112-1-MANJARO",
+    "logical_cpus": 12,
+    "os": "Linux"
+  },
+  "measured_steps": 30,
+  "physical_invariants": {
+    "bodies": 200,
+    "body_snapshots": [
+      {
+        "angular_velocity": 0.0,
+        "id": 1800,
+        "name": "Churn Box 300",
+        "position": [
+          -420.0,
+          -452.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 1803,
+        "name": "Churn Circle 300",
+        "position": [
+          -468.0,
+          -452.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 1806,
+        "name": "Churn Box 301",
+        "position": [
+          -516.0,
+          -452.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 1809,
+        "name": "Churn Circle 301",
+        "position": [
+          -564.0,
+          -452.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 1812,
+        "name": "Churn Box 302",
+        "position": [
+          -612.0,
+          -452.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 1815,
+        "name": "Churn Circle 302",
+        "position": [
+          -660.0,
+          -452.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 1818,
+        "name": "Churn Box 303",
+        "position": [
+          -708.0,
+          -452.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 1821,
+        "name": "Churn Circle 303",
+        "position": [
+          -756.0,
+          -452.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 1824,
+        "name": "Churn Box 304",
+        "position": [
+          -804.0,
+          -452.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 1827,
+        "name": "Churn Circle 304",
+        "position": [
+          -852.0,
+          -452.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 1830,
+        "name": "Churn Box 305",
+        "position": [
+          60.0,
+          -452.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 1833,
+        "name": "Churn Circle 305",
+        "position": [
+          12.0,
+          -452.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 1836,
+        "name": "Churn Box 306",
+        "position": [
+          -36.0,
+          -452.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 1839,
+        "name": "Churn Circle 306",
+        "position": [
+          -84.0,
+          -452.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 1842,
+        "name": "Churn Box 307",
+        "position": [
+          -132.0,
+          -452.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 1845,
+        "name": "Churn Circle 307",
+        "position": [
+          -180.0,
+          -452.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 1848,
+        "name": "Churn Box 308",
+        "position": [
+          -228.0,
+          -452.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 1851,
+        "name": "Churn Circle 308",
+        "position": [
+          -276.0,
+          -452.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 1854,
+        "name": "Churn Box 309",
+        "position": [
+          -324.0,
+          -452.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 1857,
+        "name": "Churn Circle 309",
+        "position": [
+          -372.0,
+          -452.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 1860,
+        "name": "Churn Box 310",
+        "position": [
+          540.0,
+          -452.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 1863,
+        "name": "Churn Circle 310",
+        "position": [
+          492.0,
+          -452.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 1866,
+        "name": "Churn Box 311",
+        "position": [
+          444.0,
+          -452.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 1869,
+        "name": "Churn Circle 311",
+        "position": [
+          396.0,
+          -452.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 1872,
+        "name": "Churn Box 312",
+        "position": [
+          348.0,
+          -452.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 1875,
+        "name": "Churn Circle 312",
+        "position": [
+          300.0,
+          -452.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 1878,
+        "name": "Churn Box 313",
+        "position": [
+          252.0,
+          -452.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 1881,
+        "name": "Churn Circle 313",
+        "position": [
+          204.0,
+          -452.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 1884,
+        "name": "Churn Box 314",
+        "position": [
+          156.0,
+          -452.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 1887,
+        "name": "Churn Circle 314",
+        "position": [
+          108.0,
+          -452.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 1890,
+        "name": "Churn Box 315",
+        "position": [
+          -708.0,
+          -404.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 1893,
+        "name": "Churn Circle 315",
+        "position": [
+          -756.0,
+          -404.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 1896,
+        "name": "Churn Box 316",
+        "position": [
+          -804.0,
+          -404.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 1899,
+        "name": "Churn Circle 316",
+        "position": [
+          -852.0,
+          -404.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 1902,
+        "name": "Churn Box 317",
+        "position": [
+          828.0,
+          -452.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 1905,
+        "name": "Churn Circle 317",
+        "position": [
+          780.0,
+          -452.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 1908,
+        "name": "Churn Box 318",
+        "position": [
+          732.0,
+          -452.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 1911,
+        "name": "Churn Circle 318",
+        "position": [
+          684.0,
+          -452.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 1914,
+        "name": "Churn Box 319",
+        "position": [
+          636.0,
+          -452.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 1917,
+        "name": "Churn Circle 319",
+        "position": [
+          588.0,
+          -452.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 1920,
+        "name": "Churn Box 320",
+        "position": [
+          -228.0,
+          -404.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 1923,
+        "name": "Churn Circle 320",
+        "position": [
+          -276.0,
+          -404.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 1926,
+        "name": "Churn Box 321",
+        "position": [
+          -324.0,
+          -404.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 1929,
+        "name": "Churn Circle 321",
+        "position": [
+          -372.0,
+          -404.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 1932,
+        "name": "Churn Box 322",
+        "position": [
+          -420.0,
+          -404.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 1935,
+        "name": "Churn Circle 322",
+        "position": [
+          -468.0,
+          -404.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 1938,
+        "name": "Churn Box 323",
+        "position": [
+          -516.0,
+          -404.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 1941,
+        "name": "Churn Circle 323",
+        "position": [
+          -564.0,
+          -404.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 1944,
+        "name": "Churn Box 324",
+        "position": [
+          -612.0,
+          -404.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 1947,
+        "name": "Churn Circle 324",
+        "position": [
+          -660.0,
+          -404.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 1950,
+        "name": "Churn Box 325",
+        "position": [
+          252.0,
+          -404.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 1953,
+        "name": "Churn Circle 325",
+        "position": [
+          204.0,
+          -404.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 1956,
+        "name": "Churn Box 326",
+        "position": [
+          156.0,
+          -404.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 1959,
+        "name": "Churn Circle 326",
+        "position": [
+          108.0,
+          -404.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 1962,
+        "name": "Churn Box 327",
+        "position": [
+          60.0,
+          -404.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 1965,
+        "name": "Churn Circle 327",
+        "position": [
+          12.0,
+          -404.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 1968,
+        "name": "Churn Box 328",
+        "position": [
+          -36.0,
+          -404.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 1971,
+        "name": "Churn Circle 328",
+        "position": [
+          -84.0,
+          -404.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 1974,
+        "name": "Churn Box 329",
+        "position": [
+          -132.0,
+          -404.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 1977,
+        "name": "Churn Circle 329",
+        "position": [
+          -180.0,
+          -404.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 1980,
+        "name": "Churn Box 330",
+        "position": [
+          732.0,
+          -404.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 1983,
+        "name": "Churn Circle 330",
+        "position": [
+          684.0,
+          -404.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 1986,
+        "name": "Churn Box 331",
+        "position": [
+          636.0,
+          -404.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 1989,
+        "name": "Churn Circle 331",
+        "position": [
+          588.0,
+          -404.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 1992,
+        "name": "Churn Box 332",
+        "position": [
+          540.0,
+          -404.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 1995,
+        "name": "Churn Circle 332",
+        "position": [
+          492.0,
+          -404.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 1998,
+        "name": "Churn Box 333",
+        "position": [
+          444.0,
+          -404.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2001,
+        "name": "Churn Circle 333",
+        "position": [
+          396.0,
+          -404.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2004,
+        "name": "Churn Box 334",
+        "position": [
+          348.0,
+          -404.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2007,
+        "name": "Churn Circle 334",
+        "position": [
+          300.0,
+          -404.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2010,
+        "name": "Churn Box 335",
+        "position": [
+          -516.0,
+          -356.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2013,
+        "name": "Churn Circle 335",
+        "position": [
+          -564.0,
+          -356.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2016,
+        "name": "Churn Box 336",
+        "position": [
+          -612.0,
+          -356.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2019,
+        "name": "Churn Circle 336",
+        "position": [
+          -660.0,
+          -356.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2022,
+        "name": "Churn Box 337",
+        "position": [
+          -708.0,
+          -356.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2025,
+        "name": "Churn Circle 337",
+        "position": [
+          -756.0,
+          -356.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2028,
+        "name": "Churn Box 338",
+        "position": [
+          -804.0,
+          -356.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2031,
+        "name": "Churn Circle 338",
+        "position": [
+          -852.0,
+          -356.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2034,
+        "name": "Churn Box 339",
+        "position": [
+          828.0,
+          -404.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2037,
+        "name": "Churn Circle 339",
+        "position": [
+          780.0,
+          -404.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2040,
+        "name": "Churn Box 340",
+        "position": [
+          -36.0,
+          -356.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2043,
+        "name": "Churn Circle 340",
+        "position": [
+          -84.0,
+          -356.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2046,
+        "name": "Churn Box 341",
+        "position": [
+          -132.0,
+          -356.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2049,
+        "name": "Churn Circle 341",
+        "position": [
+          -180.0,
+          -356.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2052,
+        "name": "Churn Box 342",
+        "position": [
+          -228.0,
+          -356.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2055,
+        "name": "Churn Circle 342",
+        "position": [
+          -276.0,
+          -356.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2058,
+        "name": "Churn Box 343",
+        "position": [
+          -324.0,
+          -356.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2061,
+        "name": "Churn Circle 343",
+        "position": [
+          -372.0,
+          -356.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2064,
+        "name": "Churn Box 344",
+        "position": [
+          -420.0,
+          -356.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2067,
+        "name": "Churn Circle 344",
+        "position": [
+          -468.0,
+          -356.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2070,
+        "name": "Churn Box 345",
+        "position": [
+          444.0,
+          -356.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2073,
+        "name": "Churn Circle 345",
+        "position": [
+          396.0,
+          -356.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2076,
+        "name": "Churn Box 346",
+        "position": [
+          348.0,
+          -356.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2079,
+        "name": "Churn Circle 346",
+        "position": [
+          300.0,
+          -356.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2082,
+        "name": "Churn Box 347",
+        "position": [
+          252.0,
+          -356.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2085,
+        "name": "Churn Circle 347",
+        "position": [
+          204.0,
+          -356.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2088,
+        "name": "Churn Box 348",
+        "position": [
+          156.0,
+          -356.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2091,
+        "name": "Churn Circle 348",
+        "position": [
+          108.0,
+          -356.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2094,
+        "name": "Churn Box 349",
+        "position": [
+          60.0,
+          -356.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2097,
+        "name": "Churn Circle 349",
+        "position": [
+          12.0,
+          -356.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2100,
+        "name": "Churn Box 350",
+        "position": [
+          -804.0,
+          -308.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2103,
+        "name": "Churn Circle 350",
+        "position": [
+          -852.0,
+          -308.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2106,
+        "name": "Churn Box 351",
+        "position": [
+          828.0,
+          -356.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2109,
+        "name": "Churn Circle 351",
+        "position": [
+          780.0,
+          -356.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2112,
+        "name": "Churn Box 352",
+        "position": [
+          732.0,
+          -356.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2115,
+        "name": "Churn Circle 352",
+        "position": [
+          684.0,
+          -356.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2118,
+        "name": "Churn Box 353",
+        "position": [
+          636.0,
+          -356.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2121,
+        "name": "Churn Circle 353",
+        "position": [
+          588.0,
+          -356.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2124,
+        "name": "Churn Box 354",
+        "position": [
+          540.0,
+          -356.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2127,
+        "name": "Churn Circle 354",
+        "position": [
+          492.0,
+          -356.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2130,
+        "name": "Churn Box 355",
+        "position": [
+          -324.0,
+          -308.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2133,
+        "name": "Churn Circle 355",
+        "position": [
+          -372.0,
+          -308.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2136,
+        "name": "Churn Box 356",
+        "position": [
+          -420.0,
+          -308.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2139,
+        "name": "Churn Circle 356",
+        "position": [
+          -468.0,
+          -308.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2142,
+        "name": "Churn Box 357",
+        "position": [
+          -516.0,
+          -308.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2145,
+        "name": "Churn Circle 357",
+        "position": [
+          -564.0,
+          -308.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2148,
+        "name": "Churn Box 358",
+        "position": [
+          -612.0,
+          -308.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2151,
+        "name": "Churn Circle 358",
+        "position": [
+          -660.0,
+          -308.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2154,
+        "name": "Churn Box 359",
+        "position": [
+          -708.0,
+          -308.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2157,
+        "name": "Churn Circle 359",
+        "position": [
+          -756.0,
+          -308.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2160,
+        "name": "Churn Box 360",
+        "position": [
+          156.0,
+          -308.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2163,
+        "name": "Churn Circle 360",
+        "position": [
+          108.0,
+          -308.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2166,
+        "name": "Churn Box 361",
+        "position": [
+          60.0,
+          -308.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2169,
+        "name": "Churn Circle 361",
+        "position": [
+          12.0,
+          -308.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2172,
+        "name": "Churn Box 362",
+        "position": [
+          -36.0,
+          -308.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2175,
+        "name": "Churn Circle 362",
+        "position": [
+          -84.0,
+          -308.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2178,
+        "name": "Churn Box 363",
+        "position": [
+          -132.0,
+          -308.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2181,
+        "name": "Churn Circle 363",
+        "position": [
+          -180.0,
+          -308.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2184,
+        "name": "Churn Box 364",
+        "position": [
+          -228.0,
+          -308.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2187,
+        "name": "Churn Circle 364",
+        "position": [
+          -276.0,
+          -308.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2190,
+        "name": "Churn Box 365",
+        "position": [
+          636.0,
+          -308.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2193,
+        "name": "Churn Circle 365",
+        "position": [
+          588.0,
+          -308.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2196,
+        "name": "Churn Box 366",
+        "position": [
+          540.0,
+          -308.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2199,
+        "name": "Churn Circle 366",
+        "position": [
+          492.0,
+          -308.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2202,
+        "name": "Churn Box 367",
+        "position": [
+          444.0,
+          -308.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2205,
+        "name": "Churn Circle 367",
+        "position": [
+          396.0,
+          -308.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2208,
+        "name": "Churn Box 368",
+        "position": [
+          348.0,
+          -308.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2211,
+        "name": "Churn Circle 368",
+        "position": [
+          300.0,
+          -308.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2214,
+        "name": "Churn Box 369",
+        "position": [
+          252.0,
+          -308.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2217,
+        "name": "Churn Circle 369",
+        "position": [
+          204.0,
+          -308.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2220,
+        "name": "Churn Box 370",
+        "position": [
+          -612.0,
+          -260.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2223,
+        "name": "Churn Circle 370",
+        "position": [
+          -660.0,
+          -260.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2226,
+        "name": "Churn Box 371",
+        "position": [
+          -708.0,
+          -260.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2229,
+        "name": "Churn Circle 371",
+        "position": [
+          -756.0,
+          -260.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2232,
+        "name": "Churn Box 372",
+        "position": [
+          -804.0,
+          -260.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2235,
+        "name": "Churn Circle 372",
+        "position": [
+          -852.0,
+          -260.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2238,
+        "name": "Churn Box 373",
+        "position": [
+          828.0,
+          -308.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2241,
+        "name": "Churn Circle 373",
+        "position": [
+          780.0,
+          -308.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2244,
+        "name": "Churn Box 374",
+        "position": [
+          732.0,
+          -308.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2247,
+        "name": "Churn Circle 374",
+        "position": [
+          684.0,
+          -308.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2250,
+        "name": "Churn Box 375",
+        "position": [
+          -132.0,
+          -260.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2253,
+        "name": "Churn Circle 375",
+        "position": [
+          -180.0,
+          -260.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2256,
+        "name": "Churn Box 376",
+        "position": [
+          -228.0,
+          -260.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2259,
+        "name": "Churn Circle 376",
+        "position": [
+          -276.0,
+          -260.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2262,
+        "name": "Churn Box 377",
+        "position": [
+          -324.0,
+          -260.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2265,
+        "name": "Churn Circle 377",
+        "position": [
+          -372.0,
+          -260.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2268,
+        "name": "Churn Box 378",
+        "position": [
+          -420.0,
+          -260.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2271,
+        "name": "Churn Circle 378",
+        "position": [
+          -468.0,
+          -260.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2274,
+        "name": "Churn Box 379",
+        "position": [
+          -516.0,
+          -260.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2277,
+        "name": "Churn Circle 379",
+        "position": [
+          -564.0,
+          -260.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2280,
+        "name": "Churn Box 380",
+        "position": [
+          348.0,
+          -260.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2283,
+        "name": "Churn Circle 380",
+        "position": [
+          300.0,
+          -260.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2286,
+        "name": "Churn Box 381",
+        "position": [
+          252.0,
+          -260.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2289,
+        "name": "Churn Circle 381",
+        "position": [
+          204.0,
+          -260.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2292,
+        "name": "Churn Box 382",
+        "position": [
+          156.0,
+          -260.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2295,
+        "name": "Churn Circle 382",
+        "position": [
+          108.0,
+          -260.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2298,
+        "name": "Churn Box 383",
+        "position": [
+          60.0,
+          -260.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2301,
+        "name": "Churn Circle 383",
+        "position": [
+          12.0,
+          -260.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2304,
+        "name": "Churn Box 384",
+        "position": [
+          -36.0,
+          -260.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2307,
+        "name": "Churn Circle 384",
+        "position": [
+          -84.0,
+          -260.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2310,
+        "name": "Churn Box 385",
+        "position": [
+          828.0,
+          -260.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2313,
+        "name": "Churn Circle 385",
+        "position": [
+          780.0,
+          -260.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2316,
+        "name": "Churn Box 386",
+        "position": [
+          732.0,
+          -260.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2319,
+        "name": "Churn Circle 386",
+        "position": [
+          684.0,
+          -260.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2322,
+        "name": "Churn Box 387",
+        "position": [
+          636.0,
+          -260.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2325,
+        "name": "Churn Circle 387",
+        "position": [
+          588.0,
+          -260.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2328,
+        "name": "Churn Box 388",
+        "position": [
+          540.0,
+          -260.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2331,
+        "name": "Churn Circle 388",
+        "position": [
+          492.0,
+          -260.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2334,
+        "name": "Churn Box 389",
+        "position": [
+          444.0,
+          -260.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2337,
+        "name": "Churn Circle 389",
+        "position": [
+          396.0,
+          -260.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2340,
+        "name": "Churn Box 390",
+        "position": [
+          -420.0,
+          -212.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2343,
+        "name": "Churn Circle 390",
+        "position": [
+          -468.0,
+          -212.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2346,
+        "name": "Churn Box 391",
+        "position": [
+          -516.0,
+          -212.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2349,
+        "name": "Churn Circle 391",
+        "position": [
+          -564.0,
+          -212.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2352,
+        "name": "Churn Box 392",
+        "position": [
+          -612.0,
+          -212.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2355,
+        "name": "Churn Circle 392",
+        "position": [
+          -660.0,
+          -212.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2358,
+        "name": "Churn Box 393",
+        "position": [
+          -708.0,
+          -212.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2361,
+        "name": "Churn Circle 393",
+        "position": [
+          -756.0,
+          -212.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2364,
+        "name": "Churn Box 394",
+        "position": [
+          -804.0,
+          -212.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2367,
+        "name": "Churn Circle 394",
+        "position": [
+          -852.0,
+          -212.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2370,
+        "name": "Churn Box 395",
+        "position": [
+          60.0,
+          -212.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2373,
+        "name": "Churn Circle 395",
+        "position": [
+          12.0,
+          -212.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2376,
+        "name": "Churn Box 396",
+        "position": [
+          -36.0,
+          -212.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2379,
+        "name": "Churn Circle 396",
+        "position": [
+          -84.0,
+          -212.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2382,
+        "name": "Churn Box 397",
+        "position": [
+          -132.0,
+          -212.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2385,
+        "name": "Churn Circle 397",
+        "position": [
+          -180.0,
+          -212.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2388,
+        "name": "Churn Box 398",
+        "position": [
+          -228.0,
+          -212.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2391,
+        "name": "Churn Circle 398",
+        "position": [
+          -276.0,
+          -212.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2394,
+        "name": "Churn Box 399",
+        "position": [
+          -324.0,
+          -212.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 2397,
+        "name": "Churn Circle 399",
+        "position": [
+          -372.0,
+          -212.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      }
+    ],
+    "colliders": 200,
+    "contact_snapshots": [],
+    "finite": true,
+    "maximum_supports": 0,
+    "objects": 200,
+    "population_model": "resolved scenario count",
+    "populations_valid": true,
+    "support_total": 0,
+    "supports_valid": true
+  },
+  "render_samples": 0,
+  "rendering": false,
+  "repetition_index": 0,
+  "repetitions": 1,
+  "requested_measured_steps": 30,
+  "resolved_parameters": {
+    "add_count": 10,
+    "body_type": "static",
+    "box_count": 100,
+    "box_size": [
+      28.0,
+      28.0
+    ],
+    "circle_count": 100,
+    "circle_radius": 14.0,
+    "effective_churn": 10,
+    "gravity": [
+      0.0,
+      98.0999984741211
+    ],
+    "layout_size": [
+      1800.0,
+      1000.0
+    ],
+    "moving": false,
+    "remove_count": 10,
+    "seed_policy": "deterministic velocity/pattern phase; seed zero preserves historical layouts",
+    "solver_iterations": 10,
+    "steady_count": 200
+  },
+  "sample_capacity": 4096,
+  "scenario": "add_and_remove",
+  "schema_version": 3,
+  "seed": 0,
+  "stopped_on_quit": false,
+  "timing_eligible": false,
+  "total_render_samples": 0,
+  "total_steps": 30,
+  "validation_mode": "per-step",
+  "warmup_steps": 30,
+  "workers": 6
+}

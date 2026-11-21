@@ -33,6 +33,8 @@ constexpr int DEFAULT_BROAD_PHASE_ELEMENT_COUNT = 128;
 constexpr int DEFAULT_NARROW_PHASE_ELEMENT_COUNT = 8;
 constexpr int DEFAULT_ADD_REMOVE_STEADY_BODY_COUNT = 1000;
 constexpr int DEFAULT_ADD_REMOVE_CHURN_COUNT = 10;
+constexpr int DEFAULT_IDEAL_WORLD_BODY_COUNT = 1000;
+constexpr int IDEAL_WORLD_BODIES_PER_CHAMBER = 20;
 
 struct RigidBodyContainerScenarioSettings
 {
@@ -181,6 +183,7 @@ enum class BenchmarkScenario
     AddAndRemove,
     MovingAddAndRemove,
     PersistentContacts,
+    IdealWorld,
 };
 
 bool isAddRemoveScenario(const BenchmarkScenario scenario)
@@ -209,6 +212,7 @@ struct BenchmarkRunnerOptions
     int repetitions = 1, runIndex = 0;
     bool validateInvariants = false;
     int contactPairCount = 100, scriptedEndpoints = 2;
+    int idealWorldBodyCount = DEFAULT_IDEAL_WORLD_BODY_COUNT;
 };
 
 nlohmann::json renderCullingMetadata(const BenchmarkRunnerOptions &options, const SDLWindow *window = nullptr,
@@ -273,6 +277,9 @@ BenchmarkScenario parseScenario(const std::string &value)
     if (value == "persistent_contacts")
         return BenchmarkScenario::PersistentContacts;
 
+    if (value == "ideal_world" || value == "ideal-world" || value == "idealworld")
+        return BenchmarkScenario::IdealWorld;
+
     throw std::runtime_error("Unknown benchmark scenario: " + value);
 }
 
@@ -294,6 +301,8 @@ const char *scenarioName(const BenchmarkScenario scenario)
         return "moving_add_and_remove";
     case BenchmarkScenario::PersistentContacts:
         return "persistent_contacts";
+    case BenchmarkScenario::IdealWorld:
+        return "ideal_world";
     case BenchmarkScenario::None:
         return "scene";
     }
@@ -993,6 +1002,89 @@ void buildPersistentContacts(platformator::Runtime &runtime, const BenchmarkRunn
         }
 }
 
+size_t idealWorldChamberCount(const int totalBodyCount)
+{
+    const size_t clamped = static_cast<size_t>(std::max(1, totalBodyCount));
+    return (clamped + static_cast<size_t>(IDEAL_WORLD_BODIES_PER_CHAMBER) - 1) /
+           static_cast<size_t>(IDEAL_WORLD_BODIES_PER_CHAMBER);
+}
+
+void buildIdealWorldScenario(platformator::Runtime &runtime, const BenchmarkRunnerOptions &options)
+{
+    const size_t totalBodies = static_cast<size_t>(std::max(1, options.idealWorldBodyCount));
+    const size_t chamberCount = idealWorldChamberCount(options.idealWorldBodyCount);
+    const size_t chamberCols =
+        std::max<size_t>(1, static_cast<size_t>(std::ceil(std::sqrt(static_cast<double>(chamberCount)))));
+    const size_t chamberRows = std::max<size_t>(1, (chamberCount + chamberCols - 1) / chamberCols);
+
+    constexpr float chamberInterior = 300.0f;
+    constexpr float wallThickness = 24.0f;
+    constexpr float chamberPitch = 600.0f; // 3 * GRID_CELL_SIZE keeps neighboring chambers in disjoint grid cells
+    constexpr float boxSize = 24.0f;
+    constexpr float circleRadius = 12.0f;
+    constexpr float bodyStep = 46.0f;
+    constexpr float friction = 0.8f;
+    constexpr float restitution = 0.15f;
+    const bool attachSprites = options.renderFrames;
+
+    const float worldOriginX = -0.5f * static_cast<float>(chamberCols - 1) * chamberPitch;
+    const float worldOriginY = -0.5f * static_cast<float>(chamberRows - 1) * chamberPitch;
+
+    std::fprintf(stdout,
+                 "[Benchmark][Scenario] ideal_world dynamic_bodies=%zu chambers=%zu static_walls=%zu pitch=%.1f\n",
+                 totalBodies, chamberCount, chamberCount * 4, chamberPitch);
+
+    size_t spawned = 0;
+    for (size_t chamberIndex = 0; chamberIndex < chamberCount; ++chamberIndex)
+    {
+        const size_t cCol = chamberIndex % chamberCols;
+        const size_t cRow = chamberIndex / chamberCols;
+        const float cx = worldOriginX + static_cast<float>(cCol) * chamberPitch;
+        const float cy = worldOriginY + static_cast<float>(cRow) * chamberPitch;
+        const float halfInterior = 0.5f * chamberInterior;
+        const float fullSpan = chamberInterior + 2.0f * wallThickness;
+
+        createBenchmarkBox(runtime, formatIndexedName("Chamber Floor", chamberIndex), cx,
+                           cy + halfInterior + 0.5f * wallThickness, fullSpan, wallThickness, STATIC, false,
+                           Eigen::Vector2f::Zero(), false, friction, restitution, 0.0f, attachSprites);
+        createBenchmarkBox(runtime, formatIndexedName("Chamber Ceiling", chamberIndex), cx,
+                           cy - halfInterior - 0.5f * wallThickness, fullSpan, wallThickness, STATIC, false,
+                           Eigen::Vector2f::Zero(), false, friction, restitution, 0.0f, attachSprites);
+        createBenchmarkBox(runtime, formatIndexedName("Chamber Left", chamberIndex),
+                           cx - halfInterior - 0.5f * wallThickness, cy, wallThickness, fullSpan, STATIC, false,
+                           Eigen::Vector2f::Zero(), false, friction, restitution, 0.0f, attachSprites);
+        createBenchmarkBox(runtime, formatIndexedName("Chamber Right", chamberIndex),
+                           cx + halfInterior + 0.5f * wallThickness, cy, wallThickness, fullSpan, STATIC, false,
+                           Eigen::Vector2f::Zero(), false, friction, restitution, 0.0f, attachSprites);
+
+        for (size_t localIndex = 0;
+             localIndex < static_cast<size_t>(IDEAL_WORLD_BODIES_PER_CHAMBER) && spawned < totalBodies;
+             ++localIndex, ++spawned)
+        {
+            const size_t bCol = localIndex % 5;
+            const size_t bRow = localIndex / 5;
+            const float jitterX = static_cast<float>(static_cast<int>(spawned % 3) - 1) * 1.5f;
+            const float jitterY = static_cast<float>(static_cast<int>(spawned % 4) - 1) * 1.0f;
+            const float bx = cx + (static_cast<float>(bCol) - 2.0f) * bodyStep + jitterX;
+            const float by = cy + (static_cast<float>(bRow) - 1.5f) * bodyStep + jitterY;
+            const Eigen::Vector2f velocity = calculateRigidBodyContainerInitialVelocity(spawned + options.seed);
+            const float angularVelocity = calculateRigidBodyContainerAngularVelocity(spawned);
+
+            if (spawned % 2 == 0)
+            {
+                createBenchmarkBox(runtime, formatIndexedName("Ideal Box", spawned), bx, by, boxSize, boxSize, DYNAMIC,
+                                   true, velocity, false, friction, restitution, angularVelocity, attachSprites);
+            }
+            else
+            {
+                createBenchmarkCircle(runtime, formatIndexedName("Ideal Circle", spawned), bx, by, circleRadius,
+                                      DYNAMIC, true, velocity, false, friction, restitution, angularVelocity,
+                                      attachSprites);
+            }
+        }
+    }
+}
+
 void buildScenario(platformator::Runtime &runtime, const BenchmarkRunnerOptions &options,
                    BroadPhaseStressScenarioState *broadPhaseStressState, AddRemoveScenarioState *addRemoveState)
 {
@@ -1024,6 +1116,9 @@ void buildScenario(platformator::Runtime &runtime, const BenchmarkRunnerOptions 
         return;
     case BenchmarkScenario::PersistentContacts:
         buildPersistentContacts(runtime, options);
+        return;
+    case BenchmarkScenario::IdealWorld:
+        buildIdealWorldScenario(runtime, options);
         return;
     case BenchmarkScenario::None:
         return;
@@ -1139,6 +1234,17 @@ void configureScenarioCamera(platformator::Runtime &runtime, const BenchmarkRunn
     case BenchmarkScenario::PersistentContacts:
         mainCamera->setCamera(SDL_FRect{-10, -10, 2600, 2600});
         return;
+    case BenchmarkScenario::IdealWorld: {
+        const size_t chamberCount = idealWorldChamberCount(options.idealWorldBodyCount);
+        const size_t cols =
+            std::max<size_t>(1, static_cast<size_t>(std::ceil(std::sqrt(static_cast<double>(chamberCount)))));
+        const size_t rows = std::max<size_t>(1, (chamberCount + cols - 1) / cols);
+        const float w = static_cast<float>(cols) * 600.0f + 400.0f;
+        const float h = static_cast<float>(rows) * 600.0f + 400.0f;
+        mainCamera->setCamera(
+            fitCameraRectToWindowAspect(SDL_FRect{-0.5f * w, -0.5f * h, w, h}, options.runtimeOptions.windowSettings));
+        return;
+    }
     case BenchmarkScenario::None:
         return;
     }
@@ -1321,6 +1427,13 @@ BenchmarkRunnerOptions parseBenchmarkRunnerOptions(int argc, char *args[])
             continue;
         }
 
+        if (argument == "--ideal-count")
+        {
+            options.idealWorldBodyCount =
+                parsePositiveInteger(requireArgumentValue(argc, args, index, argument), argument);
+            continue;
+        }
+
         if (argument == "--steady-count")
         {
             options.addRemoveSteadyCount =
@@ -1479,6 +1592,18 @@ nlohmann::json resolvedParameters(const BenchmarkRunnerOptions &options)
                        {"box_size", {4, 4}},
                        {"pair_spacing", 80},
                        {"triggers", true}});
+    if (options.scenario == BenchmarkScenario::IdealWorld)
+    {
+        const size_t chambers = idealWorldChamberCount(options.idealWorldBodyCount);
+        result.update({{"dynamic_body_count", options.idealWorldBodyCount},
+                       {"bodies_per_chamber", IDEAL_WORLD_BODIES_PER_CHAMBER},
+                       {"chamber_count", chambers},
+                       {"static_wall_count", chambers * 4},
+                       {"chamber_interior", 300.0f},
+                       {"chamber_pitch", 600.0f},
+                       {"friction", 0.8f},
+                       {"restitution", 0.15f}});
+    }
     return result;
 }
 size_t expectedPopulation(const BenchmarkRunnerOptions &options)
@@ -1498,6 +1623,8 @@ size_t expectedPopulation(const BenchmarkRunnerOptions &options)
         return options.addRemoveSteadyCount + camera;
     case BenchmarkScenario::PersistentContacts:
         return size_t(options.contactPairCount) * 2 + camera;
+    case BenchmarkScenario::IdealWorld:
+        return size_t(options.idealWorldBodyCount) + idealWorldChamberCount(options.idealWorldBodyCount) * 4 + camera;
     case BenchmarkScenario::None:
         return 0;
     }
@@ -1722,9 +1849,9 @@ void printUsage(FILE *output)
         output,
         "Usage: platformator_benchmark_runner [scene] [--scene path | --scenario "
         "broad_phase|broad_phase_stress|narrow_phase|rigid_body_container|add_and_remove|moving_add_and_remove|"
-        "persistent_contacts] "
+        "persistent_contacts|ideal_world] "
         "[--warmup-frames N] [--measure-frames N] [--dt seconds] [--box-count N] [--circle-count N] [--broad-count N] "
-        "[--contact-pair-count N] [--scripted-endpoints 0|1|2] [--narrow-count N] [--steady-count N] [--add-count N] "
+        "[--contact-pair-count N] [--scripted-endpoints 0|1|2] [--narrow-count N] [--ideal-count N] [--steady-count N] [--add-count N] "
         "[--remove-count N] [--churn-count N] [--csv-output "
         "path] [--workers N] [--seed N] [--validate-invariants] [--asset-root path] [--render] "
         "[--no-render-culling]\n");

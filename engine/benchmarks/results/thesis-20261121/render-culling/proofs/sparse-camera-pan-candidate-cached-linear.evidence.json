@@ -1,0 +1,73 @@
+{
+  "crossing_counts": {
+    "entries": 158,
+    "exits": 110
+  },
+  "dt": 0.008333333333333333,
+  "fixture_sha256": "b9c006f45c4be67132f1d28b0ae0ac41b6a89b11fa2264dc8cfa3019f8004311",
+  "frames_sha256": "d2d21d441724064f5f5235f550baf7fb5846d7471da3ff5e4f10f84ca026cc5f",
+  "harness_sha256": "8c136473dd681d14d67ce39824b616081f410cdf361605e0f23d16420396743a",
+  "headless": false,
+  "measure_frames": 30,
+  "mode": "cached-linear",
+  "ordering_variant": "rebuild",
+  "profile": "camera-pan",
+  "renderer_mapping": {
+    "actual_output_height": 240,
+    "actual_output_width": 320,
+    "current_output_height": 240,
+    "current_output_width": 320,
+    "logical_presentation": [
+      0,
+      0,
+      0
+    ],
+    "mapping_eligible": true,
+    "mapping_known": true,
+    "output_height": 240,
+    "output_width": 320,
+    "renderer": "software",
+    "scale": [
+      1.0,
+      1.0
+    ],
+    "target_active": false,
+    "viewport": [
+      0,
+      0,
+      320,
+      240
+    ],
+    "viewport_set": false,
+    "vsync": 1,
+    "vsync_known": true
+  },
+  "representative_sha256": "4d80722b213459850a4e1a3e6ca5b8be5977490ff5adf1043760ae934be020f7",
+  "seed": 0,
+  "source_sha256": "4209c77c1ee8513976426ed67811e3809f9c55b95f4f7121afdcc14a47ae8eeb",
+  "sprite_count": 10000,
+  "timing_eligible": false,
+  "trajectory_parameters": {
+    "camera_height": 240.0,
+    "camera_schedule": "continuous-pan-240",
+    "camera_width": 320.0,
+    "changed_percent": 0,
+    "churn_minimum_replacements": 0,
+    "churn_replacements_per_step": 0,
+    "layout": "constant-density-spread",
+    "output_resize_step": 0,
+    "output_schedule": "320x240",
+    "profile": "camera-pan",
+    "rotation_distribution": "zero",
+    "scene_asset": "",
+    "seed": 0,
+    "size_distribution": "standard",
+    "sprite_count": 10000,
+    "sprite_height": 16.0,
+    "sprite_width": 16.0,
+    "trajectory_period_steps": 240
+  },
+  "validation_mode": "per-step",
+  "warmup_frames": 5,
+  "workers": 1
+}

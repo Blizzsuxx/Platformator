@@ -1,0 +1,1123 @@
+{
+  "asset_root": "/home/user/Projects/Platformator/build/benchmark/assets",
+  "boundaries": {
+    "broad_phase": "grid/cell/filter/witness reconciliation; nested in physics",
+    "cleanup": "transient audio and mutation/scene commit including destruction/free; nested in complete_step",
+    "complete_step": "starts/hook/fixed/synchronization/physics/events/update/animation/late/commit/destructors/transient cleanup; excludes event pumping, render and recorder storage",
+    "deferred_grid_flush": "grid/cell reconciliation during mutation commit; nested in cleanup",
+    "legacy_frame": "historical partial metric; absent from schema v2; not equivalent to complete_step",
+    "narrow_phase": "changed geometry, serial support reduction and subscribed events; nested in physics",
+    "physics": "transform synchronization, broad/narrow phase, support reduction, forces, solve, movement and cache publication; nested in complete_step",
+    "render": "independent render calls after cleanup; not nested in complete_step",
+    "resolve_collisions": "contact solving and sleep reduction; nested in physics",
+    "retirement": "retirement drain including destroy callbacks, registry removal and frees; nested in cleanup",
+    "scene_transition": "selected request preparation through replacement/clear publication; nested in cleanup",
+    "step_hook": "custom step callback, when supplied; nested in complete_step"
+  },
+  "build": {
+    "commit": "3fbd4a760d4526fbbc01b8eea0084d6241722248",
+    "compiler": "GNU 16.2.1",
+    "configuration": "Release",
+    "debug_tools": false,
+    "dirty": true,
+    "flags": " -O3 -DNDEBUG",
+    "sanitizer": "none",
+    "source_sha256": "4209c77c1ee8513976426ed67811e3809f9c55b95f4f7121afdcc14a47ae8eeb",
+    "work_probes": false
+  },
+  "complete_capture": true,
+  "dependencies": {
+    "Eigen": "5.0.1",
+    "JSON": "3.12.0",
+    "SDL": "3.4.18",
+    "SDL_image": "3.4.8",
+    "SDL_mixer": "3.2.4",
+    "oneTBB": "2022.3.0"
+  },
+  "dt": 0.008333333333333333,
+  "initial_state": {
+    "bodies": 54,
+    "colliders": 54,
+    "finite": true,
+    "maximum_supports": 0,
+    "objects": 54,
+    "population_model": "resolved scenario count",
+    "populations_valid": true,
+    "support_total": 0,
+    "supports_valid": true
+  },
+  "linear_render_culling": {
+    "disabled": false,
+    "effective_enabled": false,
+    "effective_policy": "headless-no-rendering",
+    "headless": true,
+    "observed_frame_fallbacks": 0,
+    "observed_mapping_fallbacks": 0,
+    "observed_numeric_fallbacks": 0,
+    "requested_enabled": true,
+    "requested_mode": "cached-linear",
+    "requested_selector": "cached-linear",
+    "resolved_startup_strategy": "headless-no-rendering"
+  },
+  "machine": {
+    "architecture": "x86_64",
+    "cpu": "AMD Ryzen 5 7535HS with Radeon Graphics",
+    "kernel": "6.12.112-1-MANJARO",
+    "logical_cpus": 12,
+    "os": "Linux"
+  },
+  "measured_steps": 30,
+  "physical_invariants": {
+    "bodies": 54,
+    "body_snapshots": [
+      {
+        "angular_velocity": 0.0,
+        "id": 0,
+        "name": "Container Floor",
+        "position": [
+          0.0,
+          502.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 3,
+        "name": "Container Ceiling",
+        "position": [
+          0.0,
+          -482.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 6,
+        "name": "Container Left Wall",
+        "position": [
+          -832.0,
+          0.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 9,
+        "name": "Container Right Wall",
+        "position": [
+          832.0,
+          0.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 1.4038145542144775,
+        "id": 12,
+        "name": "Container Box 00",
+        "position": [
+          -783.867919921875,
+          -409.0940856933594
+        ],
+        "rotation": 0.11777925491333008,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -2.972118377685547,
+          52.26966857910156
+        ]
+      },
+      {
+        "angular_velocity": 0.17562109231948853,
+        "id": 15,
+        "name": "Container Circle 00",
+        "position": [
+          -725.994384765625,
+          -417.7334899902344
+        ],
+        "rotation": 0.22061307728290558,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          1.2830594778060913,
+          30.417278289794922
+        ]
+      },
+      {
+        "angular_velocity": 0.3972090482711792,
+        "id": 18,
+        "name": "Container Box 01",
+        "position": [
+          -696.006591796875,
+          -412.8327941894531
+        ],
+        "rotation": -0.002550446428358555,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          6.716940879821777,
+          37.682701110839844
+        ]
+      },
+      {
+        "angular_velocity": 0.17963239550590515,
+        "id": 21,
+        "name": "Container Circle 01",
+        "position": [
+          -651.2744140625,
+          -405.0839538574219
+        ],
+        "rotation": 0.137753427028656,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          2.1853888034820557,
+          49.27528762817383
+        ]
+      },
+      {
+        "angular_velocity": -1.3188472986221313,
+        "id": 24,
+        "name": "Container Box 02",
+        "position": [
+          -622.8536987304688,
+          -416.19708251953125
+        ],
+        "rotation": -0.7848727703094482,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          7.429954528808594,
+          30.68031883239746
+        ]
+      },
+      {
+        "angular_velocity": 0.07705501466989517,
+        "id": 27,
+        "name": "Container Circle 02",
+        "position": [
+          -578.623779296875,
+          -402.8957824707031
+        ],
+        "rotation": 0.13202401995658875,
+        "sleeping": false,
+        "supports": 1,
+        "velocity": [
+          -4.742103099822998,
+          50.27170944213867
+        ]
+      },
+      {
+        "angular_velocity": -0.7008448243141174,
+        "id": 30,
+        "name": "Container Box 03",
+        "position": [
+          -549.35302734375,
+          -405.9187927246094
+        ],
+        "rotation": -0.339497447013855,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -2.260094165802002,
+          51.895137786865234
+        ]
+      },
+      {
+        "angular_velocity": 0.9136011600494385,
+        "id": 33,
+        "name": "Container Circle 03",
+        "position": [
+          -499.0594482421875,
+          -412.0818176269531
+        ],
+        "rotation": 0.48949092626571655,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -2.8031928539276123,
+          38.789588928222656
+        ]
+      },
+      {
+        "angular_velocity": -1.0566388368606567,
+        "id": 36,
+        "name": "Container Box 04",
+        "position": [
+          -468.94091796875,
+          -418.4844665527344
+        ],
+        "rotation": -0.6394904255867004,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          6.803187370300293,
+          29.310405731201172
+        ]
+      },
+      {
+        "angular_velocity": -0.020968066528439522,
+        "id": 39,
+        "name": "Container Circle 04",
+        "position": [
+          -424.2064208984375,
+          -405.0262756347656
+        ],
+        "rotation": 0.16603490710258484,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -0.34571316838264465,
+          55.450653076171875
+        ]
+      },
+      {
+        "angular_velocity": -0.6778802871704102,
+        "id": 42,
+        "name": "Container Box 05",
+        "position": [
+          -393.7934265136719,
+          -409.53997802734375
+        ],
+        "rotation": -0.34317970275878906,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          8.34571361541748,
+          44.64936065673828
+        ]
+      },
+      {
+        "angular_velocity": 1.0174026489257812,
+        "id": 45,
+        "name": "Container Circle 05",
+        "position": [
+          -347.68060302734375,
+          -396.9153137207031
+        ],
+        "rotation": 0.4737471640110016,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -2.4432260990142822,
+          69.71975708007812
+        ]
+      },
+      {
+        "angular_velocity": -1.835332989692688,
+        "id": 48,
+        "name": "Container Box 06",
+        "position": [
+          -318.31988525390625,
+          -411.65093994140625
+        ],
+        "rotation": -1.0253565311431885,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          6.44322395324707,
+          42.38025665283203
+        ]
+      },
+      {
+        "angular_velocity": 0.1832028180360794,
+        "id": 51,
+        "name": "Container Circle 06",
+        "position": [
+          -273.7396545410156,
+          -417.7041320800781
+        ],
+        "rotation": 0.22010056674480438,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -5.965702056884766,
+          30.46381378173828
+        ]
+      },
+      {
+        "angular_velocity": 0.36615732312202454,
+        "id": 54,
+        "name": "Container Box 07",
+        "position": [
+          -244.25990295410156,
+          -412.8621520996094
+        ],
+        "rotation": -0.018204152584075928,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -2.0342981815338135,
+          37.636165618896484
+        ]
+      },
+      {
+        "angular_velocity": 0.6454474329948425,
+        "id": 57,
+        "name": "Container Circle 07",
+        "position": [
+          -196.59503173828125,
+          -399.54205322265625
+        ],
+        "rotation": 0.4099971652030945,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -1.440582275390625,
+          62.48020935058594
+        ]
+      },
+      {
+        "angular_velocity": -2.40474796295166,
+        "id": 60,
+        "name": "Container Box 08",
+        "position": [
+          -167.40521240234375,
+          -415.0242004394531
+        ],
+        "rotation": -1.0684072971343994,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          5.440578460693359,
+          37.619815826416016
+        ]
+      },
+      {
+        "angular_velocity": 0.11968767642974854,
+        "id": 63,
+        "name": "Container Circle 08",
+        "position": [
+          -120.19464111328125,
+          -402.65802001953125
+        ],
+        "rotation": 0.13787493109703064,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -1.9866780042648315,
+          60.2378044128418
+        ]
+      },
+      {
+        "angular_velocity": -0.6797006726264954,
+        "id": 66,
+        "name": "Container Box 09",
+        "position": [
+          -87.80532836914062,
+          -405.9082336425781
+        ],
+        "rotation": -0.3418801426887512,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          9.986674308776855,
+          51.862220764160156
+        ]
+      },
+      {
+        "angular_velocity": 0.7066627144813538,
+        "id": 69,
+        "name": "Container Circle 09",
+        "position": [
+          -43.423500061035156,
+          -412.5240478515625
+        ],
+        "rotation": 0.4123317003250122,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -2.9244165420532227,
+          36.79021072387695
+        ]
+      },
+      {
+        "angular_velocity": -0.9941240549087524,
+        "id": 72,
+        "name": "Container Box 10",
+        "position": [
+          -12.576467514038086,
+          -418.042236328125
+        ],
+        "rotation": -0.5279432535171509,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          6.924416542053223,
+          31.309768676757812
+        ]
+      },
+      {
+        "angular_velocity": 0.00042641893378458917,
+        "id": 75,
+        "name": "Container Circle 10",
+        "position": [
+          28.49939727783203,
+          -405.0210876464844
+        ],
+        "rotation": 0.17345388233661652,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -6.002277851104736,
+          55.327789306640625
+        ]
+      },
+      {
+        "angular_velocity": -0.7196756601333618,
+        "id": 78,
+        "name": "Container Box 11",
+        "position": [
+          57.50065231323242,
+          -409.545166015625
+        ],
+        "rotation": -0.33390823006629944,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -1.9977221488952637,
+          44.7722282409668
+        ]
+      },
+      {
+        "angular_velocity": 1.2470340728759766,
+        "id": 81,
+        "name": "Container Circle 11",
+        "position": [
+          108.4324722290039,
+          -396.0447692871094
+        ],
+        "rotation": 0.5944595336914062,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -2.4689853191375732,
+          71.23056030273438
+        ]
+      },
+      {
+        "angular_velocity": -2.0823326110839844,
+        "id": 84,
+        "name": "Container Box 12",
+        "position": [
+          137.5675048828125,
+          -412.5213928222656
+        ],
+        "rotation": -1.1159007549285889,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          6.468996047973633,
+          40.869407653808594
+        ]
+      },
+      {
+        "angular_velocity": 0.1755627691745758,
+        "id": 87,
+        "name": "Container Circle 12",
+        "position": [
+          186.00537109375,
+          -417.7334899902344
+        ],
+        "rotation": 0.22059494256973267,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          1.2794467210769653,
+          30.41733169555664
+        ]
+      },
+      {
+        "angular_velocity": 0.39733797311782837,
+        "id": 90,
+        "name": "Container Box 13",
+        "position": [
+          215.99456787109375,
+          -412.8327941894531
+        ],
+        "rotation": -0.002509661018848419,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          6.720553398132324,
+          37.682647705078125
+        ]
+      },
+      {
+        "angular_velocity": 0.5244050621986389,
+        "id": 93,
+        "name": "Container Circle 13",
+        "position": [
+          259.8816223144531,
+          -400.0274353027344
+        ],
+        "rotation": 0.3533383309841156,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -0.24892735481262207,
+          61.456939697265625
+        ]
+      },
+      {
+        "angular_velocity": -2.142340898513794,
+        "id": 96,
+        "name": "Container Box 14",
+        "position": [
+          288.1178894042969,
+          -414.538818359375
+        ],
+        "rotation": -0.921966552734375,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          4.248930931091309,
+          38.64308547973633
+        ]
+      },
+      {
+        "angular_velocity": 0.11844932287931442,
+        "id": 99,
+        "name": "Container Circle 14",
+        "position": [
+          333.3525695800781,
+          -402.6474609375
+        ],
+        "rotation": 0.1330592781305313,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -5.739903450012207,
+          60.204891204833984
+        ]
+      },
+      {
+        "angular_velocity": -0.7008450627326965,
+        "id": 102,
+        "name": "Container Box 15",
+        "position": [
+          362.6484069824219,
+          -405.9187927246094
+        ],
+        "rotation": -0.339497447013855,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -2.260093927383423,
+          51.895137786865234
+        ]
+      },
+      {
+        "angular_velocity": 0.9136011600494385,
+        "id": 105,
+        "name": "Container Circle 15",
+        "position": [
+          412.9405517578125,
+          -412.0818176269531
+        ],
+        "rotation": 0.48949092626571655,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -2.8031928539276123,
+          38.789588928222656
+        ]
+      },
+      {
+        "angular_velocity": -1.0566388368606567,
+        "id": 108,
+        "name": "Container Box 16",
+        "position": [
+          443.05908203125,
+          -418.4844665527344
+        ],
+        "rotation": -0.6394904255867004,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          6.803187370300293,
+          29.310405731201172
+        ]
+      },
+      {
+        "angular_velocity": -0.020968304947018623,
+        "id": 111,
+        "name": "Container Circle 16",
+        "position": [
+          487.7935791015625,
+          -405.0262756347656
+        ],
+        "rotation": 0.16603490710258484,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -0.3457125723361969,
+          55.45064926147461
+        ]
+      },
+      {
+        "angular_velocity": -0.6778804063796997,
+        "id": 114,
+        "name": "Container Box 17",
+        "position": [
+          518.2054443359375,
+          -409.53997802734375
+        ],
+        "rotation": -0.34317970275878906,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          8.345712661743164,
+          44.64936447143555
+        ]
+      },
+      {
+        "angular_velocity": 1.0163453817367554,
+        "id": 117,
+        "name": "Container Circle 17",
+        "position": [
+          564.31982421875,
+          -396.9155578613281
+        ],
+        "rotation": 0.4736306667327881,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -2.4474220275878906,
+          69.7198715209961
+        ]
+      },
+      {
+        "angular_velocity": -1.8352315425872803,
+        "id": 120,
+        "name": "Container Box 18",
+        "position": [
+          593.6797485351562,
+          -411.6507263183594
+        ],
+        "rotation": -1.0252904891967773,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          6.447417259216309,
+          42.3801383972168
+        ]
+      },
+      {
+        "angular_velocity": 0.183202862739563,
+        "id": 123,
+        "name": "Container Circle 18",
+        "position": [
+          638.25927734375,
+          -417.7041320800781
+        ],
+        "rotation": 0.22010056674480438,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -5.965704917907715,
+          30.46381378173828
+        ]
+      },
+      {
+        "angular_velocity": 0.3661573529243469,
+        "id": 126,
+        "name": "Container Box 19",
+        "position": [
+          667.7395629882812,
+          -412.8621520996094
+        ],
+        "rotation": -0.018204152584075928,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -2.0342955589294434,
+          37.63616943359375
+        ]
+      },
+      {
+        "angular_velocity": 0.6454424858093262,
+        "id": 129,
+        "name": "Container Circle 19",
+        "position": [
+          715.40185546875,
+          -399.5414733886719
+        ],
+        "rotation": 0.40999582409858704,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -1.448834776878357,
+          62.48174285888672
+        ]
+      },
+      {
+        "angular_velocity": -2.40486478805542,
+        "id": 132,
+        "name": "Container Box 20",
+        "position": [
+          744.59765625,
+          -415.0247497558594
+        ],
+        "rotation": -1.0684497356414795,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          5.4488348960876465,
+          37.618282318115234
+        ]
+      },
+      {
+        "angular_velocity": 0.11969685554504395,
+        "id": 135,
+        "name": "Container Circle 20",
+        "position": [
+          -766.194091796875,
+          -364.6580505371094
+        ],
+        "rotation": 0.13787876069545746,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -1.9855947494506836,
+          60.23779296875
+        ]
+      },
+      {
+        "angular_velocity": -0.6797135472297668,
+        "id": 138,
+        "name": "Container Box 21",
+        "position": [
+          -733.806884765625,
+          -367.9082336425781
+        ],
+        "rotation": -0.3418854773044586,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          9.985590934753418,
+          51.86223602294922
+        ]
+      },
+      {
+        "angular_velocity": 0.8311898708343506,
+        "id": 141,
+        "name": "Container Circle 21",
+        "position": [
+          -690.0360107421875,
+          -374.1057434082031
+        ],
+        "rotation": 0.4538421928882599,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -4.762120246887207,
+          38.04515075683594
+        ]
+      },
+      {
+        "angular_velocity": 0.13039815425872803,
+        "id": 144,
+        "name": "Container Box 22",
+        "position": [
+          -659.8345947265625,
+          -373.74566650390625
+        ],
+        "rotation": -0.15310318768024445,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          3.146777868270874,
+          50.19923400878906
+        ]
+      },
+      {
+        "angular_velocity": 0.00041019945638254285,
+        "id": 147,
+        "name": "Container Circle 22",
+        "position": [
+          -617.5013427734375,
+          -367.0210266113281
+        ],
+        "rotation": 0.1734493225812912,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -6.004461765289307,
+          55.32796096801758
+        ]
+      },
+      {
+        "angular_velocity": -0.17323026061058044,
+        "id": 150,
+        "name": "Container Box 23",
+        "position": [
+          -588.5227661132812,
+          -371.296875
+        ],
+        "rotation": -0.32024064660072327,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -2.9933364391326904,
+          54.70523452758789
+        ]
+      },
+      {
+        "angular_velocity": 1.2470312118530273,
+        "id": 153,
+        "name": "Container Circle 23",
+        "position": [
+          -537.5675048828125,
+          -358.0447998046875
+        ],
+        "rotation": 0.5944588780403137,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -2.469306707382202,
+          71.23076629638672
+        ]
+      },
+      {
+        "angular_velocity": -2.082305908203125,
+        "id": 156,
+        "name": "Container Box 24",
+        "position": [
+          -508.4322509765625,
+          -374.52142333984375
+        ],
+        "rotation": -1.1159019470214844,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          6.469304084777832,
+          40.86924743652344
+        ]
+      },
+      {
+        "angular_velocity": 0.8999999761581421,
+        "id": 159,
+        "name": "Container Circle 24",
+        "position": [
+          -449.000732421875,
+          -379.53314208984375
+        ],
+        "rotation": 0.44999969005584717,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          36.0,
+          31.049985885620117
+        ]
+      }
+    ],
+    "colliders": 54,
+    "contact_snapshots": [
+      {
+        "a": 2,
+        "b": 8,
+        "features": [
+          [
+            50593792,
+            -44.0
+          ],
+          [
+            50462720,
+            -44.0
+          ]
+        ],
+        "normal": [
+          0.0,
+          -1.0
+        ],
+        "reference": 2
+      },
+      {
+        "a": 2,
+        "b": 11,
+        "features": [
+          [
+            50593792,
+            -44.0
+          ],
+          [
+            50462720,
+            -44.0
+          ]
+        ],
+        "normal": [
+          0.0,
+          -1.0
+        ],
+        "reference": 2
+      },
+      {
+        "a": 5,
+        "b": 8,
+        "features": [
+          [
+            67174400,
+            -64.0
+          ],
+          [
+            67306240,
+            -64.0
+          ]
+        ],
+        "normal": [
+          -1.0,
+          -0.0
+        ],
+        "reference": 5
+      },
+      {
+        "a": 5,
+        "b": 11,
+        "features": [
+          [
+            33619968,
+            -64.0
+          ],
+          [
+            33751043,
+            -64.0
+          ]
+        ],
+        "normal": [
+          1.0,
+          0.0
+        ],
+        "reference": 5
+      },
+      {
+        "a": 23,
+        "b": 26,
+        "features": [
+          [
+            514,
+            -0.045818328857421875
+          ]
+        ],
+        "normal": [
+          -0.7152025699615479,
+          0.6989172101020813
+        ],
+        "reference": 26
+      },
+      {
+        "a": 29,
+        "b": 152,
+        "features": [
+          [
+            521,
+            -0.08407211303710938
+          ]
+        ],
+        "normal": [
+          0.07235389947891235,
+          -0.9973790645599365
+        ],
+        "reference": 152
+      },
+      {
+        "a": 35,
+        "b": 38,
+        "features": [
+          [
+            514,
+            -0.0111541748046875
+          ]
+        ],
+        "normal": [
+          -0.8076236844062805,
+          0.5896981954574585
+        ],
+        "reference": 38
+      },
+      {
+        "a": 107,
+        "b": 110,
+        "features": [
+          [
+            514,
+            -0.0111541748046875
+          ]
+        ],
+        "normal": [
+          -0.8076236844062805,
+          0.5896981954574585
+        ],
+        "reference": 110
+      }
+    ],
+    "finite": true,
+    "maximum_supports": 1,
+    "objects": 54,
+    "population_model": "resolved scenario count",
+    "populations_valid": true,
+    "support_total": 1,
+    "supports_valid": true
+  },
+  "render_samples": 0,
+  "rendering": false,
+  "repetition_index": 0,
+  "repetitions": 1,
+  "requested_measured_steps": 30,
+  "resolved_parameters": {
+    "box_count": 25,
+    "box_size": [
+      28.0,
+      28.0
+    ],
+    "circle_count": 25,
+    "circle_radius": 14.0,
+    "friction": 1.0,
+    "gravity": [
+      0.0,
+      98.0999984741211
+    ],
+    "layout_size": [
+      1600.0,
+      900.0
+    ],
+    "restitution": 0.0,
+    "seed_policy": "deterministic velocity/pattern phase; seed zero preserves historical layouts",
+    "solver_iterations": 10,
+    "wall_thickness": 64.0
+  },
+  "sample_capacity": 4096,
+  "scenario": "rigid_body_container",
+  "schema_version": 3,
+  "seed": 0,
+  "stopped_on_quit": false,
+  "timing_eligible": false,
+  "total_render_samples": 0,
+  "total_steps": 30,
+  "validation_mode": "per-step",
+  "warmup_steps": 30,
+  "workers": 6
+}

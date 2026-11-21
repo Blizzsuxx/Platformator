@@ -1,0 +1,912 @@
+{
+  "asset_root": "/home/user/Projects/Platformator/build/benchmark/assets",
+  "boundaries": {
+    "broad_phase": "grid/cell/filter/witness reconciliation; nested in physics",
+    "cleanup": "transient audio and mutation/scene commit including destruction/free; nested in complete_step",
+    "complete_step": "starts/hook/fixed/synchronization/physics/events/update/animation/late/commit/destructors/transient cleanup; excludes event pumping, render and recorder storage",
+    "deferred_grid_flush": "grid/cell reconciliation during mutation commit; nested in cleanup",
+    "legacy_frame": "historical partial metric; absent from schema v2; not equivalent to complete_step",
+    "narrow_phase": "changed geometry, serial support reduction and subscribed events; nested in physics",
+    "physics": "transform synchronization, broad/narrow phase, support reduction, forces, solve, movement and cache publication; nested in complete_step",
+    "render": "independent render calls after cleanup; not nested in complete_step",
+    "resolve_collisions": "contact solving and sleep reduction; nested in physics",
+    "retirement": "retirement drain including destroy callbacks, registry removal and frees; nested in cleanup",
+    "scene_transition": "selected request preparation through replacement/clear publication; nested in cleanup",
+    "step_hook": "custom step callback, when supplied; nested in complete_step"
+  },
+  "build": {
+    "commit": "3fbd4a760d4526fbbc01b8eea0084d6241722248",
+    "compiler": "GNU 16.2.1",
+    "configuration": "Release",
+    "debug_tools": false,
+    "dirty": true,
+    "flags": " -O3 -DNDEBUG",
+    "sanitizer": "none",
+    "source_sha256": "4209c77c1ee8513976426ed67811e3809f9c55b95f4f7121afdcc14a47ae8eeb",
+    "work_probes": false
+  },
+  "complete_capture": true,
+  "dependencies": {
+    "Eigen": "5.0.1",
+    "JSON": "3.12.0",
+    "SDL": "3.4.18",
+    "SDL_image": "3.4.8",
+    "SDL_mixer": "3.2.4",
+    "oneTBB": "2022.3.0"
+  },
+  "dt": 0.008333333333333333,
+  "initial_state": {
+    "bodies": 50,
+    "colliders": 50,
+    "finite": true,
+    "maximum_supports": 0,
+    "objects": 50,
+    "population_model": "resolved scenario count",
+    "populations_valid": true,
+    "support_total": 0,
+    "supports_valid": true
+  },
+  "linear_render_culling": {
+    "disabled": false,
+    "effective_enabled": false,
+    "effective_policy": "headless-no-rendering",
+    "headless": true,
+    "observed_frame_fallbacks": 0,
+    "observed_mapping_fallbacks": 0,
+    "observed_numeric_fallbacks": 0,
+    "requested_enabled": true,
+    "requested_mode": "cached-linear",
+    "requested_selector": "cached-linear",
+    "resolved_startup_strategy": "headless-no-rendering"
+  },
+  "machine": {
+    "architecture": "x86_64",
+    "cpu": "AMD Ryzen 5 7535HS with Radeon Graphics",
+    "kernel": "6.12.112-1-MANJARO",
+    "logical_cpus": 12,
+    "os": "Linux"
+  },
+  "measured_steps": 30,
+  "physical_invariants": {
+    "bodies": 50,
+    "body_snapshots": [
+      {
+        "angular_velocity": 0.0,
+        "id": 0,
+        "name": "Lane Mover 00",
+        "position": [
+          -1190.0,
+          -1960.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          420.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 3,
+        "name": "Lane Mover 01",
+        "position": [
+          1220.00244140625,
+          -1880.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -500.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 6,
+        "name": "Lane Mover 02",
+        "position": [
+          -1249.99755859375,
+          -1800.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          580.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 9,
+        "name": "Lane Mover 03",
+        "position": [
+          1280.0,
+          -1720.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -660.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 12,
+        "name": "Lane Mover 04",
+        "position": [
+          -1310.00244140625,
+          -1640.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          740.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 15,
+        "name": "Lane Mover 05",
+        "position": [
+          1339.99755859375,
+          -1560.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -820.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 18,
+        "name": "Lane Mover 06",
+        "position": [
+          -1370.0,
+          -1480.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          900.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 21,
+        "name": "Lane Mover 07",
+        "position": [
+          1400.00244140625,
+          -1400.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -980.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 24,
+        "name": "Lane Mover 08",
+        "position": [
+          -1429.99755859375,
+          -1320.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          1060.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 27,
+        "name": "Lane Mover 09",
+        "position": [
+          1460.0,
+          -1240.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -1140.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 30,
+        "name": "Lane Mover 10",
+        "position": [
+          -1490.0018310546875,
+          -1160.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          1220.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 33,
+        "name": "Lane Mover 11",
+        "position": [
+          1519.9989013671875,
+          -1080.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -1300.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 36,
+        "name": "Lane Mover 12",
+        "position": [
+          -1550.0,
+          -1000.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          1380.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 39,
+        "name": "Lane Mover 13",
+        "position": [
+          1579.9998779296875,
+          -920.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -1460.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 42,
+        "name": "Lane Mover 14",
+        "position": [
+          -1610.0006103515625,
+          -840.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          1540.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 45,
+        "name": "Lane Mover 15",
+        "position": [
+          1640.0,
+          -760.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -1620.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 48,
+        "name": "Lane Mover 16",
+        "position": [
+          -1190.0,
+          -680.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          420.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 51,
+        "name": "Lane Mover 17",
+        "position": [
+          1220.00244140625,
+          -600.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -500.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 54,
+        "name": "Lane Mover 18",
+        "position": [
+          -1249.99755859375,
+          -520.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          580.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 57,
+        "name": "Lane Mover 19",
+        "position": [
+          1280.0,
+          -440.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -660.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 60,
+        "name": "Lane Mover 20",
+        "position": [
+          -1310.00244140625,
+          -360.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          740.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 63,
+        "name": "Lane Mover 21",
+        "position": [
+          1339.99755859375,
+          -280.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -820.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 66,
+        "name": "Lane Mover 22",
+        "position": [
+          -1370.0,
+          -200.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          900.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 69,
+        "name": "Lane Mover 23",
+        "position": [
+          1400.00244140625,
+          -120.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -980.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 72,
+        "name": "Lane Mover 24",
+        "position": [
+          -1429.99755859375,
+          -40.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          1060.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 75,
+        "name": "Lane Mover 25",
+        "position": [
+          1460.0,
+          40.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -1140.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 78,
+        "name": "Lane Mover 26",
+        "position": [
+          -1490.0018310546875,
+          120.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          1220.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 81,
+        "name": "Lane Mover 27",
+        "position": [
+          1519.9989013671875,
+          200.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -1300.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 84,
+        "name": "Lane Mover 28",
+        "position": [
+          -1550.0,
+          280.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          1380.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 87,
+        "name": "Lane Mover 29",
+        "position": [
+          1579.9998779296875,
+          360.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -1460.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 90,
+        "name": "Lane Mover 30",
+        "position": [
+          -1610.0006103515625,
+          440.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          1540.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 93,
+        "name": "Lane Mover 31",
+        "position": [
+          1640.0,
+          520.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -1620.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 96,
+        "name": "Lane Mover 32",
+        "position": [
+          -1190.0,
+          600.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          420.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 99,
+        "name": "Lane Mover 33",
+        "position": [
+          1220.00244140625,
+          680.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -500.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 102,
+        "name": "Lane Mover 34",
+        "position": [
+          -1249.99755859375,
+          760.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          580.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 105,
+        "name": "Lane Mover 35",
+        "position": [
+          1280.0,
+          840.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -660.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 108,
+        "name": "Lane Mover 36",
+        "position": [
+          -1310.00244140625,
+          920.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          740.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 111,
+        "name": "Lane Mover 37",
+        "position": [
+          1339.99755859375,
+          1000.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -820.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 114,
+        "name": "Lane Mover 38",
+        "position": [
+          -1370.0,
+          1080.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          900.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 117,
+        "name": "Lane Mover 39",
+        "position": [
+          1400.00244140625,
+          1160.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -980.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 120,
+        "name": "Lane Mover 40",
+        "position": [
+          -1429.99755859375,
+          1240.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          1060.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 123,
+        "name": "Lane Mover 41",
+        "position": [
+          1460.0,
+          1320.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -1140.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 126,
+        "name": "Lane Mover 42",
+        "position": [
+          -1490.0018310546875,
+          1400.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          1220.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 129,
+        "name": "Lane Mover 43",
+        "position": [
+          1519.9989013671875,
+          1480.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -1300.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 132,
+        "name": "Lane Mover 44",
+        "position": [
+          -1550.0,
+          1560.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          1380.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 135,
+        "name": "Lane Mover 45",
+        "position": [
+          1579.9998779296875,
+          1640.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -1460.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 138,
+        "name": "Lane Mover 46",
+        "position": [
+          -1610.0006103515625,
+          1720.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          1540.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 141,
+        "name": "Lane Mover 47",
+        "position": [
+          1640.0,
+          1800.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -1620.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 144,
+        "name": "Lane Mover 48",
+        "position": [
+          -1190.0,
+          1880.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          420.0,
+          0.0
+        ]
+      },
+      {
+        "angular_velocity": 0.0,
+        "id": 147,
+        "name": "Lane Mover 49",
+        "position": [
+          1220.00244140625,
+          1960.0
+        ],
+        "rotation": 0.0,
+        "sleeping": false,
+        "supports": 0,
+        "velocity": [
+          -500.0,
+          0.0
+        ]
+      }
+    ],
+    "colliders": 50,
+    "contact_snapshots": [],
+    "finite": true,
+    "maximum_supports": 0,
+    "objects": 50,
+    "population_model": "resolved scenario count",
+    "populations_valid": true,
+    "support_total": 0,
+    "supports_valid": true
+  },
+  "render_samples": 0,
+  "rendering": false,
+  "repetition_index": 0,
+  "repetitions": 1,
+  "requested_measured_steps": 30,
+  "resolved_parameters": {
+    "body_count": 50,
+    "gravity": [
+      0.0,
+      98.0999984741211
+    ],
+    "lane_height": 48,
+    "lane_spacing": 80,
+    "lane_width": 48,
+    "seed_policy": "deterministic velocity/pattern phase; seed zero preserves historical layouts",
+    "solver_iterations": 10
+  },
+  "sample_capacity": 4096,
+  "scenario": "broad_phase",
+  "schema_version": 3,
+  "seed": 0,
+  "stopped_on_quit": false,
+  "timing_eligible": false,
+  "total_render_samples": 0,
+  "total_steps": 30,
+  "validation_mode": "per-step",
+  "warmup_steps": 30,
+  "workers": 6
+}

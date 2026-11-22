@@ -1,0 +1,21 @@
+; Fair apples-to-apples Godot 4 benchmark project matching Platformator physics settings.
+config_version=5
+
+[application]
+
+config/name="platformator_godot_comparison"
+run/main_scene="res://bench.tscn"
+config/features=PackedStringArray("4.7")
+
+[physics]
+
+common/physics_ticks_per_second=120
+common/max_physics_steps_per_frame=8
+2d/default_gravity=98.1
+2d/default_gravity_vector=Vector2(0, 1)
+2d/default_linear_damp=0.0
+2d/default_angular_damp=0.0
+2d/sleep_threshold_linear=5.0
+2d/sleep_threshold_angular=0.05
+2d/time_before_sleep=0.25
+2d/solver/solver_iterations=10

@@ -538,6 +538,7 @@ void GameManager::registerComponentInSystems(Component *component)
         auto *script = static_cast<ScriptComponent *>(component);
         script->setGameManagerIndex(scriptComponents.size());
         scriptComponents.push_back(script);
+        syncScriptUpdateLists(script);
         queueScriptStart(script);
         break;
     }
@@ -574,9 +575,12 @@ void GameManager::unregisterComponentFromSystems(Component *component)
     case ComponentType::ANIMATOR:
         swapRemoveIndexed(animatorComponents, static_cast<Animator *>(component));
         break;
-    case ComponentType::SCRIPT:
-        swapRemoveIndexed(scriptComponents, static_cast<ScriptComponent *>(component));
+    case ComponentType::SCRIPT: {
+        auto *script = static_cast<ScriptComponent *>(component);
+        removeScriptFromUpdateLists(script);
+        swapRemoveIndexed(scriptComponents, script);
         break;
+    }
     case ComponentType::AUDIO:
         static_cast<Audio *>(component)->stop();
         break;
@@ -600,9 +604,67 @@ void GameManager::unregisterComponentFromSystems(Component *component)
     }
 }
 
+void GameManager::syncScriptUpdateLists(ScriptComponent *script)
+{
+    auto syncPhase = [script](std::vector<ScriptComponent *> &list, size_t &indexField,
+                              size_t ScriptComponent::*member, bool want) {
+        if (want)
+        {
+            if (indexField == SIZE_MAX)
+            {
+                indexField = list.size();
+                list.push_back(script);
+            }
+        }
+        else if (indexField != SIZE_MAX)
+        {
+            const size_t removeIndex = indexField;
+            const size_t lastIndex = list.size() - 1;
+            if (removeIndex != lastIndex)
+            {
+                ScriptComponent *moved = list[lastIndex];
+                list[removeIndex] = moved;
+                moved->*member = removeIndex;
+            }
+            list.pop_back();
+            indexField = SIZE_MAX;
+        }
+    };
+
+    const uint8_t mask = script->activeUpdateMask;
+    syncPhase(fixedUpdateScripts, script->fixedUpdateListIndex, &ScriptComponent::fixedUpdateListIndex,
+              (mask & BEHAVIOR_UPDATE_FIXED) != 0);
+    syncPhase(updateScripts, script->updateListIndex, &ScriptComponent::updateListIndex,
+              (mask & BEHAVIOR_UPDATE_FRAME) != 0);
+    syncPhase(lateUpdateScripts, script->lateUpdateListIndex, &ScriptComponent::lateUpdateListIndex,
+              (mask & BEHAVIOR_UPDATE_LATE) != 0);
+}
+
+void GameManager::removeScriptFromUpdateLists(ScriptComponent *script)
+{
+    auto removePhase = [](std::vector<ScriptComponent *> &list, size_t &indexField, size_t ScriptComponent::*member) {
+        if (indexField == SIZE_MAX)
+            return;
+        const size_t removeIndex = indexField;
+        const size_t lastIndex = list.size() - 1;
+        if (removeIndex != lastIndex)
+        {
+            ScriptComponent *moved = list[lastIndex];
+            list[removeIndex] = moved;
+            moved->*member = removeIndex;
+        }
+        list.pop_back();
+        indexField = SIZE_MAX;
+    };
+
+    removePhase(fixedUpdateScripts, script->fixedUpdateListIndex, &ScriptComponent::fixedUpdateListIndex);
+    removePhase(updateScripts, script->updateListIndex, &ScriptComponent::updateListIndex);
+    removePhase(lateUpdateScripts, script->lateUpdateListIndex, &ScriptComponent::lateUpdateListIndex);
+}
+
 void GameManager::fixedUpdateScriptComponents(double timeDelta)
 {
-    for (ScriptComponent *scriptComponent : scriptComponents)
+    for (ScriptComponent *scriptComponent : fixedUpdateScripts)
     {
         if (scriptComponent->canDispatch())
         {
@@ -613,7 +675,7 @@ void GameManager::fixedUpdateScriptComponents(double timeDelta)
 
 void GameManager::updateScriptComponents(double timeDelta)
 {
-    for (ScriptComponent *scriptComponent : scriptComponents)
+    for (ScriptComponent *scriptComponent : updateScripts)
     {
         if (scriptComponent->canDispatch())
         {
@@ -624,7 +686,7 @@ void GameManager::updateScriptComponents(double timeDelta)
 
 void GameManager::lateUpdateScriptComponents(double timeDelta)
 {
-    for (ScriptComponent *scriptComponent : scriptComponents)
+    for (ScriptComponent *scriptComponent : lateUpdateScripts)
     {
         if (scriptComponent->canDispatch())
         {
@@ -662,6 +724,10 @@ void GameManager::startPendingScripts()
             continue;
         }
         script->startPendingBehaviors(resolver);
+        if (script->getGameManagerIndex() != SIZE_MAX)
+        {
+            syncScriptUpdateLists(script);
+        }
         cancelScriptStart(script);
     }
     pendingStartScripts.clear();
@@ -1080,8 +1146,14 @@ void GameManager::clearAllSceneObjects(std::exception_ptr &error)
     for (ScriptComponent *script : scriptComponents)
     {
         script->setGameManagerIndex(SIZE_MAX);
+        script->fixedUpdateListIndex = SIZE_MAX;
+        script->updateListIndex = SIZE_MAX;
+        script->lateUpdateListIndex = SIZE_MAX;
     }
     scriptComponents.clear();
+    fixedUpdateScripts.clear();
+    updateScripts.clear();
+    lateUpdateScripts.clear();
     for (Animator *animator : animatorComponents)
     {
         animator->setGameManagerIndex(SIZE_MAX);

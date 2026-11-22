@@ -129,6 +129,10 @@ void resolveSerializedField(T &value, platformator::ReferenceResolver &resolver,
         if (typed == nullptr)                                                                                          \
             return {};                                                                                                 \
         return platformatorInspectScriptFields(*typed, limits);                                                       \
+    }                                                                                                                  \
+    uint8_t getUpdateMask() const noexcept override                                                                    \
+    {                                                                                                                  \
+        return platformator_detail::detectBehaviorUpdateMask<Type>();                                                  \
     }
 
 #define PLATFORMATOR_SERIALIZABLE_SCRIPT_OVERRIDES(Type)                                                               \

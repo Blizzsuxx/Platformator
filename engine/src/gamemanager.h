@@ -167,6 +167,9 @@ class GameManager
     std::vector<GameObject *> gameObjects;
     std::vector<Animator *> animatorComponents;
     std::vector<ScriptComponent *> scriptComponents;
+    std::vector<ScriptComponent *> fixedUpdateScripts;
+    std::vector<ScriptComponent *> updateScripts;
+    std::vector<ScriptComponent *> lateUpdateScripts;
     platformator_detail::FlatIdMap idToObjectMap;
 
     std::vector<Component *> reconciliations;
@@ -198,6 +201,8 @@ class GameManager
     void notifyComponentAdded(Component *component);
     void queueReconciliation(Component *component);
     void retireComponent(Component *component);
+    void syncScriptUpdateLists(ScriptComponent *script);
+    void removeScriptFromUpdateLists(ScriptComponent *script);
     void registerComponentInSystems(Component *component);
     void unregisterComponentFromSystems(Component *component);
 

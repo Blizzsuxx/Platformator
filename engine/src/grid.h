@@ -1,9 +1,8 @@
 #pragma once
 
-#include <unordered_map>
-#include <unordered_set>
 #include <vector>
 #include "gridcell.h"
+#include "gridmaps.h"
 #include "oneapi/tbb.h"
 
 struct PairDelta
@@ -29,7 +28,7 @@ class Grid
     friend class PhysicsManager;
 
   public:
-    using CellMap = std::unordered_map<GridCellKey, GridCell, GridCellKey::Hash>;
+    using CellMap = FlatCellMap;
 
     explicit Grid(PhysicsManager *owner = nullptr);
     ~Grid();
@@ -85,8 +84,7 @@ class Grid
     std::vector<PairDelta> pairDeltaScratch;
 
     CellMap cells;
-    std::vector<CellMap::node_type> freeCellNodes;
-    std::unordered_set<ColliderPair, ColliderPair::HashFunction> candidateCollisions;
+    FlatCandidatePairPool candidateCollisions;
     std::vector<const ColliderPair *> pendingNarrowPhasePairs;
     std::vector<GridCell *> potentiallyEmptyCells;
     std::vector<GridCell *> cellsWithOperations;

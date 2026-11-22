@@ -24,6 +24,15 @@ class ScriptComponent : public Component
     Component *clone() const override;
 
     Behavior *addBehavior(Behavior *behavior);
+    template <typename T, std::enable_if_t<std::is_base_of_v<Behavior, T> && !std::is_same_v<T, Behavior>, int> = 0>
+    T *addBehavior(T *behavior)
+    {
+        if (behavior)
+        {
+            behavior->detectedUpdateMask = platformator_detail::detectBehaviorUpdateMask<T>();
+        }
+        return static_cast<T *>(addBehavior(static_cast<Behavior *>(behavior)));
+    }
 
     const std::vector<Behavior *> &getBehaviors() const;
     const std::vector<Behavior *> &getPendingBehaviors() const
@@ -53,6 +62,10 @@ class ScriptComponent : public Component
     size_t resolvedPendingCount = 0;
     size_t pendingStartIndex = SIZE_MAX; // Global script startup queue.
     size_t gameManagerIndex;
+    size_t fixedUpdateListIndex = SIZE_MAX;
+    size_t updateListIndex = SIZE_MAX;
+    size_t lateUpdateListIndex = SIZE_MAX;
+    uint8_t activeUpdateMask = BEHAVIOR_UPDATE_NONE;
     bool destructionDelivered = false;
 
     void dispatchCollisionEnter(const Collision *collision, Collider *other, double timeDelta);

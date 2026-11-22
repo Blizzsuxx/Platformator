@@ -92,6 +92,10 @@ void ScriptComponent::startPendingBehaviors(platformator::ReferenceResolver &res
                          behavior->getTypeName().c_str(), getGameObject()->getName().c_str());
         }
     }
+    for (size_t i = 0; i < processed; ++i)
+    {
+        activeUpdateMask |= pendingBehaviors[i]->getUpdateMask();
+    }
     behaviors.insert(behaviors.end(), pendingBehaviors.begin(), pendingBehaviors.begin() + processed);
     pendingBehaviors.erase(pendingBehaviors.begin(), pendingBehaviors.begin() + processed);
     resolvedPendingCount = resolvedPendingCount > processed ? resolvedPendingCount - processed : 0;
@@ -101,21 +105,30 @@ void ScriptComponent::update(double timeDelta)
 {
     const size_t count = behaviors.size();
     for (size_t i = 0; i < count && canDispatch(); ++i)
-        behaviors[i]->update(timeDelta);
+    {
+        if ((behaviors[i]->getUpdateMask() & BEHAVIOR_UPDATE_FRAME) != 0)
+            behaviors[i]->update(timeDelta);
+    }
 }
 
 void ScriptComponent::fixedUpdate(double timeDelta)
 {
     const size_t count = behaviors.size();
     for (size_t i = 0; i < count && canDispatch(); ++i)
-        behaviors[i]->fixedUpdate(timeDelta);
+    {
+        if ((behaviors[i]->getUpdateMask() & BEHAVIOR_UPDATE_FIXED) != 0)
+            behaviors[i]->fixedUpdate(timeDelta);
+    }
 }
 
 void ScriptComponent::lateUpdate(double timeDelta)
 {
     const size_t count = behaviors.size();
     for (size_t i = 0; i < count && canDispatch(); ++i)
-        behaviors[i]->lateUpdate(timeDelta);
+    {
+        if ((behaviors[i]->getUpdateMask() & BEHAVIOR_UPDATE_LATE) != 0)
+            behaviors[i]->lateUpdate(timeDelta);
+    }
 }
 
 void ScriptComponent::setGameObject(GameObject *gameObject)

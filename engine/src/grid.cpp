@@ -35,61 +35,22 @@ bool Grid::removeGridCellIfEmpty(GridCell *cell)
         return false;
     }
 
-    if (freeCellNodes.size() < MAX_RECYCLED_GRID_CELLS)
-    {
-        auto node = cells.extract(cell->getCellKey());
-        if (!node.empty())
-        {
-            freeCellNodes.push_back(std::move(node));
-            return true;
-        }
-        return false;
-    }
-
-    return cells.erase(cell->getCellKey()) > 0;
+    return cells.eraseAndMaybeRecycle(cell->getCellKey(), MAX_RECYCLED_GRID_CELLS);
 }
 
 GridCell *Grid::findCell(const GridCellKey &key)
 {
-    auto iterator = cells.find(key);
-    if (iterator == cells.end())
-    {
-        return nullptr;
-    }
-
-    return &iterator->second;
+    return cells.find(key);
 }
 
 const GridCell *Grid::findCell(const GridCellKey &key) const
 {
-    auto iterator = cells.find(key);
-    if (iterator == cells.end())
-    {
-        return nullptr;
-    }
-
-    return &iterator->second;
+    return cells.find(key);
 }
 
 GridCell &Grid::getOrCreateCell(const GridCellKey &key)
 {
-    if (auto iterator = cells.find(key); iterator != cells.end())
-    {
-        return iterator->second;
-    }
-
-    if (!freeCellNodes.empty())
-    {
-        auto node = std::move(freeCellNodes.back());
-        freeCellNodes.pop_back();
-        node.key() = key;
-        node.mapped().resetKey(key);
-        return cells.insert(std::move(node)).position->second;
-    }
-
-    auto [iterator, inserted] =
-        cells.emplace(std::piecewise_construct, std::forward_as_tuple(key), std::forward_as_tuple(key, this));
-    return iterator->second;
+    return cells.getOrCreate(key, this);
 }
 
 void Grid::addColliderInternal(Collider *collider, bool geometryPrepared)
@@ -263,21 +224,18 @@ void Grid::applyPairWitnessDelta(Collider *colliderA, Collider *colliderB, int d
         return;
     }
 
-    auto iteratorPair = candidateCollisions.find(ColliderPair(colliderA, colliderB));
-    if (iteratorPair == candidateCollisions.end() && delta < 0)
+    const ColliderPair *pair = nullptr;
+    if (delta < 0)
     {
-        return;
-    }
-
-    const ColliderPair *pair;
-    if (iteratorPair == candidateCollisions.end())
-    {
-        auto [it, in] = candidateCollisions.emplace(colliderA, colliderB);
-        pair = &(*it);
+        pair = candidateCollisions.find(colliderA, colliderB);
+        if (pair == nullptr)
+        {
+            return;
+        }
     }
     else
     {
-        pair = &(*iteratorPair);
+        pair = candidateCollisions.findOrEmplace(colliderA, colliderB);
     }
 
     int previousWitnessCount = pair->getWitnessCount();
@@ -347,7 +305,7 @@ void Grid::applyPairWitnessDelta(Collider *colliderA, Collider *colliderB, int d
 
         if (owner)
             owner->removePair(pair);
-        candidateCollisions.erase(candidateCollisions.find(ColliderPair(colliderA, colliderB)));
+        candidateCollisions.erase(colliderA, colliderB);
     }
 }
 
@@ -749,13 +707,11 @@ void Grid::clearAll()
             collider->cachedCellCount = 0;
         });
     }
-    for (const ColliderPair &pair : candidateCollisions)
-    {
+    candidateCollisions.forEach([](const ColliderPair &pair) {
         pair.getObjectA()->adjacentPairs.clear();
         pair.getObjectB()->adjacentPairs.clear();
-    }
+    });
     cells.clear();
-    freeCellNodes.clear();
     candidateCollisions.clear();
     pendingNarrowPhasePairs.clear();
     potentiallyEmptyCells.clear();

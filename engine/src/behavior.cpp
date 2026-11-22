@@ -8,7 +8,8 @@ Behavior::Behavior() : gameObject(nullptr)
 {
 }
 
-Behavior::Behavior(const Behavior &) : scriptComponent(nullptr), gameObject(nullptr)
+Behavior::Behavior(const Behavior &other)
+    : scriptComponent(nullptr), gameObject(nullptr), detectedUpdateMask(other.detectedUpdateMask)
 {
 }
 

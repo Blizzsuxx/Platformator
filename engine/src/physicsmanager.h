@@ -179,14 +179,7 @@ private:
     std::vector<Rigidbody *> supportDeltaBodies;
     std::vector<PhysicsEvent> pendingPhysicsEvents;
 
-    struct MovedObject
-    {
-        GameObject *object;
-        bool translated;
-        bool rotated;
-    };
-
-    tbb::enumerable_thread_specific<std::vector<MovedObject>> movedObjects;
+    std::vector<uint8_t> movedBodyChanges;
     Grid grid;
 
     Eigen::Vector2f gravityVector;

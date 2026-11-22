@@ -97,21 +97,21 @@ void PhysicsManager::applyMovement(double timeDelta)
         }
         return;
     }
+    movedBodyChanges.resize(totalMoving);
     tbb::parallel_for(size_t(0), totalMoving, [&](size_t i) {
         auto *body =
             i < awakeDynamicBodies.size() ? awakeDynamicBodies[i] : movingKinematicBodies[i - awakeDynamicBodies.size()];
-        if (const auto changes = body->integrateLocal(timeDelta))
-        {
-            movedObjects.local().push_back({body->getGameObject(), (changes & 1) != 0, (changes & 2) != 0});
-        }
+        movedBodyChanges[i] = static_cast<uint8_t>(body->integrateLocal(timeDelta));
     });
-    for (auto &objects : movedObjects)
+    for (size_t i = 0; i < totalMoving; ++i)
     {
-        for (auto changed : objects)
+        const uint8_t changes = movedBodyChanges[i];
+        if (changes != 0)
         {
-            publishMoved(changed.object, changed.translated, changed.rotated);
+            auto *body = i < awakeDynamicBodies.size() ? awakeDynamicBodies[i]
+                                                       : movingKinematicBodies[i - awakeDynamicBodies.size()];
+            publishMoved(body->getGameObject(), (changes & 1) != 0, (changes & 2) != 0);
         }
-        objects.clear();
     }
 }
 
@@ -266,10 +266,7 @@ void PhysicsManager::clearAll()
     solverPairs.clear();
     supportDeltaBodies.clear();
     pendingPhysicsEvents.clear();
-    for (auto &objects : movedObjects)
-    {
-        objects.clear();
-    }
+    movedBodyChanges.clear();
     grid.clearAll();
 }
 

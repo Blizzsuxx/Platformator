@@ -5,8 +5,8 @@
 #include <cstdint>
 #include <memory>
 #include <new>
-#include <unordered_set>
 #include <vector>
+#include "flatset.h"
 #include "segmentedintervallist.h"
 #include "platformator/collider.h"
 #include "collision.h"
@@ -17,30 +17,37 @@ class Grid;
 class AABBPair
 {
 public:
-    AABBPair(Collider *a, Collider *b) : a(a), b(b)
+    AABBPair() noexcept : a(nullptr), b(nullptr)
+    {
+    }
+
+    AABBPair(Collider *first, Collider *second) noexcept
+        : a(first <= second ? first : second), b(first <= second ? second : first)
     {
     }
 
     ~AABBPair() = default;
 
-    bool operator==(const AABBPair &other) const
+    bool operator==(const AABBPair &other) const noexcept
     {
-        return (a == other.a && b == other.b) || (a == other.b && b == other.a);
+        return a == other.a && b == other.b;
     }
+
+    struct IsEmpty
+    {
+        bool operator()(const AABBPair &pair) const noexcept
+        {
+            return pair.a == nullptr;
+        }
+    };
 
     class HashFunction
     {
     public:
         size_t operator()(const AABBPair &pair) const noexcept
         {
-            uintptr_t p1 = reinterpret_cast<uintptr_t>(pair.a);
-            uintptr_t p2 = reinterpret_cast<uintptr_t>(pair.b);
-            if (p1 > p2)
-            {
-                const uintptr_t tmp = p1;
-                p1 = p2;
-                p2 = tmp;
-            }
+            const uintptr_t p1 = reinterpret_cast<uintptr_t>(pair.a);
+            const uintptr_t p2 = reinterpret_cast<uintptr_t>(pair.b);
             uint64_t x = static_cast<uint64_t>(p1 >> 3) * 0x9e3779b97f4a7c15ULL;
             x ^= static_cast<uint64_t>(p2 >> 3) + 0x9e3779b97f4a7c15ULL + (x << 6) + (x >> 2);
             x ^= x >> 30;
@@ -284,7 +291,8 @@ private:
     FlatBindingMap bindingMap;
     SegmentedIntervalList intervalListX;
     SegmentedIntervalList intervalListY;
-    std::unordered_set<AABBPair, AABBPair::HashFunction> pairsWithBothAxisOverlapping;
+    FlatHashSet<AABBPair, AABBPair::HashFunction, std::equal_to<AABBPair>, AABBPair::IsEmpty>
+        pairsWithBothAxisOverlapping;
     Grid *owner;
 
     friend class Grid;

@@ -147,9 +147,8 @@ size_t LocalSortArray::remove(BoundingRadiusProjectionProxy *element)
 
 void LocalSortArray::addCheckpoint(Collider *collider)
 {
-    if (checkpointCache.find(collider) != checkpointCache.end())
+    if (checkpointCache.erase(collider) != 0)
     {
-        checkpointCache.erase(collider);
         return;
     }
 

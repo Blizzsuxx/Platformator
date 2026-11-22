@@ -91,6 +91,9 @@ class Grid
     std::vector<GridCell *> potentiallyEmptyCells;
     std::vector<GridCell *> cellsWithOperations;
     std::vector<Collider *> pendingColliderOperations;
+    std::vector<std::vector<const ColliderPair *>> pairQueueChunkScratch;
+    std::vector<std::pair<size_t, size_t>> pairQueueChunkRanges;
+    std::vector<size_t> pairQueueChunkOffsets;
     PairDeltaCollector activePairDeltaCollector;
     mutable GridCellRange activeCellBounds{};
     mutable bool activeCellBoundsDirty = false;

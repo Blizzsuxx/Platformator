@@ -1,8 +1,8 @@
 #pragma once
 
 #include <algorithm>
-#include <unordered_set>
 #include <vector>
+#include "flatset.h"
 #include "platformator/collider.h"
 #include "constants.h"
 
@@ -52,7 +52,7 @@ class LocalSortArray
     }
     void addCheckpoint(Collider *element);
     void removeCheckpoint(Collider *element);
-    std::unordered_set<Collider *> *getCheckpoints()
+    FlatPointerSet<Collider> *getCheckpoints()
     {
         return &checkpoints;
     }
@@ -114,8 +114,8 @@ class LocalSortArray
     // Needed even in an event driven model (let's say (Amin, Bmax), (Cmin, Dmax), (Cmax, Amax),
     // and we want to add Emin and Emax at Cmin Dmax place, we need to check checkpoints for A (and we cannot see it
     // with events))
-    std::unordered_set<Collider *> checkpoints;
-    std::unordered_set<Collider *> checkpointCache;
+    FlatPointerSet<Collider> checkpoints;
+    FlatPointerSet<Collider> checkpointCache;
 
     LocalSortArray *leftChunk;
     LocalSortArray *rightChunk;

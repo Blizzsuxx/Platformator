@@ -403,7 +403,7 @@ bool Grid::containsCellPair(Collider *colliderA, Collider *colliderB) const
     for (const auto &cellEntry : cells)
     {
         const AABB *aabb = cellEntry.second.getAABB();
-        if (aabb->pairsWithBothAxisOverlapping.find(pair) != aabb->pairsWithBothAxisOverlapping.end())
+        if (aabb->pairsWithBothAxisOverlapping.contains(pair))
         {
             return true;
         }
@@ -613,18 +613,123 @@ void Grid::flushPendingWork()
         }
     }
     potentiallyEmptyCells.clear();
+    size_t totalAdjacentPairs = 0;
     for (auto *collider : pendingColliderOperations)
     {
         if (collider->desiredInGrid)
         {
-            queuePairsForCollider(collider);
+            totalAdjacentPairs += collider->adjacentPairs.size();
             if (!activeCellBoundsDirty && collider->getIsRegisteredInGrid())
                 expandActiveCellBounds(collider->getGridCellRange());
         }
         if (owner && (collider->dirty & Collider::Response))
             owner->refreshResponse(collider);
-        collider->gridQueueIndex = SIZE_MAX;
-        collider->dirty = 0;
+    }
+
+    const bool runPairQueueParallel =
+        totalAdjacentPairs >= GRID_PAIR_QUEUE_PARALLEL_THRESHOLD &&
+        tbb::global_control::active_value(tbb::global_control::max_allowed_parallelism) > 1 &&
+        tbb::this_task_arena::max_concurrency() > 1;
+    if (!runPairQueueParallel)
+    {
+        for (auto *collider : pendingColliderOperations)
+        {
+            if (collider->desiredInGrid)
+            {
+                queuePairsForCollider(collider);
+            }
+            collider->gridQueueIndex = SIZE_MAX;
+            collider->dirty = 0;
+        }
+    }
+    else
+    {
+        const size_t opCount = pendingColliderOperations.size();
+        const size_t targetPerChunk = std::max<size_t>(2048, (totalAdjacentPairs + 31) / 32);
+        pairQueueChunkRanges.clear();
+        size_t chunkStart = 0;
+        size_t chunkWeight = 0;
+        for (size_t idx = 0; idx < opCount; ++idx)
+        {
+            Collider *collider = pendingColliderOperations[idx];
+            if (collider->desiredInGrid)
+            {
+                chunkWeight += collider->adjacentPairs.size();
+            }
+            if (chunkWeight >= targetPerChunk && pairQueueChunkRanges.size() < 63)
+            {
+                pairQueueChunkRanges.emplace_back(chunkStart, idx + 1);
+                chunkStart = idx + 1;
+                chunkWeight = 0;
+            }
+        }
+        if (chunkStart < opCount)
+        {
+            pairQueueChunkRanges.emplace_back(chunkStart, opCount);
+        }
+
+        const size_t chunkCount = pairQueueChunkRanges.size();
+        if (pairQueueChunkScratch.size() < chunkCount)
+        {
+            pairQueueChunkScratch.resize(chunkCount);
+        }
+
+        // Preserve exact serial insertion order by claiming each pair at the smallest
+        // queued endpoint gridQueueIndex without writing to ColliderPair in pass 1.
+        tbb::parallel_for(size_t(0), chunkCount, [&](size_t chunkIdx) {
+            auto &local = pairQueueChunkScratch[chunkIdx];
+            local.clear();
+            const auto [start, end] = pairQueueChunkRanges[chunkIdx];
+            for (size_t idx = start; idx < end; ++idx)
+            {
+                Collider *collider = pendingColliderOperations[idx];
+                if (!collider->desiredInGrid)
+                {
+                    continue;
+                }
+                for (const ColliderPair *pair : collider->adjacentPairs)
+                {
+                    if (pair == nullptr || pair->getIsQueuedForNarrowPhase())
+                    {
+                        continue;
+                    }
+                    const Collider *other =
+                        pair->getObjectA() == collider ? pair->getObjectB() : pair->getObjectA();
+                    if (!other->desiredInGrid || other->gridQueueIndex > idx)
+                    {
+                        local.push_back(pair);
+                    }
+                }
+            }
+        });
+
+        pairQueueChunkOffsets.resize(chunkCount);
+        size_t writeOffset = pendingNarrowPhasePairs.size();
+        for (size_t chunkIdx = 0; chunkIdx < chunkCount; ++chunkIdx)
+        {
+            pairQueueChunkOffsets[chunkIdx] = writeOffset;
+            writeOffset += pairQueueChunkScratch[chunkIdx].size();
+        }
+        if (writeOffset > pendingNarrowPhasePairs.size())
+        {
+            pendingNarrowPhasePairs.resize(writeOffset);
+            tbb::parallel_for(size_t(0), chunkCount, [&](size_t chunkIdx) {
+                const auto &local = pairQueueChunkScratch[chunkIdx];
+                size_t outIdx = pairQueueChunkOffsets[chunkIdx];
+                for (const ColliderPair *pair : local)
+                {
+                    pair->setNarrowPhaseQueueIndex(outIdx);
+                    pendingNarrowPhasePairs[outIdx] = pair;
+                    ++outIdx;
+                }
+            });
+        }
+
+        for (auto *collider : pendingColliderOperations)
+        {
+            collider->gridQueueIndex = SIZE_MAX;
+            collider->dirty = 0;
+        }
     }
     pendingColliderOperations.clear();
 }
@@ -657,6 +762,12 @@ void Grid::clearAll()
     cellsWithOperations.clear();
     pendingColliderOperations.clear();
     pairDeltaScratch.clear();
+    pairQueueChunkRanges.clear();
+    pairQueueChunkOffsets.clear();
+    for (auto &chunk : pairQueueChunkScratch)
+    {
+        chunk.clear();
+    }
     for (auto &local : activePairDeltaCollector.localPairDeltas)
     {
         local.clear();

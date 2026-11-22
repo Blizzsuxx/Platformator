@@ -145,7 +145,7 @@ void AABB::axisOverlapBegin(Collider *colliderA, Collider *colliderB)
         return;
     }
 
-    if (pairsWithBothAxisOverlapping.insert(AABBPair(colliderA, colliderB)).second)
+    if (pairsWithBothAxisOverlapping.insert(AABBPair(colliderA, colliderB)))
     {
         owner->recordPairDelta(colliderA, colliderB, 1);
     }
@@ -153,18 +153,10 @@ void AABB::axisOverlapBegin(Collider *colliderA, Collider *colliderB)
 
 void AABB::axisOverlapEnd(Collider *colliderA, Collider *colliderB)
 {
-    if (pairsWithBothAxisOverlapping.empty())
+    if (pairsWithBothAxisOverlapping.erase(AABBPair(colliderA, colliderB)) == 0)
     {
         return;
     }
-
-    AABBPair pair(colliderA, colliderB);
-    auto iterator = pairsWithBothAxisOverlapping.find(pair);
-    if (iterator == pairsWithBothAxisOverlapping.end())
-    {
-        return;
-    }
-    pairsWithBothAxisOverlapping.erase(iterator);
 
     owner->recordPairDelta(colliderA, colliderB, -1);
 }

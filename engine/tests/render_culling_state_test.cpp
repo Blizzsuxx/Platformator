@@ -1,6 +1,6 @@
-#include "renderculling.h"
-#include "runtimeaccess.h"
-#include "sdlwindow.h"
+#include "rendering/renderculling.h"
+#include "core/runtimeaccess.h"
+#include "rendering/sdlwindow.h"
 
 #include <platformator/gameobject.h>
 #include <platformator/runtime.h>

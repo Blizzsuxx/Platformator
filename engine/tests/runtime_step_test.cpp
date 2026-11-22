@@ -1,5 +1,5 @@
 #include "buildconfig.h"
-#include "simulationclock.h"
+#include "core/simulationclock.h"
 #include "runtime_work_probe.h"
 #include "test_support.h"
 #include <SDL3/SDL_events.h>

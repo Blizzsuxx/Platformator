@@ -1,6 +1,6 @@
-#include "gamemanager.h"
-#include "physicsmanager.h"
-#include "runtimeaccess.h"
+#include "core/gamemanager.h"
+#include "physics/physicsmanager.h"
+#include "core/runtimeaccess.h"
 #include "test_support.h"
 #if PLATFORMATOR_ENABLE_WORK_PROBES
 #include "runtime_work_probe.h"

@@ -1,5 +1,5 @@
 #include "test_support.h"
-#include "benchmark.h"
+#include "benchmark/benchmark.h"
 #include <iostream>
 #include <platformator/scriptcomponent.h>
 #include <platformator/boxcollider.h>

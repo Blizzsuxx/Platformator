@@ -1,4 +1,4 @@
-#include "editorprotocol.h"
+#include "editor/editorprotocol.h"
 
 #include <cstdlib>
 #include <iostream>

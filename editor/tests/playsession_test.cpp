@@ -2,15 +2,15 @@
 #include "behaviorcatalog.h"
 #include "test_support.h"
 #if PLATFORMATOR_ENABLE_EDITOR_SESSION
-#include "editorsession.h"
+#include "editor/editorsession.h"
 #include "panels/game.h"
 #endif
 
-#include <editorprotocol.h>
+#include <editor/editorprotocol.h>
 #include <platformator/runner.h>
 #include <platformator/runtime.h>
 #include <platformator/scriptregistration.h>
-#include "sdlwindow.h"
+#include "rendering/sdlwindow.h"
 
 #include <SDL3/SDL.h>
 #include <imgui.h>

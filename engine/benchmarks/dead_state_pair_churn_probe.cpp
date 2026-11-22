@@ -1,6 +1,6 @@
-#include "benchmark.h"
-#include "physicsmanager.h"
-#include "runtimeaccess.h"
+#include "benchmark/benchmark.h"
+#include "physics/physicsmanager.h"
+#include "core/runtimeaccess.h"
 #include "test_support.h"
 
 #include <filesystem>

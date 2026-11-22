@@ -29,9 +29,9 @@
 #include <platformator/sprite.h>
 #include <platformator/texturewrapper.h>
 
-#include "gamemanager.h"
-#include "runtimeaccess.h"
-#include "spriterendergeometry.h"
+#include "core/gamemanager.h"
+#include "core/runtimeaccess.h"
+#include "rendering/spriterendergeometry.h"
 
 namespace platformator_editor
 {

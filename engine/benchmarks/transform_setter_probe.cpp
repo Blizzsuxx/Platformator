@@ -1,5 +1,5 @@
-#include "physicsmanager.h"
-#include "runtimeaccess.h"
+#include "physics/physicsmanager.h"
+#include "core/runtimeaccess.h"
 #include "runtime_work_probe.h"
 #include "benchmarkbuildconfig.h"
 

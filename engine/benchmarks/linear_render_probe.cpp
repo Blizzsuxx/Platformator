@@ -1,9 +1,9 @@
 #include "buildconfig.h"
 #include "benchmarkbuildconfig.h"
-#include "benchmark.h"
+#include "benchmark/benchmark.h"
 #include "render_culling_fixture.h"
-#include "runtimeaccess.h"
-#include "sdlwindow.h"
+#include "core/runtimeaccess.h"
+#include "rendering/sdlwindow.h"
 
 #include <SDL3/SDL_surface.h>
 

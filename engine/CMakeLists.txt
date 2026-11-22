@@ -19,24 +19,24 @@ file(GLOB_RECURSE PLATFORMATOR_SOURCES CONFIGURE_DEPENDS
 )
 
 if(NOT PLATFORMATOR_ENABLE_BENCHMARKS)
-    list(REMOVE_ITEM PLATFORMATOR_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/benchmark.cpp")
+    list(REMOVE_ITEM PLATFORMATOR_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/benchmark/benchmark.cpp")
 endif()
 if(NOT PLATFORMATOR_ENABLE_EDITOR_SESSION)
     list(REMOVE_ITEM PLATFORMATOR_SOURCES
-        "${CMAKE_CURRENT_SOURCE_DIR}/src/editorprotocol.cpp"
-        "${CMAKE_CURRENT_SOURCE_DIR}/src/editorsession.cpp")
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/editor/editorprotocol.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/editor/editorsession.cpp")
 endif()
 
 configure_file(
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/buildconfig.h.in"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/core/buildconfig.h.in"
     "${CMAKE_CURRENT_BINARY_DIR}/generated/buildconfig.h"
     @ONLY
 )
 
 include("${PLATFORMATOR_ROOT_DIR}/cmake/PlatformatorBenchmarkConfig.cmake")
 
-set(PLATFORMATOR_MAIN_SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp")
-set(PLATFORMATOR_BENCHMARK_MAIN_SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/src/benchmark_main.cpp")
+set(PLATFORMATOR_MAIN_SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/src/core/main.cpp")
+set(PLATFORMATOR_BENCHMARK_MAIN_SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/src/benchmark/benchmark_main.cpp")
 list(REMOVE_ITEM PLATFORMATOR_SOURCES "${PLATFORMATOR_MAIN_SOURCE}" "${PLATFORMATOR_BENCHMARK_MAIN_SOURCE}")
 
 add_library(platformator_engine STATIC ${PLATFORMATOR_SOURCES})

@@ -11,7 +11,7 @@
 #include <vector>
 
 #include "platformator/boxcollider.h"
-#include "constants.h"
+#include "core/constants.h"
 #include "platformator/runtime.h"
 #include "platformator/rigidbody.h"
 #include "platformator/scriptcomponent.h"

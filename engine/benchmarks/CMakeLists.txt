@@ -13,7 +13,7 @@ endif()
 
 foreach(probe platformator_benchmark_runner platformator_transform_setter_probe platformator_linear_render_probe)
     if(probe STREQUAL "platformator_benchmark_runner")
-        set(source "${PLATFORMATOR_ENGINE_DIR}/src/benchmark_main.cpp")
+        set(source "${PLATFORMATOR_ENGINE_DIR}/src/benchmark/benchmark_main.cpp")
     elseif(probe STREQUAL "platformator_transform_setter_probe")
         set(source transform_setter_probe.cpp)
     else()

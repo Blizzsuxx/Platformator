@@ -1,4 +1,4 @@
-#include "spriterendergeometry.h"
+#include "rendering/spriterendergeometry.h"
 
 #include <algorithm>
 #include <array>

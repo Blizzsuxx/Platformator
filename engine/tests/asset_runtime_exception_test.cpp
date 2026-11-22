@@ -1,6 +1,6 @@
-#include "scenebuilder.h"
-#include "assetrequestaliases.h"
-#include "runtimeaccess.h"
+#include "scene/scenebuilder.h"
+#include "assets/assetrequestaliases.h"
+#include "core/runtimeaccess.h"
 #include "test_support.h"
 #include <platformator/assetreference.h>
 #include <platformator/scene.h>

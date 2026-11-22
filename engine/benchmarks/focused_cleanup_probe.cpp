@@ -1,4 +1,4 @@
-#include "debugdraw.h"
+#include "rendering/debugdraw.h"
 #include "test_support.h"
 #include <platformator/assetreference.h>
 #include <platformator/texturewrapper.h>

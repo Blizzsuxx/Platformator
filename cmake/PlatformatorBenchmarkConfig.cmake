@@ -62,7 +62,7 @@ if(PLATFORMATOR_ENABLE_BENCHMARKS)
     set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${platformator_fingerprint_inputs})
     string(TOUPPER "${CMAKE_BUILD_TYPE}" platformator_config_upper)
     set(PLATFORMATOR_BENCH_FLAGS "${CMAKE_CXX_FLAGS} ${CMAKE_CXX_FLAGS_${platformator_config_upper}}")
-    configure_file("${CMAKE_CURRENT_SOURCE_DIR}/src/benchmarkbuildconfig.h.in"
+    configure_file("${CMAKE_CURRENT_SOURCE_DIR}/src/benchmark/benchmarkbuildconfig.h.in"
         "${CMAKE_CURRENT_BINARY_DIR}/generated/benchmarkbuildconfig.h" @ONLY)
 endif()
 

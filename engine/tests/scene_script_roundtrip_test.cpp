@@ -18,7 +18,7 @@
 #include "platformator/boxcollider.h"
 #include "platformator/circlecollider.h"
 #include "platformator/camera.h"
-#include "constants.h"
+#include "core/constants.h"
 #include "platformator/scriptregistration.h"
 #include "platformator/assetreference.h"
 #include "platformator/objectreference.h"

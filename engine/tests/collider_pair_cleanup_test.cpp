@@ -11,11 +11,11 @@
 
 #include "platformator/boxcollider.h"
 #include "platformator/circlecollider.h"
-#include "constants.h"
+#include "core/constants.h"
 #include "platformator/runtime.h"
-#include "physicsmanager.h"
+#include "physics/physicsmanager.h"
 #include "platformator/rigidbody.h"
-#include "runtimeaccess.h"
+#include "core/runtimeaccess.h"
 #include "platformator/scriptcomponent.h"
 
 namespace

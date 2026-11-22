@@ -15,8 +15,8 @@
 #include <string>
 #include <vector>
 
-#include "runtimeaccess.h"
-#include "sdlwindow.h"
+#include "core/runtimeaccess.h"
+#include "rendering/sdlwindow.h"
 #include "test_support.h"
 
 namespace

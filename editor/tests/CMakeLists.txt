@@ -142,7 +142,7 @@ target_compile_definitions(platformator_editor_catalog_test PRIVATE
 
 platformator_editor_add_test_if_sources(platformator_editor_protocol_test editorprotocol_test.cpp)
 target_include_directories(platformator_editor_protocol_test PRIVATE "${PLATFORMATOR_ENGINE_DIR}/src")
-target_sources(platformator_editor_protocol_test PRIVATE "${PLATFORMATOR_ENGINE_DIR}/src/editorprotocol.cpp")
+target_sources(platformator_editor_protocol_test PRIVATE "${PLATFORMATOR_ENGINE_DIR}/src/editor/editorprotocol.cpp")
 target_link_libraries(platformator_editor_protocol_test PRIVATE nlohmann_json::nlohmann_json)
 add_executable(platformator_editor_playsession_test playsession_test.cpp)
 target_compile_features(platformator_editor_playsession_test PRIVATE cxx_std_20)
@@ -157,7 +157,7 @@ if(PLATFORMATOR_ENABLE_EDITOR_SESSION)
 else()
     target_sources(platformator_editor_playsession_test PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/../src/playsession.cpp"
-        "${PLATFORMATOR_ENGINE_DIR}/src/editorprotocol.cpp")
+        "${PLATFORMATOR_ENGINE_DIR}/src/editor/editorprotocol.cpp")
     target_link_libraries(platformator_editor_playsession_test PRIVATE
         platformator_editor_core platformator_imgui Platformator::platformator nlohmann_json::nlohmann_json)
 endif()

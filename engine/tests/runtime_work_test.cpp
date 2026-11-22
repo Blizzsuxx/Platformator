@@ -1,6 +1,6 @@
-#include "physicsmanager.h"
+#include "physics/physicsmanager.h"
 #include "runtime_work_probe.h"
-#include "runtimeaccess.h"
+#include "core/runtimeaccess.h"
 #include "test_support.h"
 #include <atomic>
 #include <cstdlib>

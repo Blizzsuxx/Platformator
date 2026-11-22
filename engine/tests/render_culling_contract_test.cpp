@@ -10,8 +10,8 @@
 #include <utility>
 
 #include "runtime_work_probe.h"
-#include "runtimeaccess.h"
-#include "sdlwindow.h"
+#include "core/runtimeaccess.h"
+#include "rendering/sdlwindow.h"
 #include "test_support.h"
 
 namespace

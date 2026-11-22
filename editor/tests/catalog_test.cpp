@@ -3,7 +3,7 @@
 #include "../src/behaviorcatalog.h"
 #include "../src/sourcescanner.h"
 #include "../src/editorprocess.h"
-#include <editorprotocol.h>
+#include <editor/editorprotocol.h>
 
 #include <SDL3/SDL.h>
 #include <platformator/runtime.h>

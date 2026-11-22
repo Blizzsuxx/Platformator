@@ -1,4 +1,4 @@
-#include "assetrequestaliases.h"
+#include "assets/assetrequestaliases.h"
 #include <platformator/texturewrapper.h>
 #include <platformator/audiowrapper.h>
 #include <platformator/animationclip.h>

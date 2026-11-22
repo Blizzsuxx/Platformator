@@ -1,7 +1,7 @@
 #include "test_support.h"
-#include "gamemanager.h"
-#include "physicsmanager.h"
-#include "runtimeaccess.h"
+#include "core/gamemanager.h"
+#include "physics/physicsmanager.h"
+#include "core/runtimeaccess.h"
 #include "runtime_work_probe.h"
 #include <platformator/boxcollider.h>
 #include <platformator/circlecollider.h>

@@ -53,7 +53,7 @@ class Audio : public Component
 
   private:
     friend class GameManager;
-    friend class SDLWindow;
+    friend class AudioManager;
     AudioWrapper *audioWrapper;
     AudioWrapper *pendingReplay = nullptr;
     std::unique_ptr<MIX_Track, decltype(&MIX_DestroyTrack)> track{nullptr, MIX_DestroyTrack};

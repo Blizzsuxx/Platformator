@@ -4,7 +4,7 @@
 #include "editorprocess.h"
 #include "sessionids.h"
 
-#include <editorprotocol.h>
+#include <editor/editorprotocol.h>
 
 #include <cstddef>
 #include <cstdint>

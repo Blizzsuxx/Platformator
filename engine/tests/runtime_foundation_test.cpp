@@ -1,6 +1,7 @@
-#include "runtimeaccess.h"
+#include "audio/audiomanager.h"
+#include "core/runtimeaccess.h"
 #include "buildconfig.h"
-#include "sdlwindow.h"
+#include "rendering/sdlwindow.h"
 #include "test_support.h"
 
 #include <filesystem>
@@ -380,7 +381,7 @@ namespace
         auto *window = platformator_detail::RuntimeAccess::window();
         if (editorControls)
             require(window->enableEditorSessionControls(), "Editor pause controls must initialize");
-        const auto device = mixerDevice(window->getMixer());
+        const auto device = mixerDevice(platformator_detail::RuntimeAccess::audioManager()->getMixer());
         require(device != 0 && !SDL_AudioDevicePaused(device), "Game audio must initially run");
         auto setPaused = [&](bool value)
         {
@@ -465,14 +466,15 @@ namespace
             embedded.debugSettings.startPaused = true;
             Runtime runtime(embedded);
             auto *window = platformator_detail::RuntimeAccess::window();
-            require(window->isEditorSessionPaused() && SDL_AudioDevicePaused(mixerDevice(window->getMixer())),
+            require(window->isEditorSessionPaused() &&
+                        SDL_AudioDevicePaused(mixerDevice(platformator_detail::RuntimeAccess::audioManager()->getMixer())),
                     "Embedded startup must suspend audio before loading scene autoplay in every build profile");
         }
         RuntimeOptions options;
         options.debugSettings.startPaused = true;
         Runtime runtime(options);
         auto *window = platformator_detail::RuntimeAccess::window();
-        const auto device = mixerDevice(window->getMixer());
+        const auto device = mixerDevice(platformator_detail::RuntimeAccess::audioManager()->getMixer());
 #if PLATFORMATOR_ENABLE_DEBUG_TOOLS
         require(SDL_AudioDevicePaused(device), "Paused startup must suspend audio before scene autoplay");
 #else

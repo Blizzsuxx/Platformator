@@ -1,5 +1,5 @@
 #define main platformator_benchmark_runner_entrypoint
-#include "../src/benchmark_main.cpp"
+#include "../src/benchmark/benchmark_main.cpp"
 #undef main
 
 #include "test_support.h"

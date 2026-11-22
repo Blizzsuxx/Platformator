@@ -1,0 +1,239 @@
+#include "platformator/sprite.h"
+#include "core/objectpool.h"
+#include "core/runtimeaccess.h"
+#include "platformator/texturewrapper.h"
+#include "rendering/sdlwindow.h"
+
+void *Sprite::operator new(size_t size)
+{
+    return platformator_detail::allocatePooledObject(platformator_detail::PooledObjectKind::Sprite, size);
+}
+
+void Sprite::operator delete(void *ptr, size_t size) noexcept
+{
+    platformator_detail::deallocatePooledObject(platformator_detail::PooledObjectKind::Sprite, ptr, size);
+}
+
+void *Sprite::operator new(size_t size, const std::nothrow_t &) noexcept
+{
+    return platformator_detail::allocatePooledObjectNothrow(platformator_detail::PooledObjectKind::Sprite, size);
+}
+
+void Sprite::operator delete(void *ptr, const std::nothrow_t &) noexcept
+{
+    platformator_detail::deallocatePooledObject(platformator_detail::PooledObjectKind::Sprite, ptr);
+}
+
+Sprite::Sprite()
+    : Component(ComponentType::SPRITE), region(), flip(SDL_FLIP_NONE), width(0.0f), height(0.0f),
+      isRegisteredInWindow(false), windowIndex(SIZE_MAX)
+{
+}
+
+Sprite::Sprite(GameObject *gameObject, TextureWrapper *textureWrapper, float width, float height)
+    : Sprite(gameObject, textureWrapper, SDL_FLIP_NONE, width, height)
+{
+}
+
+Sprite::Sprite(GameObject *gameObject, const char *filePath, float width, float height)
+    : Sprite(gameObject, filePath, SDL_FLIP_NONE, width, height)
+{
+}
+
+Sprite::Sprite(GameObject *gameObject, const char *filePath, SDL_FlipMode flip, float width, float height)
+    : Component(gameObject, SPRITE), region(), flip(flip), width(width), height(height),
+      isRegisteredInWindow(false), windowIndex(SIZE_MAX)
+{
+    if (filePath != nullptr)
+    {
+        TextureWrapper *newTextureWrapper = platformator_detail::RuntimeAccess::loadTexture(filePath);
+        setTextureWrapper(newTextureWrapper);
+    }
+}
+
+Sprite::Sprite(GameObject *gameObject, TextureWrapper *textureWrapper, SDL_FlipMode flip, float width, float height)
+    : Component(gameObject, SPRITE), region(), flip(flip), width(width), height(height),
+      isRegisteredInWindow(false), windowIndex(SIZE_MAX)
+{
+    if (textureWrapper != nullptr && width == 0 && height == 0)
+    {
+        SDL_GetTextureSize(textureWrapper->getTexture(), &this->width, &this->height);
+    }
+    setTextureWrapper(textureWrapper);
+}
+
+Component *Sprite::clone() const
+{
+    auto cloned = std::make_unique<Sprite>();
+    cloned->setTextureRegion(region);
+    cloned->setFlip(flip);
+    cloned->setWidth(width);
+    cloned->setHeight(height);
+    cloned->setZOrder(zOrder);
+    cloned->setColor(color);
+    return cloned.release();
+}
+
+SDL_Texture *Sprite::getTexture() const
+{
+    const TextureWrapper *wrapper = region.getTextureWrapper();
+    return wrapper != nullptr ? wrapper->getTexture() : nullptr;
+}
+
+SDL_FlipMode Sprite::getFlip() const
+{
+    return flip;
+}
+
+float Sprite::getWidth() const
+{
+    return width * getGameObject()->getScale().x();
+}
+
+float Sprite::getWidthWithoutScale() const
+{
+    return width;
+}
+
+float Sprite::getHeight() const
+{
+    return height * getGameObject()->getScale().y();
+}
+
+float Sprite::getHeightWithoutScale() const
+{
+    return height;
+}
+
+std::int32_t Sprite::getZOrder() const
+{
+    return zOrder;
+}
+
+SDL_Color Sprite::getColor() const
+{
+    return color;
+}
+
+std::uint8_t Sprite::getAlpha() const
+{
+    return color.a;
+}
+
+bool Sprite::hasSourceRect() const
+{
+    return region.hasSourceRect;
+}
+
+const SDL_FRect *Sprite::getSourceRect() const
+{
+    return region.hasSourceRect ? &region.sourceRect : nullptr;
+}
+
+TextureWrapper *Sprite::getTextureWrapper() const
+{
+    return region.getTextureWrapper();
+}
+
+const TextureRegion &Sprite::getTextureRegion() const
+{
+    return region;
+}
+
+void Sprite::setFlip(SDL_FlipMode flip)
+{
+    this->flip = flip;
+}
+
+void Sprite::setWidth(float width)
+{
+    if (this->width == width)
+        return;
+    this->width = width;
+    if (isRegisteredInWindow)
+        platformator_detail::RuntimeAccess::window()->notifySpriteGeometryChanged(this);
+}
+
+void Sprite::setHeight(float height)
+{
+    if (this->height == height)
+        return;
+    this->height = height;
+    if (isRegisteredInWindow)
+        platformator_detail::RuntimeAccess::window()->notifySpriteGeometryChanged(this);
+}
+
+void Sprite::setSourceRect(const SDL_FRect &sourceRect)
+{
+    region.setSourceRect(sourceRect);
+}
+
+void Sprite::clearSourceRect()
+{
+    region.clearSourceRect();
+}
+
+void Sprite::setZOrder(std::int32_t newZOrder)
+{
+    if (zOrder == newZOrder)
+        return;
+    zOrder = newZOrder;
+    if (isRegisteredInWindow)
+        platformator_detail::RuntimeAccess::window()->notifySpriteOrderChanged(windowIndex);
+}
+
+void Sprite::setColor(const SDL_Color &newColor)
+{
+    color = newColor;
+}
+
+void Sprite::setColor(std::uint8_t r, std::uint8_t g, std::uint8_t b, std::uint8_t a)
+{
+    color = SDL_Color{r, g, b, a};
+}
+
+void Sprite::setAlpha(std::uint8_t alpha)
+{
+    color.a = alpha;
+}
+
+void Sprite::setTextureWrapper(TextureWrapper *textureWrapper)
+{
+    if (region.getTextureWrapper() == textureWrapper)
+    {
+        return;
+    }
+
+    const bool previouslyDrawable = getTexture() != nullptr;
+    region.setTextureWrapper(textureWrapper);
+    if (isRegisteredInWindow && previouslyDrawable != (getTexture() != nullptr))
+        platformator_detail::RuntimeAccess::window()->notifySpriteGeometryChanged(this);
+}
+
+void Sprite::setTextureRegion(const TextureRegion &newRegion)
+{
+    const bool previouslyDrawable = getTexture() != nullptr;
+    region = newRegion;
+    if (isRegisteredInWindow && previouslyDrawable != (getTexture() != nullptr))
+        platformator_detail::RuntimeAccess::window()->notifySpriteGeometryChanged(this);
+}
+
+bool Sprite::getIsRegisteredInWindow() const
+{
+    return isRegisteredInWindow;
+}
+
+void Sprite::setIsRegisteredInWindow(bool isRegisteredInWindow)
+{
+    this->isRegisteredInWindow = isRegisteredInWindow;
+}
+
+size_t Sprite::getWindowIndex() const
+{
+    return windowIndex;
+}
+
+void Sprite::setWindowIndex(size_t windowIndex)
+{
+    this->windowIndex = windowIndex;
+}

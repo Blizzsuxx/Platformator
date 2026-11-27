@@ -3,6 +3,7 @@
 #include <cmath>
 #include <cstdio>
 #include <deque>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -10,6 +11,7 @@
 #include <thread>
 #include <oneapi/tbb/global_control.h>
 #include <unordered_map>
+#include "core/gamemanager.h"
 #include "core/runtimeaccess.h"
 #include "rendering/sdlwindow.h"
 #include "physics/physicsmanager.h"
@@ -32,6 +34,8 @@ BenchmarkRunnerOptions parseBenchmarkRunnerOptions(int argc, char *args[])
 {
     BenchmarkRunnerOptions options;
     bool scenePathSpecified = false;
+    std::optional<int> workers, warmupFrames, measureFrames;
+    std::optional<double> timeDelta;
 
     for (int index = 1; index < argc; index++)
     {
@@ -72,7 +76,7 @@ BenchmarkRunnerOptions parseBenchmarkRunnerOptions(int argc, char *args[])
         }
         if (argument == "--workers")
         {
-            options.workers = parsePositiveInteger(requireArgumentValue(argc, args, index, argument), argument);
+            workers = parsePositiveInteger(requireArgumentValue(argc, args, index, argument), argument);
             continue;
         }
         if (argument == "--seed")
@@ -115,21 +119,21 @@ BenchmarkRunnerOptions parseBenchmarkRunnerOptions(int argc, char *args[])
 
         if (argument == "--warmup-frames")
         {
-            options.warmupFrameCount =
+            warmupFrames =
                 parseNonNegativeInteger(requireArgumentValue(argc, args, index, argument), argument);
             continue;
         }
 
         if (argument == "--measure-frames")
         {
-            options.measureFrameCount =
+            measureFrames =
                 parsePositiveInteger(requireArgumentValue(argc, args, index, argument), argument);
             continue;
         }
 
         if (argument == "--dt")
         {
-            options.timeDelta = parsePositiveDouble(requireArgumentValue(argc, args, index, argument), argument);
+            timeDelta = parsePositiveDouble(requireArgumentValue(argc, args, index, argument), argument);
             continue;
         }
 
@@ -235,6 +239,18 @@ BenchmarkRunnerOptions parseBenchmarkRunnerOptions(int argc, char *args[])
 
         throw std::runtime_error("Unknown benchmark argument: " + argument);
     }
+
+    if (findBox2DScenario(options.scenario))
+    {
+        options.workers = 1;
+        options.warmupFrameCount = options.scenario == BenchmarkScenario::Smash ? 65 : 5;
+        options.measureFrameCount = 30;
+        options.timeDelta = box2dTimeDelta;
+    }
+    options.workers = workers ? static_cast<size_t>(*workers) : options.workers;
+    options.warmupFrameCount = warmupFrames.value_or(options.warmupFrameCount);
+    options.measureFrameCount = measureFrames.value_or(options.measureFrameCount);
+    options.timeDelta = timeDelta.value_or(options.timeDelta);
 
     if (options.scenario == BenchmarkScenario::RigidBodyContainer && options.boxCount + options.circleCount <= 0)
     {
@@ -346,6 +362,19 @@ nlohmann::json resolvedParameters(const BenchmarkRunnerOptions &options)
                        {"friction", 0.8f},
                        {"restitution", 0.15f}});
     }
+    if (const auto *scene = findBox2DScenario(options.scenario))
+    {
+        const bool smash = options.scenario == BenchmarkScenario::Smash;
+        result.update({{"box2d_release", "v3.2.0"},
+                       {"units_per_meter", box2dUnitsPerMeter},
+                       {"dynamic_body_count", scene->dynamicBodies},
+                       {"static_body_count", scene->staticBodies},
+                       {"gravity", {0.0f, smash ? 0.0f : GRAVITY_VECTOR_Y}},
+                       {"sleeping_enabled", smash},
+                       {"friction", 0.6f},
+                       {"restitution", 0.0f},
+                       {"seed_policy", "fixed Box2D benchmark layout"}});
+    }
     return result;
 }
 size_t expectedPopulation(const BenchmarkRunnerOptions &options)
@@ -367,6 +396,12 @@ size_t expectedPopulation(const BenchmarkRunnerOptions &options)
         return size_t(options.contactPairCount) * 2 + camera;
     case BenchmarkScenario::IdealWorld:
         return size_t(options.idealWorldBodyCount) + idealWorldChamberCount(options.idealWorldBodyCount) * 4 + camera;
+    case BenchmarkScenario::LargePyramid:
+    case BenchmarkScenario::ManyPyramids:
+    case BenchmarkScenario::Smash: {
+        const auto &scene = *findBox2DScenario(options.scenario);
+        return scene.dynamicBodies + scene.staticBodies + camera;
+    }
     case BenchmarkScenario::None:
         return 0;
     }
@@ -388,7 +423,7 @@ nlohmann::json validatePhysicalState(const platformator::Runtime &runtime, const
             scripts != size_t(options.contactPairCount) * options.scriptedEndpoints)
             throw std::runtime_error("Persistent-contact fixture has incorrect contact/script populations");
     }
-    size_t colliders = 0, bodies = 0, supportTotal = 0, maximumSupports = 0;
+    size_t colliders = 0, bodies = 0, dynamicBodies = 0, awakeDynamicBodies = 0, supportTotal = 0, maximumSupports = 0;
     std::unordered_map<const Rigidbody *, size_t> expectedSupports;
     nlohmann::json bodySnapshots = nlohmann::json::array(), contacts = nlohmann::json::array();
     for (const auto *object : objects)
@@ -448,6 +483,11 @@ nlohmann::json validatePhysicalState(const platformator::Runtime &runtime, const
         if (const auto *body = object->getComponent<Rigidbody>())
         {
             ++bodies;
+            if (body->getBodyType() == DYNAMIC)
+            {
+                ++dynamicBodies;
+                awakeDynamicBodies += !body->getIsSleeping();
+            }
             if (!body->getVelocity().allFinite() || !std::isfinite(body->getAngularVelocity()))
                 throw std::runtime_error("Nonfinite benchmark body state");
             const auto supports = body->getSupportContactCount();
@@ -483,6 +523,17 @@ nlohmann::json validatePhysicalState(const platformator::Runtime &runtime, const
                              {"population_model", options.scenario == BenchmarkScenario::None
                                                       ? "scene controlled"
                                                       : "resolved scenario count"}};
+    if (const auto *scene = findBox2DScenario(options.scenario))
+    {
+        if (dynamicBodies != scene->dynamicBodies || bodies != scene->dynamicBodies + scene->staticBodies ||
+            colliders != bodies)
+            throw std::runtime_error("Box2D benchmark body or collider count does not match the scenario");
+        const bool smash = options.scenario == BenchmarkScenario::Smash;
+        if ((!smash && awakeDynamicBodies != dynamicBodies) || (smash && !contactsReady && awakeDynamicBodies != 1))
+            throw std::runtime_error("Box2D benchmark awake body count does not match the scenario");
+        result["dynamic_bodies"] = dynamicBodies;
+        result["awake_dynamic_bodies"] = awakeDynamicBodies;
+    }
     if (snapshot)
     {
         std::sort(bodySnapshots.begin(), bodySnapshots.end(),
@@ -515,6 +566,8 @@ void runBenchmark(const BenchmarkRunnerOptions &options)
         callback = [&](double) { applyAddRemoveScenarioChurn(runtime, addRemoveState, options.renderFrames); };
     else if (options.scenario == BenchmarkScenario::BroadPhaseStress)
         callback = [&](double) { applyBroadPhaseStressScenarioMotion(broadPhaseStressState); };
+    const bool box2dScenario = findBox2DScenario(options.scenario) != nullptr;
+    const auto sceneStart = box2dScenario ? validatePhysicalState(runtime, options, false, false) : nlohmann::json{};
     const auto step = [&]() {
         bool running = true;
         if (options.renderFrames)
@@ -536,7 +589,7 @@ void runBenchmark(const BenchmarkRunnerOptions &options)
             running = false;
             break;
         }
-    const auto initial = validatePhysicalState(runtime, options, false, warmup != 0);
+    const auto initial = box2dScenario && warmup == 0 ? sceneStart : validatePhysicalState(runtime, options, false, warmup != 0);
     const auto *window = platformator_detail::RuntimeAccess::window();
     const auto fallbacksBeforeMeasured = window != nullptr
                                              ? window->getObservedRenderFallbackCounts()
@@ -558,6 +611,8 @@ void runBenchmark(const BenchmarkRunnerOptions &options)
                         {"asset_root", runtime.getAssetRoot().string()},
                         {"resolved_parameters", resolvedParameters(options)},
                         {"initial_state", initial}});
+    if (box2dScenario)
+        recorder.updateMetadata({{"scene_start_state", sceneStart}});
     for (int i = 0; running && i < options.measureFrameCount; ++i)
         running = step();
     const auto fallbacksAfterMeasured = window != nullptr
@@ -591,7 +646,7 @@ void printUsage(FILE *output)
         output,
         "Usage: platformator_benchmark_runner [scene] [--scene path | --scenario "
         "broad_phase|broad_phase_stress|narrow_phase|rigid_body_container|add_and_remove|moving_add_and_remove|"
-        "persistent_contacts|ideal_world] "
+        "persistent_contacts|ideal_world|large_pyramid|many_pyramids|smash] "
         "[--warmup-frames N] [--measure-frames N] [--dt seconds] [--box-count N] [--circle-count N] [--broad-count N] "
         "[--contact-pair-count N] [--scripted-endpoints 0|1|2] [--narrow-count N] [--ideal-count N] [--steady-count N] [--add-count N] "
         "[--remove-count N] [--churn-count N] [--csv-output "

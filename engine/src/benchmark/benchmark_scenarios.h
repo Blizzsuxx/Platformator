@@ -160,7 +160,35 @@ enum class BenchmarkScenario
     MovingAddAndRemove,
     PersistentContacts,
     IdealWorld,
+    LargePyramid,
+    ManyPyramids,
+    Smash,
 };
+
+struct Box2DScenario
+{
+    BenchmarkScenario scenario;
+    const char *name;
+    size_t dynamicBodies;
+    size_t staticBodies;
+    SDL_FRect cameraMeters;
+};
+
+constexpr std::array box2dScenarios{
+    Box2DScenario{BenchmarkScenario::LargePyramid, "large_pyramid", 5050, 1, {-110, -110, 220, 120}},
+    Box2DScenario{BenchmarkScenario::ManyPyramids, "many_pyramids", 22000, 20, {-120, -230, 240, 240}},
+    Box2DScenario{BenchmarkScenario::Smash, "smash", 9601, 0, {-30, -25, 120, 50}},
+};
+constexpr double box2dTimeDelta = 1.0 / 60.0;
+// Reflect Box2D's upward-positive Y axis and match its -10 m/s² gravity.
+constexpr float box2dUnitsPerMeter = GRAVITY_VECTOR_Y / 10.0f;
+
+const Box2DScenario *findBox2DScenario(BenchmarkScenario scenario)
+{
+    const auto found = std::find_if(box2dScenarios.begin(), box2dScenarios.end(),
+                                    [scenario](const auto &item) { return item.scenario == scenario; });
+    return found == box2dScenarios.end() ? nullptr : &*found;
+}
 
 bool isAddRemoveScenario(const BenchmarkScenario scenario)
 {
@@ -256,6 +284,10 @@ BenchmarkScenario parseScenario(const std::string &value)
     if (value == "ideal_world" || value == "ideal-world" || value == "idealworld")
         return BenchmarkScenario::IdealWorld;
 
+    for (const auto &scene : box2dScenarios)
+        if (value == scene.name)
+            return scene.scenario;
+
     throw std::runtime_error("Unknown benchmark scenario: " + value);
 }
 
@@ -279,6 +311,10 @@ const char *scenarioName(const BenchmarkScenario scenario)
         return "persistent_contacts";
     case BenchmarkScenario::IdealWorld:
         return "ideal_world";
+    case BenchmarkScenario::LargePyramid:
+    case BenchmarkScenario::ManyPyramids:
+    case BenchmarkScenario::Smash:
+        return findBox2DScenario(scenario)->name;
     case BenchmarkScenario::None:
         return "scene";
     }
@@ -1072,6 +1108,65 @@ void buildIdealWorldScenario(platformator::Runtime &runtime, const BenchmarkRunn
     }
 }
 
+// Layouts adapted from Box2D v3.2.0 shared/benchmarks.c (Erin Catto, MIT).
+void buildBox2DScenario(platformator::Runtime &runtime, const BenchmarkRunnerOptions &options)
+{
+    const bool smash = options.scenario == BenchmarkScenario::Smash;
+    if (!smash)
+        platformator_detail::RuntimeAccess::physicsManager()->disableSleepingForBenchmark();
+
+    const auto addBox = [&](float x, float y, float width, float height, BodyType type, float density = 1.0f) {
+        auto *body = createBenchmarkBox(runtime, "", x * box2dUnitsPerMeter, -y * box2dUnitsPerMeter,
+                                        width * box2dUnitsPerMeter, height * box2dUnitsPerMeter, type,
+                                        !smash && type == DYNAMIC, Eigen::Vector2f::Zero(), false, 0.6f, 0.0f, 0.0f,
+                                        options.renderFrames)->getComponent<Rigidbody>();
+        if (type == DYNAMIC)
+            body->setMass(width * height * density);
+        return body;
+    };
+    const auto addPyramid = [&](int base, float left, float floor) {
+        for (int row = 0; row < base; ++row)
+            for (int column = 0; column < base - row; ++column)
+                addBox(left + 0.5f * (row + 1) + column, floor + row + 0.5f, 1.0f, 1.0f, DYNAMIC);
+    };
+
+    if (options.scenario == BenchmarkScenario::LargePyramid)
+    {
+        addBox(0.0f, -1.0f, 200.0f, 2.0f, STATIC);
+        addPyramid(100, -50.0f, 0.0f);
+    }
+    else if (options.scenario == BenchmarkScenario::ManyPyramids)
+    {
+        constexpr int rows = 20;
+        constexpr int columns = 20;
+        constexpr float pitch = 11.0f;
+        constexpr float floorWidth = columns * pitch;
+        constexpr float floorThickness = 0.1f;
+        for (int row = 0; row < rows; ++row)
+            addBox(0.0f, pitch * row - floorThickness / 2, floorWidth, floorThickness, STATIC);
+        for (int row = 0; row < rows; ++row)
+            for (int column = 0; column < columns; ++column)
+                addPyramid(10, -floorWidth / 2 + pitch * column + 0.5f, pitch * row);
+    }
+    else
+    {
+        constexpr float blockSize = 0.4f;
+        constexpr int columns = 120;
+        constexpr int rows = 80;
+        addBox(-20.0f, 0.0f, 8.0f, 8.0f, DYNAMIC, 8.0f)->setVelocity({40.0f * box2dUnitsPerMeter, 0.0f});
+        std::vector<Rigidbody *> blocks;
+        blocks.reserve(columns * rows);
+        for (int column = 0; column < columns; ++column)
+            for (int row = 0; row < rows; ++row)
+                blocks.push_back(addBox(30.0f + column * blockSize, (row - rows / 2.0f) * blockSize,
+                                       blockSize, blockSize, DYNAMIC));
+        // Publishing queued transforms wakes their bodies. Put the pile to sleep after publication.
+        platformator_detail::RuntimeAccess::gameManager().flushIfIdle();
+        for (auto *block : blocks)
+            block->setIsSleeping(true);
+    }
+}
+
 void buildScenario(platformator::Runtime &runtime, const BenchmarkRunnerOptions &options,
                    BroadPhaseStressScenarioState *broadPhaseStressState, AddRemoveScenarioState *addRemoveState)
 {
@@ -1106,6 +1201,11 @@ void buildScenario(platformator::Runtime &runtime, const BenchmarkRunnerOptions 
         return;
     case BenchmarkScenario::IdealWorld:
         buildIdealWorldScenario(runtime, options);
+        return;
+    case BenchmarkScenario::LargePyramid:
+    case BenchmarkScenario::ManyPyramids:
+    case BenchmarkScenario::Smash:
+        buildBox2DScenario(runtime, options);
         return;
     case BenchmarkScenario::None:
         return;
@@ -1239,6 +1339,15 @@ void configureScenarioCamera(platformator::Runtime &runtime, const BenchmarkRunn
         const float h = static_cast<float>(rows) * 600.0f + 400.0f;
         mainCamera->setCamera(
             fitCameraRectToWindowAspect(SDL_FRect{-0.5f * w, -0.5f * h, w, h}, options.runtimeOptions.windowSettings));
+        return;
+    }
+    case BenchmarkScenario::LargePyramid:
+    case BenchmarkScenario::ManyPyramids:
+    case BenchmarkScenario::Smash: {
+        const auto rect = findBox2DScenario(options.scenario)->cameraMeters;
+        mainCamera->setCamera(fitCameraRectToWindowAspect(
+            SDL_FRect{rect.x * box2dUnitsPerMeter, rect.y * box2dUnitsPerMeter,
+                      rect.w * box2dUnitsPerMeter, rect.h * box2dUnitsPerMeter}, options.runtimeOptions.windowSettings));
         return;
     }
     case BenchmarkScenario::None:

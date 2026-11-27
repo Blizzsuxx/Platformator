@@ -15,8 +15,6 @@ if(PLATFORMATOR_ENABLE_BENCHMARKS)
         "${CMAKE_CURRENT_SOURCE_DIR}/CMakeLists.txt"
         "${CMAKE_CURRENT_SOURCE_DIR}/tests/CMakeLists.txt"
         "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/CMakeLists.txt"
-        "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/box2d/upstream/runner.h"
-        "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/box2d/upstream/platformator_runner.cpp"
         "${PLATFORMATOR_ROOT_DIR}/vendored/SDL3_mixer-3.2.4/src/decoder_wav.c"
         "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/linear_render_probe.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/capture_linear_render.py"

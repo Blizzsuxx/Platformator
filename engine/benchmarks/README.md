@@ -105,31 +105,39 @@ Historical reports remain historical observations when raw artifacts were delete
 
 ## Box2D v3.2.0 upstream workloads
 
-The paired runners use the original [Box2D v3.2.0 scene builders](https://github.com/erincatto/box2d/blob/v3.2.0/shared/benchmarks.c) and their Release populations. Each capture selects one scenario and inherits CPU affinity. The original Box2D CLI is also available as a separate build target called `benchmark`.
+Platformator's standard runner includes three scenarios based on the [Box2D v3.2.0 Release scene layouts](https://github.com/erincatto/box2d/blob/v3.2.0/shared/benchmarks.c). The Box2D reference executable calls the original scene builders. Each paired capture selects one scenario and inherits CPU affinity. The original Box2D CLI is available as a separate build target called `benchmark`.
 
 | Scenario | Dynamic boxes | Scene details |
 | --- | ---: | --- |
 | `large_pyramid` | 5,050 | A 100-box-wide pyramid on a single box floor. Sleeping is disabled. |
 | `many_pyramids` | 22,000 | A 20 × 20 array of 10-box-wide pyramids. Platformator uses 20 thin box floors with aligned top surfaces in place of Box2D's 20 segments on one body. Sleeping is disabled. |
-| `smash` | 9,601 | A heavy projectile moves toward a packed wall of 9,600 initially sleeping boxes in zero gravity. The first impact is around step 69, so use `--warmup-steps 65` to capture it. |
+| `smash` | 9,601 | A heavy projectile moves toward a packed wall of 9,600 initially sleeping boxes in zero gravity. The default 65-step warmup puts the first impact around step 69 inside the measured window. |
 
-From the repository root, reuse the pinned checkout if it already exists.
+Run a scenario in Platformator from the repository root. These three scenarios default to 60 Hz, one worker, and 30 measured steps. Use the runner's standard `--dt`, `--workers`, `--warmup-frames`, and `--measure-frames` options to override them.
+
+```sh
+cmake --preset benchmark
+cmake --build --preset benchmark --parallel 4 --target platformator_benchmark_runner
+SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy SDL_RENDER_DRIVER=software \
+  build/benchmark/platformator_benchmark_runner --scenario large_pyramid \
+  --csv-output build/large-pyramid.csv
+```
+
+For a paired capture, reuse the pinned Box2D checkout if it already exists.
 
 ```sh
 git clone --depth 1 --branch v3.2.0 https://github.com/erincatto/box2d.git build/box2d-v3.2.0-src
-cmake --preset benchmark
-cmake --build --preset benchmark --parallel 4 --target platformator_box2d_reference_runner
 cmake -S engine/benchmarks/box2d/upstream -B build/box2d-upstream-reference -G Ninja -DCMAKE_BUILD_TYPE=Release
 cmake --build build/box2d-upstream-reference --parallel 4 --target box2d_upstream_reference_runner
 python3 engine/benchmarks/capture_box2d_upstream.py \
-  --platformator build/benchmark/platformator_box2d_reference_runner \
+  --platformator build/benchmark/platformator_benchmark_runner \
   --box2d build/box2d-upstream-reference/box2d_upstream_reference_runner \
   --scenario large_pyramid --output build/box2d-large-pyramid-pilot
 ```
 
-The driver uses 3 fresh processes per engine, 5 warmup steps, 30 measured steps, a 600-second timeout and a 50 MiB output budget. `report.json` records run medians, executable hashes and commands. The run JSON files contain every step duration in nanoseconds and the body, shape and awake counts at each measurement boundary. The coordinator stops on the first failed run and leaves its partial files in place. The [first single-worker pilot](results/box2d-v3.2.0-large-pyramid/report.json) recorded 2.16 ms/step for Box2D and 8.37 ms/step for Platformator on an AMD Ryzen 5 7535HS, pinned to logical CPU 2.
+The driver uses 3 fresh processes per engine, 5 warmup steps (65 for `smash`), 30 measured steps, a 600-second timeout and a 50 MiB output budget. `report.json` records run medians, executable hashes and commands. The Box2D run JSON files hold raw nanosecond samples. Platformator writes its usual summary CSV, raw samples CSV, and manifest. Both include body, shape and awake counts at measurement boundaries. The coordinator stops on the first failed run and leaves its partial files in place.
 
-Both runners advance at 60 Hz. Platformator uses 9.81 world units per meter and reflects the Y axis to match the upstream gravity and geometry. The timing wraps the normal headless `Runtime::simulateFrame` call on Platformator and `b2World_Step` on Box2D. Box2D uses its native scheduler, four solver substeps and continuous collision. Platformator uses its native discrete solver and includes runtime bookkeeping. Interpret timings alongside the scene state and solver settings because contact and sleep behavior can diverge.
+Both runners advance at 60 Hz. Platformator uses 9.81 world units per meter and reflects the Y axis to match the upstream gravity and geometry. The driver compares Platformator's standard `complete_step` scope with elapsed time around `b2World_Step`. Box2D uses its native scheduler, four solver substeps and continuous collision. Platformator uses its native discrete solver and includes runtime bookkeeping. Interpret timings alongside the scene state and solver settings because contact and sleep behavior can diverge. The [original single-worker pilot](results/box2d-v3.2.0-large-pyramid/report.json) used an outer timer around Platformator's `Runtime::simulateFrame` call.
 
 The other upstream scenes depend on features beyond these ports. `joint_grid`, `rain`, `spinner`, `tumbler`, `washer` and `sleep` exercise joints or motors. `compounds` and `junkyard` require polygon compounds or additional shapes. `queries`, `tree_cast` and `tile_world` exercise shape queries or Box2D's dynamic tree directly. The native `benchmark --list` lists these workloads.
 

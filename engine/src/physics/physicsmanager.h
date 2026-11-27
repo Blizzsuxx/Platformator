@@ -49,6 +49,10 @@ public:
     void checkForCollisions();
     void resolveCollisions(double timeDelta);
     const Grid &getGrid() const;
+    float getGridCellSize() const noexcept
+    {
+        return grid.getCellSize();
+    }
     const std::vector<Collider *> &getColliders() const;
 
     const std::vector<const ColliderPair *> &getContactPairs() const
@@ -203,6 +207,7 @@ private:
         std::vector<Rigidbody *> bodies;
         std::vector<const ColliderPair *> contacts;
         std::unique_ptr<IslandColorGraph> colorGraph;
+        uint16_t splitCooldown = 0;
         bool maySplit = false;
         bool splitQueued = false;
         bool hasSleepingEndpoint = false;

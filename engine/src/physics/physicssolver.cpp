@@ -10,6 +10,7 @@
 #include "core/membership.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cassert>
 #include <cmath>
 #include <cstdint>
@@ -539,6 +540,380 @@ bool PhysicsManager::solveColoredIsland(PersistentIsland &island, float inverseT
         }
     }
 
+    const bool hasMovingKinematic = !movingKinematicBodies.empty();
+
+#if PLATFORMATOR_HAS_RUNTIME_AVX2
+    if (useAVX2 && !hasMovingKinematic)
+    {
+        using namespace platformator_solver_simd;
+        thread_local std::array<std::vector<WideConstraint8>, IslandColorGraph::MAX_PARALLEL_COLORS> colorWideBlocks;
+        thread_local std::array<std::vector<SolverConstraint>, IslandColorGraph::MAX_PARALLEL_COLORS> colorTailConstraints;
+        thread_local std::vector<SolverConstraint> overflowConstraints;
+        auto *wideBuckets = colorWideBlocks.data();
+        auto *tailBuckets = colorTailConstraints.data();
+
+        std::array<uint8_t, IslandColorGraph::MAX_PARALLEL_COLORS> activeColors{};
+        size_t activeColorCount = 0;
+        for (uint8_t c = 0; c < IslandColorGraph::MAX_PARALLEL_COLORS; ++c)
+        {
+            if (!graph.buckets[c].empty())
+            {
+                activeColors[activeColorCount++] = c;
+            }
+        }
+
+        const auto resolveBodySlotReadOnly = [&](Rigidbody *rb) noexcept -> uint32_t {
+            if (rb->getBodyType() == DYNAMIC && !rb->getIsSleeping())
+            {
+                const size_t regIdx = rb->getPhysicsManagerIndex();
+                if (regIdx < registeredBodies.size() && registeredBodies[regIdx] == rb)
+                {
+                    return solverBodyLocalIndices[regIdx];
+                }
+                return UNMAPPED_SOLVER_BODY;
+            }
+            return 0;
+        };
+
+        std::atomic<bool> allMapped{true};
+        const auto packColorDirect = [&, wideBuckets, tailBuckets](uint8_t c) {
+            const auto &pairs = graph.buckets[c];
+            auto &wideOut = wideBuckets[c];
+            auto &tailOut = tailBuckets[c];
+            wideOut.clear();
+            tailOut.clear();
+
+            const auto emitBatch = [&](const SolverConstraint *batch, size_t count) {
+                if (count == 0)
+                {
+                    return;
+                }
+                if (count < 4)
+                {
+                    for (size_t i = 0; i < count; ++i)
+                    {
+                        tailOut.push_back(batch[i]);
+                    }
+                    return;
+                }
+                wideOut.emplace_back();
+                WideConstraint8 &wide = wideOut.back();
+                wide.blockMask = 0;
+                wide.twoPointMask = 0;
+                wide.writeMaskA = 0;
+                wide.writeMaskB = 0;
+                for (size_t lane = 0; lane < 8; ++lane)
+                {
+                    if (lane < count)
+                    {
+                        const SolverConstraint &sc = batch[lane];
+                        const SolverBodyState &bA = solverBodyStates[sc.bodyIndexA];
+                        const SolverBodyState &bB = solverBodyStates[sc.bodyIndexB];
+                        packWideLane(wide, lane, &sc, bA.inverseMass, bA.inverseMomentOfInertia, bB.inverseMass,
+                                     bB.inverseMomentOfInertia);
+                    }
+                    else
+                    {
+                        packWideLane<SolverConstraint>(wide, lane, nullptr);
+                    }
+                }
+            };
+
+            if (pairs.size() < 4)
+            {
+                for (const ColliderPair *pair : pairs)
+                {
+                    auto *collision = pair->getCollision();
+                    if (collision == nullptr)
+                    {
+                        continue;
+                    }
+                    auto *rbA = collision->getReferenceObject()->getAttachedRigidbody();
+                    auto *rbB = collision->getIncidentObject()->getAttachedRigidbody();
+                    if (rbA == nullptr || rbB == nullptr)
+                    {
+                        continue;
+                    }
+                    const uint32_t idxA = resolveBodySlotReadOnly(rbA);
+                    const uint32_t idxB = resolveBodySlotReadOnly(rbB);
+                    if (idxA == UNMAPPED_SOLVER_BODY || idxB == UNMAPPED_SOLVER_BODY)
+                    {
+                        allMapped.store(false, std::memory_order_relaxed);
+                        return;
+                    }
+                    tailOut.emplace_back();
+                    SolverConstraint &sc = tailOut.back();
+                    prepareSolverConstraint(SolverPreStepJob{collision, rbA, rbB}, inverseTimeDelta, sc);
+                    sc.bodyIndexA = idxA;
+                    sc.bodyIndexB = idxB;
+                }
+                return;
+            }
+
+            if (wideOut.capacity() < (pairs.size() + 7) / 8 + 1)
+            {
+                wideOut.reserve((pairs.size() + 7) / 8 + 1);
+            }
+            SolverConstraint blockBatch[8];
+            SolverConstraint singleBatch[8];
+            size_t blockCount = 0;
+            size_t singleCount = 0;
+            SolverConstraint tmp;
+
+            for (const ColliderPair *pair : pairs)
+            {
+                auto *collision = pair->getCollision();
+                if (collision == nullptr)
+                {
+                    continue;
+                }
+                auto *rbA = collision->getReferenceObject()->getAttachedRigidbody();
+                auto *rbB = collision->getIncidentObject()->getAttachedRigidbody();
+                if (rbA == nullptr || rbB == nullptr)
+                {
+                    continue;
+                }
+                const uint32_t idxA = resolveBodySlotReadOnly(rbA);
+                const uint32_t idxB = resolveBodySlotReadOnly(rbB);
+                if (idxA == UNMAPPED_SOLVER_BODY || idxB == UNMAPPED_SOLVER_BODY)
+                {
+                    allMapped.store(false, std::memory_order_relaxed);
+                    return;
+                }
+                prepareSolverConstraint(SolverPreStepJob{collision, rbA, rbB}, inverseTimeDelta, tmp);
+                tmp.bodyIndexA = idxA;
+                tmp.bodyIndexB = idxB;
+                if (tmp.blockSolve)
+                {
+                    blockBatch[blockCount++] = tmp;
+                    if (blockCount == 8)
+                    {
+                        emitBatch(blockBatch, 8);
+                        blockCount = 0;
+                    }
+                }
+                else if (tmp.pointCount == 1)
+                {
+                    singleBatch[singleCount++] = tmp;
+                    if (singleCount == 8)
+                    {
+                        emitBatch(singleBatch, 8);
+                        singleCount = 0;
+                    }
+                }
+                else
+                {
+                    tailOut.push_back(tmp);
+                }
+            }
+            emitBatch(blockBatch, blockCount);
+            emitBatch(singleBatch, singleCount);
+        };
+
+        tbb::task_group_context context(tbb::task_group_context::isolated);
+        if (allowParallel && activeColorCount >= 2)
+        {
+            tbb::parallel_for(
+                size_t(0), activeColorCount, [&](size_t ac) { packColorDirect(activeColors[ac]); }, context);
+        }
+        else
+        {
+            for (size_t ac = 0; ac < activeColorCount; ++ac)
+            {
+                packColorDirect(activeColors[ac]);
+            }
+        }
+
+        overflowConstraints.clear();
+        const auto &overflowPairs = graph.buckets[IslandColorGraph::OVERFLOW_COLOR];
+        if (!overflowPairs.empty() && allMapped.load(std::memory_order_relaxed))
+        {
+            overflowConstraints.reserve(overflowPairs.size());
+            for (const ColliderPair *pair : overflowPairs)
+            {
+                auto *collision = pair->getCollision();
+                if (collision == nullptr)
+                {
+                    continue;
+                }
+                auto *rbA = collision->getReferenceObject()->getAttachedRigidbody();
+                auto *rbB = collision->getIncidentObject()->getAttachedRigidbody();
+                if (rbA == nullptr || rbB == nullptr)
+                {
+                    continue;
+                }
+                const uint32_t idxA = resolveBodySlotReadOnly(rbA);
+                const uint32_t idxB = resolveBodySlotReadOnly(rbB);
+                if (idxA == UNMAPPED_SOLVER_BODY || idxB == UNMAPPED_SOLVER_BODY)
+                {
+                    allMapped.store(false, std::memory_order_relaxed);
+                    break;
+                }
+                overflowConstraints.emplace_back();
+                SolverConstraint &sc = overflowConstraints.back();
+                prepareSolverConstraint(SolverPreStepJob{collision, rbA, rbB}, inverseTimeDelta, sc);
+                sc.bodyIndexA = idxA;
+                sc.bodyIndexB = idxB;
+            }
+        }
+
+        if (!allMapped.load(std::memory_order_relaxed))
+        {
+            for (const auto &[regIdx, rb] : solverTouchedWritableBodies)
+            {
+                (void)rb;
+                solverBodyLocalIndices[regIdx] = UNMAPPED_SOLVER_BODY;
+            }
+            return false;
+        }
+
+        WideBodyVel *bodyData = solverWideBodyVels.data();
+        constexpr size_t parallelWideThreshold = 32;
+
+        const auto runTailWarmStart = [&](const SolverConstraint &sc) {
+            WideBodyVel &vA = bodyData[sc.bodyIndexA];
+            WideBodyVel &vB = bodyData[sc.bodyIndexB];
+            SolverBodyState sA{{vA.vx, vA.vy}, vA.w, solverBodyStates[sc.bodyIndexA].inverseMass,
+                               solverBodyStates[sc.bodyIndexA].inverseMomentOfInertia};
+            SolverBodyState sB{{vB.vx, vB.vy}, vB.w, solverBodyStates[sc.bodyIndexB].inverseMass,
+                               solverBodyStates[sc.bodyIndexB].inverseMomentOfInertia};
+            applyWarmStart(sc, sA, sB);
+            vA.vx = sA.velocity.x();
+            vA.vy = sA.velocity.y();
+            vA.w = sA.angularVelocity;
+            vB.vx = sB.velocity.x();
+            vB.vy = sB.velocity.y();
+            vB.w = sB.angularVelocity;
+        };
+
+        const auto runTailResolve = [&](SolverConstraint &sc) {
+            WideBodyVel &vA = bodyData[sc.bodyIndexA];
+            WideBodyVel &vB = bodyData[sc.bodyIndexB];
+            SolverBodyState sA{{vA.vx, vA.vy}, vA.w, solverBodyStates[sc.bodyIndexA].inverseMass,
+                               solverBodyStates[sc.bodyIndexA].inverseMomentOfInertia};
+            SolverBodyState sB{{vB.vx, vB.vy}, vB.w, solverBodyStates[sc.bodyIndexB].inverseMass,
+                               solverBodyStates[sc.bodyIndexB].inverseMomentOfInertia};
+            resolveCollision(sc, sA, sB);
+            vA.vx = sA.velocity.x();
+            vA.vy = sA.velocity.y();
+            vA.w = sA.angularVelocity;
+            vB.vx = sB.velocity.x();
+            vB.vy = sB.velocity.y();
+            vB.w = sB.angularVelocity;
+        };
+
+        for (size_t ac = 0; ac < activeColorCount; ++ac)
+        {
+            const uint8_t c = activeColors[ac];
+            WideConstraint8 *wideData = colorWideBlocks[c].data();
+            const size_t wideCount = colorWideBlocks[c].size();
+            if (!allowParallel || wideCount < parallelWideThreshold)
+            {
+                for (size_t w = 0; w < wideCount; ++w)
+                {
+                    applyWarmStartWide8AVX2(wideData[w], bodyData);
+                }
+            }
+            else
+            {
+                const size_t grain = std::max<size_t>(8, wideCount / 16);
+                tbb::parallel_for(
+                    tbb::blocked_range<size_t>(0, wideCount, grain),
+                    [=](const auto &range) {
+                        for (size_t w = range.begin(); w != range.end(); ++w)
+                        {
+                            applyWarmStartWide8AVX2(wideData[w], bodyData);
+                        }
+                    },
+                    tbb::static_partitioner(), context);
+            }
+            for (const SolverConstraint &sc : colorTailConstraints[c])
+            {
+                runTailWarmStart(sc);
+            }
+        }
+        for (const SolverConstraint &sc : overflowConstraints)
+        {
+            runTailWarmStart(sc);
+        }
+
+        for (size_t iteration = 0; iteration < COLLISION_SOLVER_ITERATIONS; ++iteration)
+        {
+            for (size_t ac = 0; ac < activeColorCount; ++ac)
+            {
+                const uint8_t c = activeColors[ac];
+                WideConstraint8 *wideData = colorWideBlocks[c].data();
+                const size_t wideCount = colorWideBlocks[c].size();
+                if (!allowParallel || wideCount < parallelWideThreshold)
+                {
+                    for (size_t w = 0; w < wideCount; ++w)
+                    {
+                        resolveWide8AVX2(wideData[w], bodyData);
+                    }
+                }
+                else
+                {
+                    const size_t grain = std::max<size_t>(8, wideCount / 16);
+                    tbb::parallel_for(
+                        tbb::blocked_range<size_t>(0, wideCount, grain),
+                        [=](const auto &range) {
+                            for (size_t w = range.begin(); w != range.end(); ++w)
+                            {
+                                resolveWide8AVX2(wideData[w], bodyData);
+                            }
+                        },
+                        tbb::static_partitioner(), context);
+                }
+                for (SolverConstraint &sc : colorTailConstraints[c])
+                {
+                    runTailResolve(sc);
+                }
+            }
+            for (SolverConstraint &sc : overflowConstraints)
+            {
+                runTailResolve(sc);
+            }
+        }
+
+        const auto storeColor = [wideBuckets, tailBuckets](uint8_t c) {
+            for (const WideConstraint8 &wide : wideBuckets[c])
+            {
+                storeWideImpulses(wide);
+            }
+            for (const SolverConstraint &sc : tailBuckets[c])
+            {
+                storeConstraintImpulses(sc);
+            }
+        };
+        if (allowParallel && activeColorCount >= 2)
+        {
+            tbb::parallel_for(
+                size_t(0), activeColorCount, [&](size_t ac) { storeColor(activeColors[ac]); }, context);
+        }
+        else
+        {
+            for (size_t ac = 0; ac < activeColorCount; ++ac)
+            {
+                storeColor(activeColors[ac]);
+            }
+        }
+        for (const SolverConstraint &sc : overflowConstraints)
+        {
+            storeConstraintImpulses(sc);
+        }
+        for (const auto &[regIdx, rb] : solverTouchedWritableBodies)
+        {
+            const uint32_t localIdx = solverBodyLocalIndices[regIdx];
+            const WideBodyVel &state = solverWideBodyVels[localIdx];
+            rb->velocity.x() = state.vx;
+            rb->velocity.y() = state.vy;
+            rb->angularVelocity = state.w;
+            solverBodyLocalIndices[regIdx] = UNMAPPED_SOLVER_BODY;
+        }
+        return true;
+    }
+#endif
+
     const size_t expectedContacts = island.contacts.size();
     solverPreStepJobs.clear();
     solverEndpoints.clear();
@@ -551,7 +926,6 @@ bool PhysicsManager::solveColoredIsland(PersistentIsland &island, float inverseT
         solverEndpoints.reserve(expectedContacts);
     }
 
-    const bool hasMovingKinematic = !movingKinematicBodies.empty();
     const auto resolveBodySlot = [&](Rigidbody *rb) -> uint32_t {
         if (rb->getBodyType() == DYNAMIC && !rb->getIsSleeping())
         {

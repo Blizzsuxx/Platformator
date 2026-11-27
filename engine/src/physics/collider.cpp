@@ -92,6 +92,12 @@ void Collider::prepareSync()
 
 void Collider::prepareSyncFromCache()
 {
+    const auto *physics = platformator_detail::RuntimeAccess::physicsManager();
+    prepareSyncFromCache(physics ? physics->getGridCellSize() : GRID_CELL_SIZE);
+}
+
+void Collider::prepareSyncFromCache(float cellSize)
+{
     const auto *object = getGameObject();
     if (offset.x() == 0.0f && offset.y() == 0.0f)
     {
@@ -125,15 +131,19 @@ void Collider::prepareSyncFromCache()
     float newMaxY = tightMaxY;
     if (const auto *rb = attachedRigidbody; rb != nullptr && rb->getBodyType() != BodyType::STATIC)
     {
-        newMinX -= FAT_AABB_MARGIN;
-        newMaxX += FAT_AABB_MARGIN;
-        newMinY -= FAT_AABB_MARGIN;
-        newMaxY += FAT_AABB_MARGIN;
+        const float minExtent = std::min(tightMaxX - tightMinX, tightMaxY - tightMinY);
+        const float maxExtent = std::max(tightMaxX - tightMinX, tightMaxY - tightMinY);
+        const float margin = std::clamp(minExtent * 0.125f, 0.1f, FAT_AABB_MARGIN);
+        newMinX -= margin;
+        newMaxX += margin;
+        newMinY -= margin;
+        newMaxY += margin;
 
         const Eigen::Vector2f &vel = rb->getVelocity();
         const float leadScale = static_cast<float>(FIXED_TIME_STEP) * FAT_AABB_VELOCITY_LEAD_STEPS;
-        const float leadX = std::clamp(vel.x() * leadScale, -FAT_AABB_MAX_VELOCITY_LEAD, FAT_AABB_MAX_VELOCITY_LEAD);
-        const float leadY = std::clamp(vel.y() * leadScale, -FAT_AABB_MAX_VELOCITY_LEAD, FAT_AABB_MAX_VELOCITY_LEAD);
+        const float maxLead = std::clamp(maxExtent * 0.75f, 0.5f, FAT_AABB_MAX_VELOCITY_LEAD);
+        const float leadX = std::clamp(vel.x() * leadScale, -maxLead, maxLead);
+        const float leadY = std::clamp(vel.y() * leadScale, -maxLead, maxLead);
         if (leadX > 0.0f)
             newMaxX += leadX;
         else
@@ -150,7 +160,7 @@ void Collider::prepareSyncFromCache()
     yProjections.getMax()->setProjectedPosition(newMaxY);
     fatBoundsValid = true;
     broadPhaseSyncNeeded = true;
-    calculateGridCellRange();
+    calculateGridCellRange(cellSize);
 }
 
 void Collider::triggerCollisionEnter(const Collision *collision, Collider *other, double timeDelta) const
@@ -201,8 +211,14 @@ void Collider::setCollisionMask(const uint64_t collisionMask)
 
 void Collider::calculateGridCellRange()
 {
-    const auto cellIndex = [](float projection) {
-        const double index = std::floor(projection / GRID_CELL_SIZE);
+    const auto *physics = platformator_detail::RuntimeAccess::physicsManager();
+    calculateGridCellRange(physics ? physics->getGridCellSize() : GRID_CELL_SIZE);
+}
+
+void Collider::calculateGridCellRange(float cellSize)
+{
+    const auto cellIndex = [cellSize](float projection) {
+        const double index = std::floor(projection / static_cast<double>(cellSize));
         // GridCellRange reserves both integer limits and steps past inclusive endpoints.
         if (!(index > std::numeric_limits<int>::min() && index < std::numeric_limits<int>::max()))
             throw std::out_of_range("Collider projection is outside the supported grid range");

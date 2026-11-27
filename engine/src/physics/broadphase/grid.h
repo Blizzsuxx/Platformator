@@ -43,6 +43,10 @@ class Grid
     ~Grid();
 
     const CellMap &getCells() const;
+    float getCellSize() const noexcept
+    {
+        return cellSize;
+    }
     bool containsCellPair(Collider *colliderA, Collider *colliderB) const;
     size_t getCandidatePairCount() const;
 
@@ -69,6 +73,8 @@ class Grid
 
   private:
     void flushPendingWork();
+    static float selectQuantizedCellSize(const std::vector<Collider *> &colliders);
+    void rebuildGridForCellSize(float newCellSize);
     static bool rangeFitsCellCache(const GridCellRange &range) noexcept;
     void expandActiveCellBounds(const GridCellRange &range) noexcept;
     void recomputeActiveCellBounds() const noexcept;
@@ -103,6 +109,8 @@ class Grid
     std::vector<std::pair<size_t, size_t>> pairQueueChunkRanges;
     std::vector<size_t> pairQueueChunkOffsets;
     PairDeltaCollector activePairDeltaCollector;
+    float cellSize;
+    uint32_t resizeCooldown = 0;
     mutable GridCellRange activeCellBounds{};
     mutable bool activeCellBoundsDirty = false;
 };

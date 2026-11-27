@@ -1,6 +1,8 @@
 #include "physics/broadphase/grid.h"
 #include "benchmark/benchmark.h"
 #include <algorithm>
+#include <array>
+#include <cmath>
 #include "core/constants.h"
 #include "core/membership.h"
 #include <cstdio>
@@ -21,8 +23,145 @@ bool Grid::rangeFitsCellCache(const GridCellRange &range) noexcept
 
 Grid::Grid(PhysicsManager *owner)
     : owner(owner), cells(), candidateCollisions(), pendingNarrowPhasePairs(), potentiallyEmptyCells(),
-      cellsWithOperations(), pendingColliderOperations(), activePairDeltaCollector()
+      cellsWithOperations(), pendingColliderOperations(), activePairDeltaCollector(), cellSize(GRID_CELL_SIZE),
+      resizeCooldown(0)
 {
+}
+
+float Grid::selectQuantizedCellSize(const std::vector<Collider *> &colliders)
+{
+    constexpr std::array<float, 7> allowedCellSizes{12.5f, 25.0f, 50.0f, 100.0f, 200.0f, 400.0f, 800.0f};
+    constexpr size_t maxSamples = 512;
+
+    std::vector<float> dynamicExtents;
+    std::vector<float> allExtents;
+    const size_t n = colliders.size();
+    const size_t stride = std::max<size_t>(1, n / maxSamples);
+    dynamicExtents.reserve(std::min(n, maxSamples));
+    allExtents.reserve(std::min(n, maxSamples));
+
+    for (size_t i = 0; i < n; i += stride)
+    {
+        const Collider *c = colliders[i];
+        if (c == nullptr || (!c->desiredInGrid && !c->getIsRegisteredInGrid()))
+        {
+            continue;
+        }
+        const float w = c->getTightMaxX() - c->getTightMinX();
+        const float h = c->getTightMaxY() - c->getTightMinY();
+        const float extent = std::max(w, h);
+        if (!std::isfinite(extent) || extent <= 0.0f)
+        {
+            continue;
+        }
+        allExtents.push_back(extent);
+        const auto *rb = c->getAttachedRigidbody();
+        if (rb != nullptr && rb->getBodyType() != BodyType::STATIC)
+        {
+            dynamicExtents.push_back(extent);
+        }
+    }
+
+    auto &samples = dynamicExtents.size() >= 16 ? dynamicExtents : allExtents;
+    if (samples.size() < 16)
+    {
+        return GRID_CELL_SIZE;
+    }
+
+    const size_t mid = samples.size() / 2;
+    std::nth_element(samples.begin(), samples.begin() + static_cast<std::ptrdiff_t>(mid), samples.end());
+    const float target = samples[mid] * 7.1f;
+
+    constexpr float halfOctave = 1.41421356f;
+    for (size_t i = 0; i + 1 < allowedCellSizes.size(); ++i)
+    {
+        if (target < allowedCellSizes[i] * halfOctave)
+        {
+            return allowedCellSizes[i];
+        }
+    }
+    return allowedCellSizes.back();
+}
+
+void Grid::rebuildGridForCellSize(float newCellSize)
+{
+    if (owner == nullptr || newCellSize == cellSize)
+    {
+        return;
+    }
+
+    std::vector<Collider *> registered;
+    const auto &allColliders = owner->getColliders();
+    registered.reserve(allColliders.size());
+    for (Collider *collider : allColliders)
+    {
+        if (collider != nullptr && collider->getIsRegisteredInGrid())
+        {
+            registered.push_back(collider);
+        }
+    }
+    if (registered.empty())
+    {
+        cellSize = newCellSize;
+        return;
+    }
+
+    // Cancel old cell witnesses so matching pairs survive intact with zero enter/exit churn.
+    candidateCollisions.forEach([this](const ColliderPair &pair) {
+        recordPairDelta(pair.getObjectA(), pair.getObjectB(), -pair.getWitnessCount());
+    });
+
+    for (Collider *collider : registered)
+    {
+        collider->cachedCellCount = 0;
+    }
+    cells.clear();
+    potentiallyEmptyCells.clear();
+    cellsWithOperations.clear();
+    activeCellBounds = GridCellRange{};
+    activeCellBoundsDirty = false;
+    cellSize = newCellSize;
+
+    if (registered.size() < GRID_GEOMETRY_PREP_PARALLEL_THRESHOLD)
+    {
+        for (Collider *collider : registered)
+        {
+            collider->calculateGridCellRange(cellSize);
+        }
+    }
+    else
+    {
+        tbb::parallel_for(size_t(0), registered.size(),
+                          [&](size_t i) { registered[i]->calculateGridCellRange(cellSize); });
+    }
+
+    for (Collider *collider : registered)
+    {
+        addColliderInternal(collider, true);
+    }
+
+    if (!cellsWithOperations.empty())
+    {
+        const bool runCellsParallel =
+            cellsWithOperations.size() >= GRID_CELL_FLUSH_PARALLEL_THRESHOLD ||
+            (cellsWithOperations.size() >= GRID_CELL_FLUSH_DENSE_MIN_CELLS &&
+             registered.size() >= GRID_UPDATE_PARALLEL_THRESHOLD);
+        if (!runCellsParallel)
+        {
+            for (auto *cell : cellsWithOperations)
+            {
+                cell->flushPendingOperations();
+            }
+        }
+        else
+        {
+            tbb::parallel_for(size_t(0), cellsWithOperations.size(),
+                              [&](size_t i) { cellsWithOperations[i]->flushPendingOperations(); });
+        }
+        cellsWithOperations.clear();
+    }
+
+    applyCollectedPairDeltas();
 }
 
 Grid::~Grid()
@@ -58,7 +197,7 @@ void Grid::addColliderInternal(Collider *collider, bool geometryPrepared)
 {
     if (!geometryPrepared)
     {
-        collider->prepareSyncFromCache();
+        collider->prepareSyncFromCache(cellSize);
     }
     collider->updateGridCellRange();
     const GridCellRange &cachedRange = collider->getGridCellRange();
@@ -405,7 +544,7 @@ void Grid::syncColliderInternal(Collider *collider, bool geometryPrepared)
     const bool geometry = collider->dirty & Collider::Geometry;
     const bool filter = collider->dirty & Collider::Filter;
     if (geometry && !geometryPrepared)
-        collider->prepareSyncFromCache();
+        collider->prepareSyncFromCache(cellSize);
     if (!geometry && !filter)
         return;
     if (!filter && !collider->broadPhaseSyncNeeded)
@@ -534,10 +673,10 @@ void Grid::flushPendingCellUpdates()
 
 void Grid::flushPendingWork()
 {
-    const auto prepareColliderGeometry = [](Collider *collider) {
+    const auto prepareColliderGeometry = [this](Collider *collider) {
         if (collider->desiredInGrid && (!collider->getIsRegisteredInGrid() || (collider->dirty & Collider::Geometry)))
         {
-            collider->prepareSyncFromCache();
+            collider->prepareSyncFromCache(cellSize);
         }
     };
     if (pendingColliderOperations.size() < GRID_GEOMETRY_PREP_PARALLEL_THRESHOLD)
@@ -549,6 +688,30 @@ void Grid::flushPendingWork()
     {
         tbb::parallel_for(size_t(0), pendingColliderOperations.size(),
                           [&](size_t i) { prepareColliderGeometry(pendingColliderOperations[i]); });
+    }
+    if (cells.empty() && pendingColliderOperations.size() >= 32)
+    {
+        const float desiredCellSize = selectQuantizedCellSize(pendingColliderOperations);
+        if (desiredCellSize != cellSize)
+        {
+            cellSize = desiredCellSize;
+            const auto recomputeRange = [this](Collider *collider) {
+                if (collider->desiredInGrid)
+                {
+                    collider->calculateGridCellRange(cellSize);
+                }
+            };
+            if (pendingColliderOperations.size() < GRID_GEOMETRY_PREP_PARALLEL_THRESHOLD)
+            {
+                for (auto *collider : pendingColliderOperations)
+                    recomputeRange(collider);
+            }
+            else
+            {
+                tbb::parallel_for(size_t(0), pendingColliderOperations.size(),
+                                  [&](size_t i) { recomputeRange(pendingColliderOperations[i]); });
+            }
+        }
     }
     responseDirtyColliders.clear();
     for (auto *collider : pendingColliderOperations)
@@ -605,6 +768,25 @@ void Grid::flushPendingWork()
         }
     }
     potentiallyEmptyCells.clear();
+
+    if (resizeCooldown > 0)
+    {
+        --resizeCooldown;
+    }
+    else if (owner != nullptr && !cells.empty())
+    {
+        const auto &allColliders = owner->getColliders();
+        const size_t totalColliders = allColliders.size();
+        if (totalColliders >= 128 && totalColliders >= cells.size() * 96)
+        {
+            const float desiredCellSize = selectQuantizedCellSize(allColliders);
+            if (desiredCellSize <= cellSize * 0.5f)
+            {
+                rebuildGridForCellSize(desiredCellSize);
+                resizeCooldown = 120;
+            }
+        }
+    }
 
     if (owner && !responseDirtyColliders.empty())
     {
@@ -807,6 +989,8 @@ void Grid::clearAll()
     }
     activeCellBounds = GridCellRange{};
     activeCellBoundsDirty = false;
+    cellSize = GRID_CELL_SIZE;
+    resizeCooldown = 0;
 }
 
 void Grid::queueForOperations(GridCell *cell)

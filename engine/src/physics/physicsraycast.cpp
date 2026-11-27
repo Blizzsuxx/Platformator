@@ -279,10 +279,11 @@ bool PhysicsManager::traverseRayCandidates(const Eigen::Vector2f &origin, const 
     if (!activeBounds.getIsValid() || grid.getCells().empty())
         return false;
 
-    const double gridMinX = static_cast<double>(activeBounds.minX) * static_cast<double>(GRID_CELL_SIZE);
-    const double gridMaxX = static_cast<double>(activeBounds.maxX + 1) * static_cast<double>(GRID_CELL_SIZE);
-    const double gridMinY = static_cast<double>(activeBounds.minY) * static_cast<double>(GRID_CELL_SIZE);
-    const double gridMaxY = static_cast<double>(activeBounds.maxY + 1) * static_cast<double>(GRID_CELL_SIZE);
+    const double cellSize = static_cast<double>(grid.getCellSize());
+    const double gridMinX = static_cast<double>(activeBounds.minX) * cellSize;
+    const double gridMaxX = static_cast<double>(activeBounds.maxX + 1) * cellSize;
+    const double gridMinY = static_cast<double>(activeBounds.minY) * cellSize;
+    const double gridMaxY = static_cast<double>(activeBounds.maxY + 1) * cellSize;
 
     double tGridStart = 0.0;
     double tGridEnd = 0.0;
@@ -344,7 +345,6 @@ bool PhysicsManager::traverseRayCandidates(const Eigen::Vector2f &origin, const 
     if (tStart > tEnd)
         return true;
 
-    const double cellSize = static_cast<double>(GRID_CELL_SIZE);
     const double startX = ox + tStart * dx;
     const double startY = oy + tStart * dy;
     const double endX = ox + tEnd * dx;

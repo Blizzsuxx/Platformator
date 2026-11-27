@@ -1,6 +1,8 @@
 #include "rendering/debugdraw.h"
 #include "core/constants.h"
+#include "core/runtimeaccess.h"
 #include "physics/broadphase/gridcell.h"
+#include "physics/physicsmanager.h"
 #include <cmath>
 #include <cstdio>
 #include <numbers>
@@ -213,10 +215,12 @@ void DebugDraw::addGridCellDebugObject(const GridCellKey &cellKey)
         return;
     }
 
-    float minX = static_cast<float>(cellKey.x) * GRID_CELL_SIZE;
-    float minY = static_cast<float>(cellKey.y) * GRID_CELL_SIZE;
-    float maxX = minX + GRID_CELL_SIZE;
-    float maxY = minY + GRID_CELL_SIZE;
+    const auto *physics = platformator_detail::RuntimeAccess::physicsManager();
+    const float cellSize = physics ? physics->getGridCellSize() : GRID_CELL_SIZE;
+    float minX = static_cast<float>(cellKey.x) * cellSize;
+    float minY = static_cast<float>(cellKey.y) * cellSize;
+    float maxX = minX + cellSize;
+    float maxY = minY + cellSize;
 
     std::vector<Eigen::Vector2f> vertices = {
         Eigen::Vector2f(minX, minY),

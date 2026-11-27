@@ -42,6 +42,7 @@ int32_t PhysicsManager::acquirePersistentIsland()
     island.bodies.clear();
     island.contacts.clear();
     island.colorGraph.reset();
+    island.splitCooldown = 0;
     island.maySplit = false;
     island.splitQueued = false;
     island.hasSleepingEndpoint = false;
@@ -204,6 +205,7 @@ void PhysicsManager::recyclePersistentIsland(int32_t islandId)
     }
     island.bodies.clear();
     island.contacts.clear();
+    island.splitCooldown = 0;
     island.maySplit = false;
     island.hasSleepingEndpoint = false;
     island.id = -1;
@@ -256,6 +258,7 @@ void PhysicsManager::detachBodyFromPersistentIsland(Rigidbody *body)
     }
     else
     {
+        island.splitCooldown = 0;
         queuePersistentIslandSplit(island);
     }
 }
@@ -525,12 +528,17 @@ void PhysicsManager::splitPersistentIsland(int32_t islandId)
 
     if (componentCount <= 1)
     {
+        if (bodyCount >= 32)
+        {
+            island.splitCooldown = static_cast<uint16_t>(std::min<size_t>(16, std::max<size_t>(4, bodyCount / 16)));
+        }
         return;
     }
 
-    clearIslandColorGraph(island);
+    island.splitCooldown = 0;
 
-    // Separate bodies and contacts across connected components, preserving relative contact order.
+    // Separate bodies and contacts across connected components, preserving relative contact order
+    // and keeping the largest component's existing color graph intact.
     splitRemainingContacts.assign(island.contacts.begin(), island.contacts.end());
     std::vector<Rigidbody *> oldBodies;
     oldBodies.swap(island.bodies);
@@ -538,7 +546,7 @@ void PhysicsManager::splitPersistentIsland(int32_t islandId)
     const bool hadSleeping = island.hasSleepingEndpoint;
     island.hasSleepingEndpoint = false;
 
-    splitComponentIslandIds.assign(static_cast<size_t>(componentCount), -1);
+    std::vector<size_t> componentContactCounts(static_cast<size_t>(componentCount), 0);
     for (const ColliderPair *pair : splitRemainingContacts)
     {
         auto *rbA = pair->getObjectA()->getAttachedRigidbody();
@@ -552,20 +560,33 @@ void PhysicsManager::splitPersistentIsland(int32_t islandId)
         {
             comp = splitComponentOfBody[rbB->solverIslandBodyIndex];
         }
-        if (comp >= 0 && splitComponentIslandIds[static_cast<size_t>(comp)] == -1)
+        if (comp >= 0)
         {
-            splitComponentIslandIds[static_cast<size_t>(comp)] = -2; // mark component as having contacts
+            ++componentContactCounts[static_cast<size_t>(comp)];
         }
     }
 
+    int32_t primaryComp = -1;
+    size_t primaryContactCount = 0;
+    for (int32_t comp = 0; comp < componentCount; ++comp)
+    {
+        const size_t count = componentContactCounts[static_cast<size_t>(comp)];
+        if (count > primaryContactCount)
+        {
+            primaryContactCount = count;
+            primaryComp = comp;
+        }
+    }
+
+    splitComponentIslandIds.assign(static_cast<size_t>(componentCount), -1);
     bool reusedPrimary = false;
     for (int32_t comp = 0; comp < componentCount; ++comp)
     {
-        if (splitComponentIslandIds[static_cast<size_t>(comp)] != -2)
+        if (componentContactCounts[static_cast<size_t>(comp)] == 0)
         {
             continue;
         }
-        if (!reusedPrimary)
+        if (comp == primaryComp)
         {
             splitComponentIslandIds[static_cast<size_t>(comp)] = islandId;
             reusedPrimary = true;
@@ -573,6 +594,37 @@ void PhysicsManager::splitPersistentIsland(int32_t islandId)
         else
         {
             splitComponentIslandIds[static_cast<size_t>(comp)] = acquirePersistentIsland();
+        }
+    }
+
+    PersistentIsland &primaryIsland = persistentIslands[static_cast<size_t>(islandId)];
+    IslandColorGraph *preservedColorGraph = reusedPrimary ? primaryIsland.colorGraph.get() : nullptr;
+    if (!reusedPrimary && primaryIsland.colorGraph)
+    {
+        clearIslandColorGraph(primaryIsland);
+    }
+
+    // Remove only detached contacts from the primary island's color graph while body solverIslandId
+    // still reflects the pre-split island so component lookup is O(1).
+    if (preservedColorGraph != nullptr)
+    {
+        for (const ColliderPair *pair : splitRemainingContacts)
+        {
+            auto *rbA = pair->getObjectA()->getAttachedRigidbody();
+            auto *rbB = pair->getObjectB()->getAttachedRigidbody();
+            int32_t comp = -1;
+            if (rbA != nullptr && rbA->solverIslandId == islandId)
+            {
+                comp = splitComponentOfBody[rbA->solverIslandBodyIndex];
+            }
+            else if (rbB != nullptr && rbB->solverIslandId == islandId)
+            {
+                comp = splitComponentOfBody[rbB->solverIslandBodyIndex];
+            }
+            if (comp != primaryComp)
+            {
+                removeContactFromColorGraph(*preservedColorGraph, pair);
+            }
         }
     }
 
@@ -584,6 +636,10 @@ void PhysicsManager::splitPersistentIsland(int32_t islandId)
         const int32_t targetId = splitComponentIslandIds[static_cast<size_t>(comp)];
         body->solverIslandId = -1;
         body->solverIslandBodyIndex = SIZE_MAX;
+        if (comp != primaryComp)
+        {
+            body->solverColorMask = 0;
+        }
         if (targetId != -1)
         {
             addBodyToPersistentIsland(persistentIslands[static_cast<size_t>(targetId)], body);
@@ -636,11 +692,26 @@ void PhysicsManager::splitDirtyIslands()
     {
         return;
     }
-    for (size_t i = 0; i < dirtySplitIslandIds.size(); ++i)
+    size_t keepCount = 0;
+    const size_t count = dirtySplitIslandIds.size();
+    for (size_t i = 0; i < count; ++i)
     {
-        splitPersistentIsland(dirtySplitIslandIds[i]);
+        const int32_t islandId = dirtySplitIslandIds[i];
+        PersistentIsland &island = persistentIslands[static_cast<size_t>(islandId)];
+        if (island.id == -1 || !island.maySplit)
+        {
+            island.splitQueued = false;
+            continue;
+        }
+        if (island.splitCooldown > 0)
+        {
+            --island.splitCooldown;
+            dirtySplitIslandIds[keepCount++] = islandId;
+            continue;
+        }
+        splitPersistentIsland(islandId);
     }
-    dirtySplitIslandIds.clear();
+    dirtySplitIslandIds.resize(keepCount);
 }
 
 void PhysicsManager::wakePersistentIslandEndpoints()

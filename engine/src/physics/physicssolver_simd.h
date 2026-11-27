@@ -282,6 +282,18 @@ __attribute__((target("avx2,fma"))) inline void scatterBodies8AVX2(const uint32_
     _mm256_store_ps(svy, vy);
     _mm256_store_ps(sw, w);
 
+    if (mask == 0xFFu)
+    {
+        for (unsigned lane = 0; lane < 8; ++lane)
+        {
+            BodyVelT &b = bodies[idx[lane]];
+            b.vx = svx[lane];
+            b.vy = svy[lane];
+            b.w = sw[lane];
+        }
+        return;
+    }
+
     while (mask != 0)
     {
         const unsigned lane = static_cast<unsigned>(__builtin_ctz(mask));
@@ -389,18 +401,26 @@ __attribute__((target("avx2,fma"))) inline void resolveWide8AVX2(WideConstraint8
     const __m256 fric = _mm256_load_ps(c.friction);
 
     __m256 aN0 = _mm256_load_ps(c.accumNormal0);
-    __m256 aN1 = _mm256_load_ps(c.accumNormal1);
     __m256 aT0 = _mm256_load_ps(c.accumTangent0);
-    __m256 aT1 = _mm256_load_ps(c.accumTangent1);
+    __m256 aN1 = zero;
+    __m256 aT1 = zero;
+    __m256 rAx1 = zero;
+    __m256 rAy1 = zero;
+    __m256 rBx1 = zero;
+    __m256 rBy1 = zero;
+    if (c.twoPointMask != 0)
+    {
+        aN1 = _mm256_load_ps(c.accumNormal1);
+        aT1 = _mm256_load_ps(c.accumTangent1);
+        rAx1 = _mm256_load_ps(c.rAx1);
+        rAy1 = _mm256_load_ps(c.rAy1);
+        rBx1 = _mm256_load_ps(c.rBx1);
+        rBy1 = _mm256_load_ps(c.rBy1);
+    }
 
     // 1. Block-solve 2x2 normal LCP for any lanes with blockSolve == true.
     if (c.blockMask != 0)
     {
-        const __m256 rAx1 = _mm256_load_ps(c.rAx1);
-        const __m256 rAy1 = _mm256_load_ps(c.rAy1);
-        const __m256 rBx1 = _mm256_load_ps(c.rBx1);
-        const __m256 rBy1 = _mm256_load_ps(c.rBy1);
-
         __m256 relX0, relY0, relX1, relY1;
         computeRelVelAVX2(vAx, vAy, wA, vBx, vBy, wB, rAx0, rAy0, rBx0, rBy0, relX0, relY0);
         computeRelVelAVX2(vAx, vAy, wA, vBx, vBy, wB, rAx1, rAy1, rBx1, rBy1, relX1, relY1);
@@ -424,33 +444,36 @@ __attribute__((target("avx2,fma"))) inline void resolveWide8AVX2(WideConstraint8
         __m256 acc =
             _mm256_and_ps(_mm256_cmp_ps(next0, zero, _CMP_GE_OQ), _mm256_cmp_ps(next1, zero, _CMP_GE_OQ));
 
-        // Branch 1: active point 0 only (next1 = 0)
-        const __m256 cand1_0 = _mm256_div_ps(_mm256_sub_ps(zero, rhs0), k00);
-        const __m256 ok1 = _mm256_and_ps(
-            _mm256_cmp_ps(cand1_0, zero, _CMP_GE_OQ),
-            _mm256_cmp_ps(_mm256_fmadd_ps(k01, cand1_0, rhs1), zero, _CMP_GE_OQ));
-        const __m256 take1 = _mm256_andnot_ps(acc, ok1);
-        next0 = _mm256_blendv_ps(next0, cand1_0, take1);
-        next1 = _mm256_blendv_ps(next1, zero, take1);
-        acc = _mm256_or_ps(acc, take1);
+        if (_mm256_movemask_ps(acc) != 0xFF)
+        {
+            // Branch 1: active point 0 only (next1 = 0)
+            const __m256 cand1_0 = _mm256_div_ps(_mm256_sub_ps(zero, rhs0), k00);
+            const __m256 ok1 = _mm256_and_ps(
+                _mm256_cmp_ps(cand1_0, zero, _CMP_GE_OQ),
+                _mm256_cmp_ps(_mm256_fmadd_ps(k01, cand1_0, rhs1), zero, _CMP_GE_OQ));
+            const __m256 take1 = _mm256_andnot_ps(acc, ok1);
+            next0 = _mm256_blendv_ps(next0, cand1_0, take1);
+            next1 = _mm256_blendv_ps(next1, zero, take1);
+            acc = _mm256_or_ps(acc, take1);
 
-        // Branch 2: active point 1 only (next0 = 0)
-        const __m256 cand2_1 = _mm256_div_ps(_mm256_sub_ps(zero, rhs1), k11);
-        const __m256 ok2 = _mm256_and_ps(
-            _mm256_cmp_ps(cand2_1, zero, _CMP_GE_OQ),
-            _mm256_cmp_ps(_mm256_fmadd_ps(k01, cand2_1, rhs0), zero, _CMP_GE_OQ));
-        const __m256 take2 = _mm256_andnot_ps(acc, ok2);
-        next0 = _mm256_blendv_ps(next0, zero, take2);
-        next1 = _mm256_blendv_ps(next1, cand2_1, take2);
-        acc = _mm256_or_ps(acc, take2);
+            // Branch 2: active point 1 only (next0 = 0)
+            const __m256 cand2_1 = _mm256_div_ps(_mm256_sub_ps(zero, rhs1), k11);
+            const __m256 ok2 = _mm256_and_ps(
+                _mm256_cmp_ps(cand2_1, zero, _CMP_GE_OQ),
+                _mm256_cmp_ps(_mm256_fmadd_ps(k01, cand2_1, rhs0), zero, _CMP_GE_OQ));
+            const __m256 take2 = _mm256_andnot_ps(acc, ok2);
+            next0 = _mm256_blendv_ps(next0, zero, take2);
+            next1 = _mm256_blendv_ps(next1, cand2_1, take2);
+            acc = _mm256_or_ps(acc, take2);
 
-        // Branch 3: both points zero
-        const __m256 ok3 =
-            _mm256_and_ps(_mm256_cmp_ps(rhs0, zero, _CMP_GE_OQ), _mm256_cmp_ps(rhs1, zero, _CMP_GE_OQ));
-        const __m256 take3 = _mm256_andnot_ps(acc, ok3);
-        next0 = _mm256_blendv_ps(next0, zero, take3);
-        next1 = _mm256_blendv_ps(next1, zero, take3);
-        acc = _mm256_or_ps(acc, take3);
+            // Branch 3: both points zero
+            const __m256 ok3 =
+                _mm256_and_ps(_mm256_cmp_ps(rhs0, zero, _CMP_GE_OQ), _mm256_cmp_ps(rhs1, zero, _CMP_GE_OQ));
+            const __m256 take3 = _mm256_andnot_ps(acc, ok3);
+            next0 = _mm256_blendv_ps(next0, zero, take3);
+            next1 = _mm256_blendv_ps(next1, zero, take3);
+            acc = _mm256_or_ps(acc, take3);
+        }
 
         const __m256 applyMask =
             (c.blockMask == 0xFF) ? acc : _mm256_and_ps(acc, _mm256_load_ps(c.blockMaskF));
@@ -500,11 +523,6 @@ __attribute__((target("avx2,fma"))) inline void resolveWide8AVX2(WideConstraint8
     // 3. Point 1 (only if any lane has 2 points).
     if (c.twoPointMask != 0)
     {
-        const __m256 rAx1 = _mm256_load_ps(c.rAx1);
-        const __m256 rAy1 = _mm256_load_ps(c.rAy1);
-        const __m256 rBx1 = _mm256_load_ps(c.rBx1);
-        const __m256 rBy1 = _mm256_load_ps(c.rBy1);
-
         if ((c.twoPointMask & ~c.blockMask) != 0)
         {
             __m256 relX1, relY1;
@@ -534,12 +552,13 @@ __attribute__((target("avx2,fma"))) inline void resolveWide8AVX2(WideConstraint8
 
         applyImpulsePairAVX2(vAx, vAy, wA, invMA, invIA, vBx, vBy, wB, invMB, invIB, _mm256_mul_ps(appliedT, tX),
                              _mm256_mul_ps(appliedT, tY), rAx1, rAy1, rBx1, rBy1);
+
+        _mm256_store_ps(c.accumNormal1, aN1);
+        _mm256_store_ps(c.accumTangent1, aT1);
     }
 
     _mm256_store_ps(c.accumNormal0, aN0);
-    _mm256_store_ps(c.accumNormal1, aN1);
     _mm256_store_ps(c.accumTangent0, aT0);
-    _mm256_store_ps(c.accumTangent1, aT1);
 
     scatterBodies8AVX2(c.bodyIndexA, bodies, vAx, vAy, wA, c.writeMaskA);
     scatterBodies8AVX2(c.bodyIndexB, bodies, vBx, vBy, wB, c.writeMaskB);

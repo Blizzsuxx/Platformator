@@ -340,6 +340,7 @@ class Collider : public Component
         return gridCellRange;
     }
     void calculateGridCellRange();
+    void calculateGridCellRange(float cellSize);
     const GridCellRange &getGridCellRangeCache() const
     {
         return gridCellRangeCache;
@@ -446,6 +447,7 @@ class Collider : public Component
     Rigidbody *attachedRigidbody = nullptr;
     std::vector<const ColliderPair *> adjacentPairs;
     void prepareSyncFromCache();
+    void prepareSyncFromCache(float cellSize);
 };
 
 template <> struct ComponentTypeFor<Collider>

@@ -21,13 +21,17 @@ namespace platformator
 {
 class ReferenceResolver;
 }
+namespace platformator_detail
+{
+struct AssetRetentionLedger;
+}
 
 class Template : public Asset
 {
     friend class GameManager;
 
   public:
-    Template() = default;
+    Template();
     ~Template() override;
 
     GameObject *instantiate(GameObject *parent = nullptr) const;
@@ -54,10 +58,7 @@ class Template : public Asset
                                 GameObject *parent) const;
 
     std::optional<std::string> invalidInternalReferenceError;
-    std::vector<Asset::Reference<TextureWrapper>> textures;
-    std::vector<Asset::Reference<AudioWrapper>> audio;
-    std::vector<Asset::Reference<AnimationClip>> clips;
-    std::vector<Asset::Reference<Template>> nestedTemplates;
-    // Destroy prototype GameObjects before the retained dependency vectors above.
+    std::unique_ptr<platformator_detail::AssetRetentionLedger> retainedAssets;
+    // Destroy prototype GameObjects before the retained dependencies.
     std::vector<std::unique_ptr<GameObject, ObjectDeleter>> objects;
 };

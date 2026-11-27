@@ -29,7 +29,7 @@ from sweep_scaling import parse_benchmark_csv
 
 MODES = ("pre-feature", "disabled", "linear")
 PROFILES = ("visible", "offscreen", "sparse", "clustered", "crossing", "camera-pan", "churn", "rotated")
-INCREMENTAL_PROFILES = ("visible", "offscreen", "crossing", "camera-pan", "churn", "sparse", "clustered",
+INCREMENTAL_PROFILES = ("visible", "offscreen", "crossing", "camera-pan", "camera-stationary", "churn", "sparse", "clustered",
                         "rotated", "visible-motion", "changed", "spread", "giant", "large-offset",
                         "output-resize", "scene-default", "scene-stacking")
 TRAJECTORY_PERIOD_STEPS = {profile: (240 if profile in ("crossing", "camera-pan", "visible-motion", "changed",
@@ -39,7 +39,7 @@ EXPECTED_HARNESS_LENGTH = 64
 INCREMENTAL_STRATEGIES = ("cached-linear",)
 INCREMENTAL_PHASES = ("validate", "resources", "time", "pilot")
 FOCUSED_CASE_NAMES = ("mostly-offscreen", "camera-motion", "small-moving-subset",
-                      "fully-moving-crossing", "all-visible", "crossing-multiworker")
+                      "fully-moving-crossing", "all-visible", "crossing-multiworker", "camera-stationary")
 RENDER_ORDER_CASE_NAMES = ("authored-static", "sparse-camera-pan", "dense-z-edit")
 RENDER_ORDER_VARIANTS = ("rebuild", "forced-sort", "repair")
 RECORDED_FROZEN_BASELINE_IDENTITY = {
@@ -391,6 +391,7 @@ def focused_incremental_cases(selection: str | list[str], multiworker_count: int
     specs = {
         "mostly-offscreen": ("sparse", 10000, 0.0, "uniform-sparse", "fixed", 1),
         "camera-motion": ("camera-pan", 10000, 0.0, "constant-density-spread", "continuous-pan-240", 1),
+        "camera-stationary": ("camera-stationary", 10000, 0.0, "constant-density-spread", "fixed", 1),
         "small-moving-subset": ("changed", 10000, 0.01, "constant-density-spread", "fixed", 1),
         "fully-moving-crossing": ("crossing", 10000, 1.0, "continuous-crossing", "fixed", 1),
         "all-visible": ("visible", 1000, 0.0, "fixed-area", "fixed", 1),

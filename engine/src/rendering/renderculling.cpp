@@ -7,6 +7,7 @@
 #include <stdexcept>
 
 #include "benchmark/workprobe.h"
+#include "core/vectorcapacity.h"
 
 namespace platformator_detail
 {

@@ -151,16 +151,8 @@ target_include_directories(platformator_editor_playsession_test PRIVATE
     "${PLATFORMATOR_ENGINE_BINARY_DIR}/generated"
     "${CMAKE_CURRENT_SOURCE_DIR}/../src"
     "${PROJECT_SOURCE_DIR}/vendored/imgui-1.92.9b")
-if(PLATFORMATOR_ENABLE_EDITOR_SESSION)
-    target_link_libraries(platformator_editor_playsession_test PRIVATE
-        platformator_editor_core platformator_imgui Platformator::platformator nlohmann_json::nlohmann_json)
-else()
-    target_sources(platformator_editor_playsession_test PRIVATE
-        "${CMAKE_CURRENT_SOURCE_DIR}/../src/playsession.cpp"
-        "${PLATFORMATOR_ENGINE_DIR}/src/editor/editorprotocol.cpp")
-    target_link_libraries(platformator_editor_playsession_test PRIVATE
-        platformator_editor_core platformator_imgui Platformator::platformator nlohmann_json::nlohmann_json)
-endif()
+target_link_libraries(platformator_editor_playsession_test PRIVATE
+    platformator_editor_core platformator_imgui Platformator::platformator nlohmann_json::nlohmann_json)
 add_test(NAME platformator_editor_playsession_test COMMAND platformator_editor_playsession_test)
 set_tests_properties(platformator_editor_playsession_test PROPERTIES
     LABELS "platformator;editor;editor-headless"
@@ -169,7 +161,7 @@ if(WIN32)
     set_tests_properties(platformator_editor_playsession_test PROPERTIES
         FIXTURES_REQUIRED platformator_windows_runtime)
 endif()
-if(NOT WIN32 AND PLATFORMATOR_ENABLE_EDITOR_SESSION)
+if(NOT WIN32)
     add_executable(platformator_editor_session_process_fixture session_process_fixture.cpp)
     target_compile_features(platformator_editor_session_process_fixture PRIVATE cxx_std_20)
     target_include_directories(platformator_editor_session_process_fixture PRIVATE

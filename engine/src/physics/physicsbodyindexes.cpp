@@ -2,6 +2,16 @@
 
 #include "benchmark/workprobe.h"
 #include "core/membership.h"
+#include "core/vectorcapacity.h"
+
+void PhysicsManager::reserveAttachmentWork(Rigidbody *old, Collider *collider)
+{
+    using platformator_detail::reserveForAppend;
+    if (old && old->getIsRegisteredInPhysicsManager() && old->participationQueueIndex == SIZE_MAX)
+        reserveForAppend(pendingBodyChanges, 1);
+    if (collider && collider->getIsRegisteredInPhysicsManager() && collider->gridQueueIndex == SIZE_MAX)
+        reserveForAppend(grid.pendingColliderOperations, 1);
+}
 
 void PhysicsManager::queueBodyParticipationChange(Rigidbody *body)
 {

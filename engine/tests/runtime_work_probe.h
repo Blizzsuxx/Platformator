@@ -75,6 +75,10 @@ struct WorkCounters
     size_t spriteOrderOwnedEntryCapacity = 0;
     size_t spriteOrderOwnedBytes = 0;
     size_t raycastCandidateVisits = 0;
+    size_t solverColoredWideDispatches = 0;
+    size_t solverColoredEligibilityContactVisits = 0;
+    size_t solverDeltaSlotsInitialized = 0;
+    size_t gridSizingSampleVisits = 0;
 };
 inline WorkCounters work;
 

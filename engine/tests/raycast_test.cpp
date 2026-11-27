@@ -587,6 +587,21 @@ void testGridAabbChunksMultiCellAndLongEmptyRay()
     require(singleWide.has_value(), "Ray through multi-chunk cell must hit an aligned box cleanly");
 }
 
+void testDeduplicationAfterMultiCellCacheFills()
+{
+    platformator::Runtime runtime(physicsOnly());
+    constexpr int count = 70;
+    for (int index = 0; index < count; ++index)
+    {
+        runtime.createGameObject()->setPosition({5000.f * index, 0.f})->addComponent<BoxCollider>(2000.f, 4.f);
+    }
+    runtime.simulateFrame(dt);
+    const auto hits = runtime.raycastAll({-1500.f, 0.f}, {1.f, 0.f}, 5000.f * count);
+    require(hits.size() == count, "Multi-cell colliders beyond the 64-entry cache must still appear once");
+    for (int index = 0; index < count; ++index)
+        require(nearFloat(hits[index].distance, 500.f + 5000.f * index), "Hits must be in distance order");
+}
+
 void testPublishedGeometryPublicationOrdering()
 {
     platformator::Runtime runtime(physicsOnly());
@@ -891,6 +906,7 @@ int main()
         testBoundedSpatialTraversalAndSameFrameMovement();
         testConcurrentRaycastsAndZeroPositionWrites();
         testGridAabbChunksMultiCellAndLongEmptyRay();
+        testDeduplicationAfterMultiCellCacheFills();
         testPublishedGeometryPublicationOrdering();
         testEqualFloatDistanceRoundingTieOrderIndependence();
         testFixedUpdateBehaviorRaycasts();

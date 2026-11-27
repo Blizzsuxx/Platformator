@@ -14,6 +14,7 @@
 #include <memory>
 #include <oneapi/tbb/enumerable_thread_specific.h>
 #include <optional>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -43,12 +44,13 @@ public:
     PhysicsManager();
     ~PhysicsManager();
 
-    void applyPhysics(double timeDelta);
-    void applyMovement(double timeDelta);
+#if PLATFORMATOR_ENABLE_BENCHMARKS
+    void integrateMovementForBenchmark(double timeDelta);
+#endif
     void stepDynamics(double timeDelta);
 
     void checkForCollisions();
-    void resolveCollisions(double timeDelta);
+    void solveDynamics(double timeDelta);
     const Grid &getGrid() const;
     float getGridCellSize() const noexcept
     {
@@ -153,6 +155,7 @@ private:
     void queueSupportDelta(Rigidbody *body, int delta);
     void flushSupportDeltas();
     void queueBodyParticipationChange(Rigidbody *body);
+    void reserveAttachmentWork(Rigidbody *old, Collider *collider);
     void cancelBodyParticipationChange(Rigidbody *body);
     void reconcileBodyParticipation(Rigidbody *body);
     void reconcileChangedBodies();
@@ -174,8 +177,6 @@ private:
         float slop = 0.01f;
         float restitutionThreshold = 1.0f;
         size_t subSteps = 4;
-        bool integrateForces = true;
-        bool commitPositions = true;
     };
 
     struct SolverBodyForce
@@ -191,6 +192,7 @@ private:
         float dx = 0.0f;
         float dy = 0.0f;
         float dAngle = 0.0f;
+        uint32_t step = 0;
     };
 
     struct alignas(16) SolverBodyState
@@ -206,6 +208,27 @@ private:
     };
     static_assert(sizeof(SolverBodyState) == 32 && alignof(SolverBodyState) >= 16);
     static_assert(offsetof(SolverBodyState, dpX) == 16);
+
+    static void integrateSolverVelocities(SolverBodyState *states, const SolverBodyForce *forces,
+                                          size_t begin, size_t end, float h) noexcept;
+    static void integrateSolverPositions(SolverBodyState *states, size_t begin, size_t end, float h) noexcept;
+    static void runSoftSteps(const SoftStepParams &params, bool hasRestitution, auto integrateVelocities,
+                             auto warmStart, auto solve, auto integratePositions, auto restitution)
+    {
+        for (size_t substep = 0; substep < params.subSteps; ++substep)
+        {
+            if (params.h > 0.0f)
+                integrateVelocities();
+            if (substep == 0)
+                warmStart();
+            solve(std::true_type{});
+            if (params.h > 0.0f)
+                integratePositions();
+            solve(std::false_type{});
+        }
+        if (hasRestitution)
+            restitution();
+    }
 
     struct WritableSolverBody
     {
@@ -315,10 +338,10 @@ private:
     static void insertContactIntoColorGraph(IslandColorGraph &graph, ColliderPair *pair);
     static void removeContactFromColorGraph(IslandColorGraph &graph, ColliderPair *pair);
     static void ensureIslandColorGraph(PersistentIsland &island);
-    SoftStepParams makeSoftStepParams(double timeDelta, bool integrateForces, bool commitPositions) const noexcept;
+    SoftStepParams makeSoftStepParams(double timeDelta) const noexcept;
     SolverBodyForce makeBodyForce(const Rigidbody *rb) const noexcept;
     void commitWritableBodies(const std::vector<WritableSolverBody> &writable,
-                              const std::vector<SolverBodyState> &states, bool commitPositions) noexcept;
+                              const std::vector<SolverBodyState> &states) noexcept;
     bool solveColoredIsland(PersistentIsland &island, const SoftStepParams &params, bool allowParallel);
 
     void prepareSolverConstraint(const SolverPreStepJob &job, const SoftStepParams &params,
@@ -370,7 +393,7 @@ private:
     std::vector<SolverBodyState> solverBodyStates;
     std::vector<SolverBodyForce> solverBodyForces;
     std::vector<SolverBodyDelta> solverBodyDeltas;
-    std::vector<uint8_t> solverBodyIntegrated;
+    uint32_t solverStep = 0;
     std::vector<WritableSolverBody> solverTouchedWritableBodies;
     std::array<std::vector<platformator_solver_simd::WideConstraint8>, IslandColorGraph::MAX_PARALLEL_COLORS>
         colorWideBlocks;

@@ -3,13 +3,11 @@
 #include "behaviorcatalog.h"
 #include "process_internal.h"
 #include "project.h"
-#if PLATFORMATOR_ENABLE_EDITOR_SESSION
 #include "playsession.h"
 #if defined(_WIN32)
 #include "platform/sessionchannel_windows.h"
 #else
 #include "platform/sessionchannel_posix.h"
-#endif
 #endif
 
 #include <algorithm>
@@ -168,11 +166,9 @@ struct GamePipeline::Impl
     bool active = false;
     bool stopRequested = false;
     bool identityInvalidated = false;
-#if PLATFORMATOR_ENABLE_EDITOR_SESSION
     PlaySession playSession;
     std::string mirroredSessionStdout;
     std::string mirroredSessionStderr;
-#endif
 
     void enter(PipelineStage stage)
     {
@@ -190,7 +186,6 @@ struct GamePipeline::Impl
     {
         if (!active)
             return;
-#if PLATFORMATOR_ENABLE_EDITOR_SESSION
         if (request.embeddedGameView && playSession.state() != PlaySessionState::Idle &&
             !playSession.process_running())
         {
@@ -199,7 +194,6 @@ struct GamePipeline::Impl
             if (playSession.child_reaped())
                 playSession.finish_stop_after_reap();
         }
-#endif
         if (!preserveCatalog && outcome != PipelineOutcome::Succeeded && catalog != nullptr &&
             (status.stage == PipelineStage::Configuring || status.stage == PipelineStage::Building ||
              identityInvalidated))
@@ -274,7 +268,6 @@ struct GamePipeline::Impl
 
     void start_build()
     {
-#if PLATFORMATOR_ENABLE_EDITOR_SESSION
         if (request.embeddedGameView && playSession.state() == PlaySessionState::Configuring &&
             !playSession.begin_building(request.identity.target))
         {
@@ -282,7 +275,6 @@ struct GamePipeline::Impl
             fail(message.empty() ? "play session could not begin build" : message);
             return;
         }
-#endif
         enter(PipelineStage::Building);
         start_process(request.buildArgv, ProcessOutputMode::Merged);
     }
@@ -313,13 +305,11 @@ struct GamePipeline::Impl
         request.identity.binaryIdentity = std::to_string(binarySize) + ":" +
             std::to_string(binaryModified.time_since_epoch().count());
         currentIdentity = request.identity;
-#if PLATFORMATOR_ENABLE_EDITOR_SESSION
         if (request.embeddedGameView && !playSession.finalize_pipeline_identity(request.identity))
         {
             fail("play session could not validate the built target: " + playSession.last_error());
             return;
         }
-#endif
         start_launch();
     }
 
@@ -363,7 +353,6 @@ struct GamePipeline::Impl
         argv.push_back(path_to_utf8(request.savedScenePath));
         argv.emplace_back("--asset-root");
         argv.push_back(path_to_utf8(request.assetRoot));
-#if PLATFORMATOR_ENABLE_EDITOR_SESSION
         if (request.embeddedGameView)
         {
             if (!request.sceneDocumentIdentity || request.sceneSavedFileIdentity.empty())
@@ -417,7 +406,6 @@ struct GamePipeline::Impl
             status.message = "embedded game is starting";
             return;
         }
-#endif
         if (start_process(std::move(argv), ProcessOutputMode::Merged) && active)
         {
             enter(PipelineStage::Running);
@@ -488,10 +476,8 @@ GamePipeline::~GamePipeline()
 {
     if (impl_ && impl_->active)
     {
-#if PLATFORMATOR_ENABLE_EDITOR_SESSION
         if (impl_->request.embeddedGameView && impl_->playSession.state() != PlaySessionState::Idle)
             impl_->playSession.request_stop();
-#endif
         impl_->process.stop();
     }
 }
@@ -528,7 +514,6 @@ bool GamePipeline::start(PipelineRequest request, BehaviorCatalog &catalog, std:
                                      "automatic Run requires a saved scene", {}};
         return false;
     }
-#if PLATFORMATOR_ENABLE_EDITOR_SESSION
     if (request.embeddedGameView && (request.buildOnly || !request.sceneDocumentIdentity ||
                                      request.sceneSavedFileIdentity.empty()))
     {
@@ -536,14 +521,6 @@ bool GamePipeline::start(PipelineRequest request, BehaviorCatalog &catalog, std:
                                      "embedded Game view requires a saved scene launch identity", {}};
         return false;
     }
-#else
-    if (request.embeddedGameView)
-    {
-        impl.status = PipelineStatus{PipelineStage::Idle, PipelineOutcome::Failed, generation,
-                                     "this editor build does not include the opt-in editor-session feature", {}};
-        return false;
-    }
-#endif
 
     if (request.identity.canonicalProjectPath.empty())
         request.identity.canonicalProjectPath = path_to_utf8(request.projectRoot);
@@ -560,7 +537,6 @@ bool GamePipeline::start(PipelineRequest request, BehaviorCatalog &catalog, std:
     impl.active = false;
     impl.stopRequested = false;
     impl.identityInvalidated = false;
-#if PLATFORMATOR_ENABLE_EDITOR_SESSION
     if (impl.request.embeddedGameView)
     {
         const auto &identity = *impl.request.sceneDocumentIdentity;
@@ -578,7 +554,6 @@ bool GamePipeline::start(PipelineRequest request, BehaviorCatalog &catalog, std:
         impl.mirroredSessionStdout.clear();
         impl.mirroredSessionStderr.clear();
     }
-#endif
     impl.active = true;
     if (impl.request.configureArgv.empty())
     {
@@ -594,7 +569,6 @@ void GamePipeline::poll()
     auto &impl = *impl_;
     if (!impl.active)
         return;
-#if PLATFORMATOR_ENABLE_EDITOR_SESSION
     if (impl.request.embeddedGameView &&
         (impl.status.stage == PipelineStage::Launching || impl.status.stage == PipelineStage::Running))
     {
@@ -633,7 +607,6 @@ void GamePipeline::poll()
         }
         return;
     }
-#endif
     if (impl.identityInvalidated && !impl.process.running())
     {
         impl.fail("project, source, target, or executable identity changed during the operation; run again to verify it");
@@ -648,14 +621,12 @@ void GamePipeline::stop()
     if (!impl.active)
         return;
     impl.stopRequested = true;
-#if PLATFORMATOR_ENABLE_EDITOR_SESSION
     if (impl.request.embeddedGameView &&
         (impl.status.stage == PipelineStage::Launching || impl.status.stage == PipelineStage::Running))
     {
         impl.playSession.request_stop();
         return;
     }
-#endif
     if (impl.process.running())
         impl.process.stop();
     else
@@ -669,14 +640,12 @@ void GamePipeline::update_identity(PipelineIdentity identity)
     if (impl.active && impl.currentIdentity != impl.request.identity)
     {
         impl.identityInvalidated = true;
-#if PLATFORMATOR_ENABLE_EDITOR_SESSION
         if (impl.request.embeddedGameView &&
             (impl.status.stage == PipelineStage::Launching || impl.status.stage == PipelineStage::Running))
         {
             impl.playSession.request_stop();
             return;
         }
-#endif
         if (impl.process.running())
             impl.process.stop();
         else
@@ -752,19 +721,11 @@ int ProcessService::process_id() const noexcept
 
 PlaySession *GamePipeline::play_session() noexcept
 {
-#if PLATFORMATOR_ENABLE_EDITOR_SESSION
     return impl_ != nullptr && impl_->request.embeddedGameView ? &impl_->playSession : nullptr;
-#else
-    return nullptr;
-#endif
 }
 
 const PlaySession *GamePipeline::play_session() const noexcept
 {
-#if PLATFORMATOR_ENABLE_EDITOR_SESSION
     return impl_ != nullptr && impl_->request.embeddedGameView ? &impl_->playSession : nullptr;
-#else
-    return nullptr;
-#endif
 }
 } // namespace platformator_editor

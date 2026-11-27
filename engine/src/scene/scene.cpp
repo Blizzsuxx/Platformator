@@ -24,7 +24,11 @@ Scene::~Scene() = default;
 
 std::vector<GameObject *> Scene::loadScene()
 {
-    platformator::Runtime::current().loadScene(*this);
+    auto &manager = platformator_detail::RuntimeAccess::gameManager();
+    manager.assertCanMutate();
+    if (!manager.isIdle())
+        throw std::logic_error("Scene::loadScene requires an idle runtime. Use Runtime::requestLoadScene in callbacks.");
+    manager.loadScene(*this);
     std::vector<GameObject *> roots;
     for (auto *object : platformator::Runtime::current().getAllGameObjects())
         if (!object->getParent())

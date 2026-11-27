@@ -38,8 +38,7 @@ inline Eigen::Vector2f relativeContactVelocity(const Eigen::Vector2f &vA, float 
 // Soft Step Parameters, Entry Points & Body Integration Helpers
 // ============================================================================
 
-PhysicsManager::SoftStepParams PhysicsManager::makeSoftStepParams(double timeDelta, bool integrateForces,
-                                                                  bool commitPositions) const noexcept
+PhysicsManager::SoftStepParams PhysicsManager::makeSoftStepParams(double timeDelta) const noexcept
 {
     SoftStepParams params;
     params.subSteps = COLLISION_SOLVER_SUBSTEPS;
@@ -67,8 +66,6 @@ PhysicsManager::SoftStepParams PhysicsManager::makeSoftStepParams(double timeDel
     params.negMaxPushSpeed = -std::max(30.0f, gravityVector.norm() * 0.35f);
     params.slop = COLLISION_ALLOWED_PENETRATION;
     params.restitutionThreshold = RESTITUTION_VELOCITY_THRESHOLD;
-    params.integrateForces = integrateForces;
-    params.commitPositions = commitPositions;
     return params;
 }
 
@@ -85,19 +82,42 @@ PhysicsManager::SolverBodyForce PhysicsManager::makeBodyForce(const Rigidbody *r
 }
 
 void PhysicsManager::commitWritableBodies(const std::vector<WritableSolverBody> &writable,
-                                          const std::vector<SolverBodyState> &states,
-                                          bool commitPositions) noexcept
+                                          const std::vector<SolverBodyState> &states) noexcept
 {
     for (const WritableSolverBody &entry : writable)
     {
         const SolverBodyState &state = states[entry.localIndex];
         entry.body->velocity = Eigen::Vector2f(state.vx, state.vy);
         entry.body->angularVelocity = state.w;
-        if (commitPositions && entry.regIndex != SIZE_MAX)
+        const size_t awakeIndex = entry.body->awakeDynamicIndex;
+        if (awakeIndex != SIZE_MAX)
         {
-            solverBodyDeltas[entry.regIndex] = SolverBodyDelta{state.dpX, state.dpY, state.dAngle};
-            solverBodyIntegrated[entry.regIndex] = 1;
+            solverBodyDeltas[awakeIndex] = SolverBodyDelta{state.dpX, state.dpY, state.dAngle, solverStep};
         }
+    }
+}
+
+void PhysicsManager::integrateSolverVelocities(SolverBodyState *states, const SolverBodyForce *forces,
+                                               size_t begin, size_t end, float h) noexcept
+{
+    for (size_t i = begin; i < end; ++i)
+    {
+        if (forces[i].isDynamic)
+        {
+            states[i].vx += forces[i].accelX * h;
+            states[i].vy += forces[i].accelY * h;
+            states[i].w += forces[i].angAccel * h;
+        }
+    }
+}
+
+void PhysicsManager::integrateSolverPositions(SolverBodyState *states, size_t begin, size_t end, float h) noexcept
+{
+    for (size_t i = begin; i < end; ++i)
+    {
+        states[i].dpX += states[i].vx * h;
+        states[i].dpY += states[i].vy * h;
+        states[i].dAngle += states[i].w * h;
     }
 }
 
@@ -117,29 +137,8 @@ void PhysicsManager::resolveKinematicPairs()
 
 void PhysicsManager::stepDynamics(double timeDelta)
 {
-    {
-        PLATFORMATOR_BENCH_SCOPE(ResolveCollisions);
-
-        resolveKinematicPairs();
-        splitDirtyIslands();
-        wakePersistentIslandEndpoints();
-        reconcileChangedBodies();
-
-        PLATFORMATOR_WORK_ADD(forceBodies, awakeDynamicBodies.size());
-
-        const size_t bodyCount = registeredBodies.size();
-        if (solverBodyDeltas.size() < bodyCount)
-        {
-            solverBodyDeltas.resize(bodyCount);
-        }
-        solverBodyIntegrated.assign(bodyCount, 0);
-
-        const SoftStepParams params = makeSoftStepParams(timeDelta, /*integrateForces=*/true, /*commitPositions=*/true);
-        solveConstraintIterations(params);
-    }
-
+    solveDynamics(timeDelta);
     commitMovedBodies(timeDelta, /*useSolverDeltas=*/true);
-
     reconcileChangedBodies();
     updateSleepingStates(timeDelta);
 
@@ -148,24 +147,32 @@ void PhysicsManager::stepDynamics(double timeDelta)
 #endif
 }
 
-void PhysicsManager::resolveCollisions(double timeDelta)
+void PhysicsManager::solveDynamics(double timeDelta)
 {
     PLATFORMATOR_BENCH_SCOPE(ResolveCollisions);
-
     resolveKinematicPairs();
     splitDirtyIslands();
     wakePersistentIslandEndpoints();
     reconcileChangedBodies();
 
-    const SoftStepParams params = makeSoftStepParams(timeDelta, /*integrateForces=*/false, /*commitPositions=*/false);
-    solveConstraintIterations(params);
-
-    reconcileChangedBodies();
-    updateSleepingStates(timeDelta);
-
-#if PLATFORMATOR_ENABLE_BENCHMARKS
-    PLATFORMATOR_BENCH_SET_COUNTER(AwakeDynamicBodyCount, countAwakeDynamicBodies());
-#endif
+    PLATFORMATOR_WORK_ADD(forceBodies, awakeDynamicBodies.size());
+    // Only deltas written during this solve may be committed by the movement pass.
+    // Contact loss and reused registration slots both fall back to fresh integration.
+    if (++solverStep == 0)
+    {
+        for (auto &delta : solverBodyDeltas)
+            delta.step = 0;
+        ++solverStep;
+    }
+    if (!activeIslandIds.empty())
+    {
+        if (solverBodyDeltas.size() < awakeDynamicBodies.size())
+        {
+            PLATFORMATOR_WORK_ADD(solverDeltaSlotsInitialized, awakeDynamicBodies.size() - solverBodyDeltas.size());
+            solverBodyDeltas.resize(awakeDynamicBodies.size());
+        }
+        solveConstraintIterations(makeSoftStepParams(timeDelta));
+    }
 }
 
 // ============================================================================
@@ -261,58 +268,29 @@ void PhysicsManager::solvePersistentIsland(const PersistentIsland &island, const
     const size_t bodyCount = bodies.size();
     const float h = params.h;
 
-    for (size_t substep = 0; substep < params.subSteps; ++substep)
-    {
-        if (params.integrateForces && h > 0.0f)
-        {
-            for (size_t i = 1; i < bodyCount; ++i)
-            {
-                if (bodyForces[i].isDynamic)
-                {
-                    bodies[i].vx += bodyForces[i].accelX * h;
-                    bodies[i].vy += bodyForces[i].accelY * h;
-                    bodies[i].w += bodyForces[i].angAccel * h;
-                }
-            }
-        }
-        if (substep == 0)
-        {
+    runSoftSteps(
+        params, anyRestitution,
+        [&] { integrateSolverVelocities(bodies.data(), bodyForces.data(), 1, bodyCount, h); },
+        [&] {
             for (const SolverConstraint &constraint : local)
-            {
                 applyWarmStart(constraint, bodies[constraint.bodyIndexA], bodies[constraint.bodyIndexB]);
-            }
-        }
-        for (SolverConstraint &constraint : local)
-        {
-            solveConstraintSoft(constraint, bodies[constraint.bodyIndexA], bodies[constraint.bodyIndexB], params, true);
-        }
-        if (h > 0.0f)
-        {
-            for (size_t i = 1; i < bodyCount; ++i)
-            {
-                bodies[i].dpX += bodies[i].vx * h;
-                bodies[i].dpY += bodies[i].vy * h;
-                bodies[i].dAngle += bodies[i].w * h;
-            }
-        }
-        for (SolverConstraint &constraint : local)
-        {
-            solveConstraintSoft(constraint, bodies[constraint.bodyIndexA], bodies[constraint.bodyIndexB], params, false);
-        }
-        if (substep + 1 == params.subSteps && anyRestitution)
-        {
+        },
+        [&](auto useBias) {
             for (SolverConstraint &constraint : local)
-            {
+                solveConstraintSoft(constraint, bodies[constraint.bodyIndexA], bodies[constraint.bodyIndexB],
+                                    params, useBias);
+        },
+        [&] { integrateSolverPositions(bodies.data(), 1, bodyCount, h); },
+        [&] {
+            for (SolverConstraint &constraint : local)
                 applyRestitutionSoft(constraint, bodies[constraint.bodyIndexA], bodies[constraint.bodyIndexB], params);
-            }
-        }
-    }
+        });
 
     for (const SolverConstraint &constraint : local)
     {
         storeConstraintImpulses(constraint);
     }
-    commitWritableBodies(writable, bodies, params.commitPositions);
+    commitWritableBodies(writable, bodies);
 }
 
 // ============================================================================
@@ -441,63 +419,34 @@ bool PhysicsManager::solvePersistentIslandGroup8(const int32_t *islandIds, size_
         }
     }
 
+    wideSteps.resize(maxLaneCount);
     SolverBodyState *bodyData = bodies.data();
     const size_t bodyCount = bodies.size();
     const float h = params.h;
 
-    for (size_t substep = 0; substep < params.subSteps; ++substep)
-    {
-        if (params.integrateForces && h > 0.0f)
-        {
-            for (size_t i = 1; i < bodyCount; ++i)
-            {
-                if (bodyForces[i].isDynamic)
-                {
-                    bodyData[i].vx += bodyForces[i].accelX * h;
-                    bodyData[i].vy += bodyForces[i].accelY * h;
-                    bodyData[i].w += bodyForces[i].angAccel * h;
-                }
-            }
-        }
-        if (substep == 0)
-        {
-            for (size_t step = 0; step < maxLaneCount; ++step)
-            {
-                applyWarmStartWide8AVX2(wideSteps[step], bodyData);
-            }
-        }
-        for (size_t step = 0; step < maxLaneCount; ++step)
-        {
-            solveWide8SoftAVX2<true>(wideSteps[step], bodyData, params);
-        }
-        if (h > 0.0f)
-        {
-            for (size_t i = 1; i < bodyCount; ++i)
-            {
-                bodyData[i].dpX += bodyData[i].vx * h;
-                bodyData[i].dpY += bodyData[i].vy * h;
-                bodyData[i].dAngle += bodyData[i].w * h;
-            }
-        }
-        for (size_t step = 0; step < maxLaneCount; ++step)
-        {
-            solveWide8SoftAVX2<false>(wideSteps[step], bodyData, params);
-        }
-        if (substep + 1 == params.subSteps && anyRestitution)
-        {
-            for (size_t step = 0; step < maxLaneCount; ++step)
-            {
-                applyRestitutionWide8AVX2(wideSteps[step], bodyData, params);
-            }
-        }
-    }
+    runSoftSteps(
+        params, anyRestitution,
+        [&] { integrateSolverVelocities(bodyData, bodyForces.data(), 1, bodyCount, h); },
+        [&] {
+            for (auto &wide : wideSteps)
+                applyWarmStartWide8AVX2(wide, bodyData);
+        },
+        [&](auto useBias) {
+            for (auto &wide : wideSteps)
+                solveWide8SoftAVX2<decltype(useBias)::value>(wide, bodyData, params);
+        },
+        [&] { integrateSolverPositions(bodyData, 1, bodyCount, h); },
+        [&] {
+            for (auto &wide : wideSteps)
+                applyRestitutionWide8AVX2(wide, bodyData, params);
+        });
 
     for (size_t step = 0; step < maxLaneCount; ++step)
     {
         storeWideImpulses(wideSteps[step]);
     }
 
-    commitWritableBodies(writable, bodies, params.commitPositions);
+    commitWritableBodies(writable, bodies);
     return true;
 #else
     (void)islandIds;
@@ -751,7 +700,7 @@ void PhysicsManager::prepareSolverConstraint(const SolverPreStepJob &job, const 
         velB = rbB->getVelocity();
         angVelA = rbA->getAngularVelocity();
         angVelB = rbB->getAngularVelocity();
-        if (params.integrateForces && params.h > 0.0f)
+        if (params.h > 0.0f)
         {
             if (dynA)
             {

@@ -39,6 +39,11 @@ inline bool isColorModulated(SDL_Color color) noexcept
     return color.r != 255 || color.g != 255 || color.b != 255 || color.a != 255;
 }
 
+inline bool shouldPromoteSpriteAlphaBlend(SDL_Color color, SDL_BlendMode blendMode) noexcept
+{
+    return color.a < 255 && blendMode == SDL_BLENDMODE_NONE;
+}
+
 inline bool submitSpriteRender(SDL_Renderer *renderer, SDL_Texture *texture,
                                const SDL_FRect *source, const SDL_FRect &destination,
                                float angleDegrees, SDL_FlipMode flip,
@@ -58,7 +63,7 @@ inline bool submitSpriteRender(SDL_Renderer *renderer, SDL_Texture *texture,
         SDL_SetTextureColorMod(texture, color.r, color.g, color.b);
         SDL_SetTextureAlphaMod(texture, color.a);
         if (color.a < 255 && SDL_GetTextureBlendMode(texture, &previousBlend) &&
-            previousBlend == SDL_BLENDMODE_NONE)
+            shouldPromoteSpriteAlphaBlend(color, previousBlend))
         {
             SDL_SetTextureBlendMode(texture, SDL_BLENDMODE_BLEND);
             restoreBlend = true;
@@ -87,16 +92,6 @@ struct SpriteRenderBounds
 inline bool spriteBoundsOverlap(const SpriteRenderBounds &a, const SpriteRenderBounds &b) noexcept
 {
     return a.maxX >= b.minX && a.minX <= b.maxX && a.maxY >= b.minY && a.minY <= b.maxY;
-}
-
-inline std::size_t nextGeometricCapacity(std::size_t currentCapacity, std::size_t required) noexcept
-{
-    if (required <= currentCapacity)
-        return currentCapacity;
-    const std::size_t doubled = currentCapacity > std::numeric_limits<std::size_t>::max() / 2
-                                    ? std::numeric_limits<std::size_t>::max()
-                                    : currentCapacity * 2;
-    return std::max(required, std::max<std::size_t>(4, doubled));
 }
 
 struct SpriteRenderProjectionKey

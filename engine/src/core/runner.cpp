@@ -1,9 +1,7 @@
 #include "platformator/runner.h"
 
 #include "platformator/runtime.h"
-#if PLATFORMATOR_ENABLE_EDITOR_SESSION
 #include "editor/editorsession.h"
-#endif
 #include <exception>
 #include <iostream>
 #include <memory>
@@ -30,7 +28,6 @@ int runWithExceptionHandling(auto &&fn)
 int run(const RuntimeOptions &runtimeOptions)
 {
     return runWithExceptionHandling([&] {
-#if PLATFORMATOR_ENABLE_EDITOR_SESSION
         std::unique_ptr<EditorSessionService> editorSession;
         if (runtimeOptions.editorSession)
         {
@@ -38,12 +35,7 @@ int run(const RuntimeOptions &runtimeOptions)
             if (runtimeOptions.windowSettings.width != 640 || runtimeOptions.windowSettings.height != 360)
                 throw std::runtime_error("embedded editor-session rendering requires a 640x360 output.");
         }
-#else
-        if (runtimeOptions.editorSession)
-            throw std::runtime_error("this runner was built without editor-session support.");
-#endif
         Runtime runtime(runtimeOptions);
-#if PLATFORMATOR_ENABLE_EDITOR_SESSION
         if (editorSession)
         {
             runtime.run_with_owner_service(
@@ -56,8 +48,9 @@ int run(const RuntimeOptions &runtimeOptions)
             editorSession->finish(runtime.getRuntimeSerial());
         }
         else
-#endif
-        runtime.run();
+        {
+            runtime.run();
+        }
         return 0;
     });
 }

@@ -38,13 +38,10 @@ PhysicsManager::~PhysicsManager()
 {
 }
 
-void PhysicsManager::applyPhysics(double timeDelta)
+#if PLATFORMATOR_ENABLE_BENCHMARKS
+void PhysicsManager::integrateMovementForBenchmark(double timeDelta)
 {
     PLATFORMATOR_WORK_ADD(forceBodies, awakeDynamicBodies.size());
-    if (awakeDynamicBodies.empty())
-    {
-        return;
-    }
     const auto integrateBody = [&](Rigidbody *body) { body->integrateForces(timeDelta, gravityVector); };
     if (awakeDynamicBodies.size() < BODY_INTEGRATION_PARALLEL_THRESHOLD)
     {
@@ -52,15 +49,14 @@ void PhysicsManager::applyPhysics(double timeDelta)
         {
             integrateBody(body);
         }
-        return;
     }
-    tbb::parallel_for(size_t(0), awakeDynamicBodies.size(), [&](size_t i) { integrateBody(awakeDynamicBodies[i]); });
-}
-
-void PhysicsManager::applyMovement(double timeDelta)
-{
+    else
+    {
+        tbb::parallel_for(size_t(0), awakeDynamicBodies.size(), [&](size_t i) { integrateBody(awakeDynamicBodies[i]); });
+    }
     commitMovedBodies(timeDelta, false);
 }
+#endif
 
 void PhysicsManager::commitMovedBodies(double timeDelta, bool useSolverDeltas)
 {
@@ -126,10 +122,10 @@ void PhysicsManager::commitMovedBodies(double timeDelta, bool useSolverDeltas)
         uint8_t changes = 0;
         if (useSolverDeltas && isDynamic)
         {
-            const size_t regIdx = body->getPhysicsManagerIndex();
-            if (regIdx < solverBodyIntegrated.size() && solverBodyIntegrated[regIdx] != 0)
+            const size_t awakeIndex = body->awakeDynamicIndex;
+            if (awakeIndex < solverBodyDeltas.size() && solverBodyDeltas[awakeIndex].step == solverStep)
             {
-                const SolverBodyDelta &delta = solverBodyDeltas[regIdx];
+                const SolverBodyDelta &delta = solverBodyDeltas[awakeIndex];
                 changes = body->integrateDelta(delta.dx, delta.dy, delta.dAngle);
             }
             else
@@ -369,7 +365,7 @@ void PhysicsManager::clearAll()
     solverBodyStates.clear();
     solverBodyForces.clear();
     solverBodyDeltas.clear();
-    solverBodyIntegrated.clear();
+    solverStep = 0;
     solverTouchedWritableBodies.clear();
     for (auto &blocks : colorWideBlocks)
     {

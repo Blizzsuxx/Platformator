@@ -45,7 +45,6 @@ class SDLWindow
     {
         std::uint64_t calls = 0;
         std::uint64_t totalNs = 0;
-        std::uint64_t lastNs = 0;
     };
 #endif
 

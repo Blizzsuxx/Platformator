@@ -207,6 +207,8 @@ class GameManager
 
     // Component subsystem registration
     void notifyComponentAdded(Component *component);
+    void registerComponentIdentity(Component *component);
+    void prepareComponentAttachment(GameObject &object, Component &component, Component *old);
     void queueReconciliation(Component *component);
     void retireComponent(Component *component);
     void syncScriptUpdateLists(ScriptComponent *script);

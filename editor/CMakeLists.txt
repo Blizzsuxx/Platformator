@@ -137,7 +137,6 @@ target_include_directories(platformator_editor_core PRIVATE
     "${PLATFORMATOR_IMGUI_DIR}/backends"
 )
 target_compile_definitions(platformator_editor_core PRIVATE
-    PLATFORMATOR_ENABLE_EDITOR_SESSION=$<BOOL:${PLATFORMATOR_ENABLE_EDITOR_SESSION}>
     PLATFORMATOR_EDITOR_RESOURCE_RELATIVE_PATH="../${CMAKE_INSTALL_DATADIR}/platformator/editor/default-layout.ini")
 if(PLATFORMATOR_EDITOR_WORK_COUNTERS)
     target_compile_definitions(platformator_editor_core PUBLIC PLATFORMATOR_EDITOR_WORK_COUNTERS=1)
@@ -148,11 +147,7 @@ target_link_libraries(platformator_editor_core PRIVATE
     nlohmann_json::nlohmann_json
     TBB::tbb
 )
-if(PLATFORMATOR_ENABLE_EDITOR_SESSION)
-    target_sources(platformator_editor_core PRIVATE
-        src/playsession.cpp
-        src/panels/game.cpp)
-endif()
+target_sources(platformator_editor_core PRIVATE src/playsession.cpp src/panels/game.cpp)
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     find_package(PkgConfig REQUIRED)
     pkg_check_modules(DBUS1 REQUIRED IMPORTED_TARGET dbus-1)

@@ -48,6 +48,7 @@ enum class FixtureTrajectoryProfile
     Offscreen,
     Crossing,
     CameraPan,
+    CameraStationary,
     Churn,
     Sparse,
     Clustered,
@@ -130,6 +131,7 @@ class DeterministicFixtureTrajectory
             break;
         }
         case FixtureTrajectoryProfile::CameraPan:
+        case FixtureTrajectoryProfile::CameraStationary:
             if (spreadLayout_)
             {
                 const size_t columns = static_cast<size_t>(std::ceil(std::sqrt(static_cast<double>(std::max<size_t>(1, population_)))));
@@ -235,7 +237,9 @@ class DeterministicFixtureTrajectory
             return {static_cast<float>(10000000.0 + 700.0 * std::sin(phase)),
                     static_cast<float>(10000000.0 + 420.0 * std::cos(phase))};
         }
-        if (profile_ != FixtureTrajectoryProfile::CameraPan)
+        if (profile_ == FixtureTrajectoryProfile::CameraStationary)
+            step = 0;
+        else if (profile_ != FixtureTrajectoryProfile::CameraPan)
             return {0.0f, 0.0f};
         const double phase = 6.283185307179586476925286766559 * static_cast<double>(step % 240) / 240.0;
         return {static_cast<float>(840.0 + 720.0 * std::sin(phase)),

@@ -1,4 +1,5 @@
 #include "physics/physicsmanager.h"
+#include "benchmark/workprobe.h"
 
 #include <oneapi/tbb/blocked_range.h>
 #include <oneapi/tbb/parallel_for.h>
@@ -18,7 +19,6 @@ bool PhysicsManager::solveColoredIsland(PersistentIsland &island, const SoftStep
 {
     ensureIslandColorGraph(island);
     const IslandColorGraph &graph = *island.colorGraph;
-    const bool useAVX2 = platformator_solver_simd::cpuSupportsAVX2();
 
     solverBodyStates.clear();
     solverBodyForces.clear();
@@ -63,7 +63,15 @@ bool PhysicsManager::solveColoredIsland(PersistentIsland &island, const SoftStep
     tbb::task_group_context context(tbb::task_group_context::isolated);
 
 #if PLATFORMATOR_HAS_RUNTIME_AVX2
-    if (useAVX2 && !hasMovingKinematic)
+    const auto movingKinematic = [](const Collider *collider) {
+        const auto *body = collider->getAttachedRigidbody();
+        return body && body->isMovingKinematic();
+    };
+    if (platformator_solver_simd::cpuSupportsAVX2() &&
+        (!hasMovingKinematic || std::ranges::none_of(island.contacts, [&](const ColliderPair *pair) {
+             PLATFORMATOR_WORK_ADD(solverColoredEligibilityContactVisits, 1);
+             return movingKinematic(pair->getObjectA()) || movingKinematic(pair->getObjectB());
+         })))
     {
         using namespace platformator_solver_simd;
         auto *wideBuckets = colorWideBlocks.data();
@@ -296,65 +304,35 @@ bool PhysicsManager::solveColoredIsland(PersistentIsland &island, const SoftStep
             }
         };
 
-        for (size_t substep = 0; substep < params.subSteps; ++substep)
-        {
-            if (params.integrateForces && h > 0.0f)
-            {
+        runSoftSteps(
+            params, hasRestitution,
+            [&] {
                 runBodyRange([=](size_t begin, size_t end) {
-                    for (size_t i = begin; i < end; ++i)
-                    {
-                        if (forceData[i].isDynamic)
-                        {
-                            bodyData[i].vx += forceData[i].accelX * h;
-                            bodyData[i].vy += forceData[i].accelY * h;
-                            bodyData[i].w += forceData[i].angAccel * h;
-                        }
-                    }
+                    integrateSolverVelocities(bodyData, forceData, begin, end, h);
                 });
-            }
-
-            if (substep == 0)
-            {
+            },
+            [&] {
                 runWideColorPass(
                     [=](WideConstraint8 &wide) { applyWarmStartWide8AVX2(wide, bodyData); },
-                    [=](SolverConstraint &sc) {
-                        applyWarmStart(sc, bodyData[sc.bodyIndexA], bodyData[sc.bodyIndexB]);
+                    [=](SolverConstraint &sc) { applyWarmStart(sc, bodyData[sc.bodyIndexA], bodyData[sc.bodyIndexB]); });
+            },
+            [&](auto useBias) {
+                runWideColorPass(
+                    [&](WideConstraint8 &wide) { solveWide8SoftAVX2<decltype(useBias)::value>(wide, bodyData, params); },
+                    [&](SolverConstraint &sc) {
+                        solveConstraintSoft(sc, bodyData[sc.bodyIndexA], bodyData[sc.bodyIndexB], params, useBias);
                     });
-            }
-
-            runWideColorPass(
-                [&](WideConstraint8 &wide) { solveWide8SoftAVX2<true>(wide, bodyData, params); },
-                [&](SolverConstraint &sc) {
-                    solveConstraintSoft(sc, bodyData[sc.bodyIndexA], bodyData[sc.bodyIndexB], params, true);
-                });
-
-            if (h > 0.0f)
-            {
-                runBodyRange([=](size_t begin, size_t end) {
-                    for (size_t i = begin; i < end; ++i)
-                    {
-                        bodyData[i].dpX += bodyData[i].vx * h;
-                        bodyData[i].dpY += bodyData[i].vy * h;
-                        bodyData[i].dAngle += bodyData[i].w * h;
-                    }
-                });
-            }
-
-            runWideColorPass(
-                [&](WideConstraint8 &wide) { solveWide8SoftAVX2<false>(wide, bodyData, params); },
-                [&](SolverConstraint &sc) {
-                    solveConstraintSoft(sc, bodyData[sc.bodyIndexA], bodyData[sc.bodyIndexB], params, false);
-                });
-
-            if (substep + 1 == params.subSteps && hasRestitution)
-            {
+            },
+            [&] {
+                runBodyRange([=](size_t begin, size_t end) { integrateSolverPositions(bodyData, begin, end, h); });
+            },
+            [&] {
                 runWideColorPass(
                     [&](WideConstraint8 &wide) { applyRestitutionWide8AVX2(wide, bodyData, params); },
                     [&](SolverConstraint &sc) {
                         applyRestitutionSoft(sc, bodyData[sc.bodyIndexA], bodyData[sc.bodyIndexB], params);
                     });
-            }
-        }
+            });
 
         const auto storeColor = [wideBuckets, tailBuckets](uint8_t c) {
             for (const WideConstraint8 &wide : wideBuckets[c])
@@ -382,7 +360,8 @@ bool PhysicsManager::solveColoredIsland(PersistentIsland &island, const SoftStep
         {
             storeConstraintImpulses(sc);
         }
-        commitWritableBodies(solverTouchedWritableBodies, solverBodyStates, params.commitPositions);
+        PLATFORMATOR_WORK_ADD(solverColoredWideDispatches, 1);
+        commitWritableBodies(solverTouchedWritableBodies, solverBodyStates);
         return true;
     }
 #endif
@@ -511,66 +490,35 @@ bool PhysicsManager::solveColoredIsland(PersistentIsland &island, const SoftStep
         }
     };
 
-    for (size_t substep = 0; substep < params.subSteps; ++substep)
-    {
-        if (params.integrateForces && h > 0.0f)
-        {
-            for (size_t i = 1; i < bodyCount; ++i)
-            {
-                if (solverBodyForces[i].isDynamic)
-                {
-                    solverBodyStates[i].vx += solverBodyForces[i].accelX * h;
-                    solverBodyStates[i].vy += solverBodyForces[i].accelY * h;
-                    solverBodyStates[i].w += solverBodyForces[i].angAccel * h;
-                }
-            }
-        }
-        if (substep == 0)
-        {
+    auto *bodyData = solverBodyStates.data();
+    runSoftSteps(
+        params, anyRestitution,
+        [&] { integrateSolverVelocities(bodyData, solverBodyForces.data(), 1, bodyCount, h); },
+        [&] {
+            runScalarColorPass(
+                [&](SolverConstraint &sc) { applyWarmStart(sc, bodyData[sc.bodyIndexA], bodyData[sc.bodyIndexB]); },
+                true);
+        },
+        [&](auto useBias) {
             runScalarColorPass(
                 [&](SolverConstraint &sc) {
-                    applyWarmStart(sc, solverBodyStates[sc.bodyIndexA], solverBodyStates[sc.bodyIndexB]);
+                    solveConstraintSoft(sc, bodyData[sc.bodyIndexA], bodyData[sc.bodyIndexB], params, useBias);
                 },
                 true);
-        }
-
-        runScalarColorPass(
-            [&](SolverConstraint &sc) {
-                solveConstraintSoft(sc, solverBodyStates[sc.bodyIndexA], solverBodyStates[sc.bodyIndexB], params, true);
-            },
-            true);
-
-        if (h > 0.0f)
-        {
-            for (size_t i = 1; i < bodyCount; ++i)
-            {
-                solverBodyStates[i].dpX += solverBodyStates[i].vx * h;
-                solverBodyStates[i].dpY += solverBodyStates[i].vy * h;
-                solverBodyStates[i].dAngle += solverBodyStates[i].w * h;
-            }
-        }
-
-        runScalarColorPass(
-            [&](SolverConstraint &sc) {
-                solveConstraintSoft(sc, solverBodyStates[sc.bodyIndexA], solverBodyStates[sc.bodyIndexB], params,
-                                    false);
-            },
-            true);
-
-        if (substep + 1 == params.subSteps && anyRestitution)
-        {
+        },
+        [&] { integrateSolverPositions(bodyData, 1, bodyCount, h); },
+        [&] {
             runScalarColorPass(
                 [&](SolverConstraint &sc) {
-                    applyRestitutionSoft(sc, solverBodyStates[sc.bodyIndexA], solverBodyStates[sc.bodyIndexB], params);
+                    applyRestitutionSoft(sc, bodyData[sc.bodyIndexA], bodyData[sc.bodyIndexB], params);
                 },
                 false);
-        }
-    }
+        });
 
     for (size_t i = 0; i < constraintCount; ++i)
     {
         storeConstraintImpulses(solverConstraints[i]);
     }
-    commitWritableBodies(solverTouchedWritableBodies, solverBodyStates, params.commitPositions);
+    commitWritableBodies(solverTouchedWritableBodies, solverBodyStates);
     return true;
 }

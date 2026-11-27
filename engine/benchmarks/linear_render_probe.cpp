@@ -210,6 +210,7 @@ Options parseOptions(int argc, char **argv)
             else if (options.profileName == "clustered") options.profile = FixtureTrajectoryProfile::Clustered;
             else if (options.profileName == "crossing") options.profile = FixtureTrajectoryProfile::Crossing;
             else if (options.profileName == "camera-pan") options.profile = FixtureTrajectoryProfile::CameraPan;
+            else if (options.profileName == "camera-stationary") options.profile = FixtureTrajectoryProfile::CameraStationary;
             else if (options.profileName == "churn") options.profile = FixtureTrajectoryProfile::Churn;
             else if (options.profileName == "rotated") options.profile = FixtureTrajectoryProfile::Rotated;
             else if (options.profileName == "visible-motion") options.profile = FixtureTrajectoryProfile::VisibleMotion;
@@ -548,7 +549,8 @@ void buildFixture(RenderCullingFixture &fixture, const Options &options)
     const bool wideCamera = rotated;
     if (wideCamera)
         fixture.camera()->setCamera({0.0f, 0.0f, 640.0f, 160.0f});
-    if (options.profile == FixtureTrajectoryProfile::LargeOffset)
+    if (options.profile == FixtureTrajectoryProfile::LargeOffset ||
+        options.profile == FixtureTrajectoryProfile::CameraStationary)
     {
         const auto [cameraX, cameraY] = trajectory.cameraPosition(0);
         fixture.camera()->setCamera({cameraX, cameraY, 320.0f, 240.0f});

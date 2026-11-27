@@ -12,10 +12,8 @@
 #endif
 #include "filedialogs.h"
 #include "panels/console.h"
-#if PLATFORMATOR_ENABLE_EDITOR_SESSION
 #include "panels/game.h"
 #include "playsession.h"
-#endif
 #include "panels/hierarchy.h"
 #include "panels/inspector.h"
 #include "panels/project.h"
@@ -1230,10 +1228,8 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
         bool behaviorScanPending = false;
         std::optional<std::chrono::steady_clock::time_point> behaviorScanDeadline;
         ConsolePanel consolePanel;
-#if PLATFORMATOR_ENABLE_EDITOR_SESSION
         GamePanel gamePanel;
         gamePanel.set_renderer(renderer);
-#endif
         GamePipeline gamePipeline;
         std::optional<TabId> gameSessionSourceTab;
         std::optional<std::filesystem::path> gameSessionSourcePath;
@@ -1296,10 +1292,8 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
             scenePreview.reset();
             imgui.reset();
             projectPanel.set_renderer(nullptr);
-#if PLATFORMATOR_ENABLE_EDITOR_SESSION
             gamePanel.release_renderer(renderer);
             gamePanel.set_renderer(nullptr);
-#endif
             runtime.reset();
             window = nullptr;
             renderer = nullptr;
@@ -1313,9 +1307,7 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                 if (window == nullptr || renderer == nullptr)
                     throw std::runtime_error("Runtime did not provide the editor window and renderer");
                 projectPanel.set_renderer(renderer);
-#if PLATFORMATOR_ENABLE_EDITOR_SESSION
                 gamePanel.set_renderer(renderer);
-#endif
                 scenePreview = std::make_unique<EditorPreview>(*runtime);
                 scenePreview->set_resource_index(&projectSession.resource_index());
                 scenePreview->set_wake_callback(make_wake("scenePreview_restart"));
@@ -1329,10 +1321,8 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                 scenePreview.reset();
                 imgui.reset();
                 projectPanel.set_renderer(nullptr);
-#if PLATFORMATOR_ENABLE_EDITOR_SESSION
                 gamePanel.release_renderer(renderer);
                 gamePanel.set_renderer(nullptr);
-#endif
                 runtime.reset();
                 window = nullptr;
                 renderer = nullptr;
@@ -1405,11 +1395,7 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                 panelId == "panel.inspector" ||
                 panelId == "panel.project" || panelId == "panel.console" ||
                 panelId == "panel.project_settings" || panelId == "panel.validation";
-#if PLATFORMATOR_ENABLE_EDITOR_SESSION
             return rendererIndependent || panelId == "panel.game";
-#else
-            return rendererIndependent;
-#endif
         };
         const auto panel_title = [](std::string_view panelId) -> std::string {
             if (panelId == "panel.hierarchy") return "Hierarchy";
@@ -1419,9 +1405,7 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
             if (panelId == "panel.console") return "Console";
             if (panelId == "panel.project_settings") return "Project Settings";
             if (panelId == "panel.validation") return "Validation";
-#if PLATFORMATOR_ENABLE_EDITOR_SESSION
             if (panelId == "panel.game") return "Game";
-#endif
             return "Editor Panel";
         };
         const auto restore_detached_hosts = [&] {
@@ -2192,10 +2176,8 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
             accessibilitySnapshots.retire(identity.layoutId, identity.generation);
             sceneTextures.release_renderer(host->second->renderer());
             projectPanel.release_renderer(host->second->renderer());
-#if PLATFORMATOR_ENABLE_EDITOR_SESSION
             gamePanel.release_renderer(host->second->renderer());
             gamePanel.set_renderer(renderer);
-#endif
             detachedHosts.erase(host);
             preferences.hostGeometry.erase(hostId);
             preferences.hostLayoutSettings.erase(hostId);
@@ -2356,13 +2338,6 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                 statusMessage = "Waiting for the bounded source identity scan to finish.";
                 return false;
             }
-#if !PLATFORMATOR_ENABLE_EDITOR_SESSION
-            if (!buildOnly && preferences.run.embeddedGameView)
-            {
-                statusMessage = "This editor build does not include the opt-in editor-session feature. Rebuild with PLATFORMATOR_ENABLE_EDITOR_SESSION=ON or choose an external game window.";
-                return false;
-            }
-#endif
             const auto enginePath = inspect_project_engine_path(activeProjectRoot);
             const auto configureEnginePath = enginePath.hasSourceDirectoryDirective &&
                     enginePath.sourceDirectoryEditable
@@ -2534,9 +2509,7 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
             gameSessionSourceTab = launchDocumentTab;
             gameSessionSourcePath = launchScenePath;
             gameSessionStaleMessage.clear();
-#if PLATFORMATOR_ENABLE_EDITOR_SESSION
             gamePanel.set_pipeline_status({});
-#endif
             activePipelineIdentity = std::move(identity);
             hasActivePipelineIdentity = true;
             if (!skipConfigure)
@@ -3239,7 +3212,6 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
             return result;
         };
         auto close_document_tab = [&](TabId id, UnsavedDecision decision) {
-#if PLATFORMATOR_ENABLE_EDITOR_SESSION
             auto *tab = documentManager.find(id);
             auto *playSession = gamePipeline.play_session();
             if (tab != nullptr && playSession != nullptr && playSession->launch_identity() &&
@@ -3258,7 +3230,6 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                         "choose whether to stop the embedded Game session or keep it running"};
                 }
             }
-#endif
             return perform_close_document_tab(id, decision);
         };
         auto show_animation_conflict = [&](const DocumentIdentity &identity) {
@@ -3992,13 +3963,11 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
             {
                 handledSourceRevision = currentSourceRevision;
                 sourceInputIdentity.clear();
-#if PLATFORMATOR_ENABLE_EDITOR_SESSION
                 if (auto *playSession = gamePipeline.play_session(); playSession != nullptr &&
                     playSession->state() != PlaySessionState::Idle)
                 {
                     gameSessionStaleMessage = "Source inputs changed. The embedded session is stopping because its build is stale. Restart to run the latest saved scene and code.";
                 }
-#endif
                 (void)configure_catalog_identity();
                 behaviorCatalog.invalidate("configured source inputs changed; refresh before Run");
                 if (gamePipeline.busy() && hasActivePipelineIdentity)
@@ -4047,7 +4016,6 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                     audioPreview.stop();
             }
             gamePipeline.poll();
-#if PLATFORMATOR_ENABLE_EDITOR_SESSION
             if (auto *playSession = gamePipeline.play_session())
                 while (auto event = playSession->take_event())
                     gamePanel.consume_event(*playSession, *event);
@@ -4057,7 +4025,6 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                 gamePanel.set_pipeline_status(gamePipeline.status().message);
             else
                 gamePanel.set_pipeline_status({});
-#endif
             if (waitingForGameSessionStopBeforeClose && pendingGameSessionCloseTab &&
                 !gamePipeline.busy())
             {
@@ -4137,13 +4104,11 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                 }
                 else if (sourceInputIdentity != scanResult.sourceInputIdentity)
                 {
-#if PLATFORMATOR_ENABLE_EDITOR_SESSION
                     if (auto *playSession = gamePipeline.play_session(); playSession != nullptr &&
                         playSession->state() != PlaySessionState::Idle)
                     {
                         gameSessionStaleMessage = "Source inputs changed. The embedded session is stopping because its build is stale. Restart to run the latest saved scene and code.";
                     }
-#endif
                     sourceInputIdentity = std::move(scanResult.sourceInputIdentity);
                     if (gamePipeline.busy() && hasActivePipelineIdentity)
                     {
@@ -4350,7 +4315,6 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                         wake_editor();
                     });
             }
-#if PLATFORMATOR_ENABLE_EDITOR_SESSION
             if (!changeBatch.events.empty() || changeBatch.rootDirty)
             {
                 const auto *playSession = gamePipeline.play_session();
@@ -4361,7 +4325,6 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                         playSession->capabilities().liveAssetReload);
                 }
             }
-#endif
             bool validationDependencyCoverageMissing = false;
             projectPanel.apply_changes(changeBatch, [&](const ProjectChangeEvent &event,
                                                         const std::filesystem::path &path) {
@@ -5520,9 +5483,7 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                         panel_item("Scene", "panel.scene");
                         panel_item("Inspector", "panel.inspector");
                         panel_item("Project and Assets", "panel.project");
-#if PLATFORMATOR_ENABLE_EDITOR_SESSION
                         panel_item("Game", "panel.game");
-#endif
                         bool showAnimationEditor = showAnimationEditorWindow;
                         if (ImGui::MenuItem("Animation Assets", nullptr, &showAnimationEditor))
                             showAnimationEditorWindow = showAnimationEditor;
@@ -5541,9 +5502,7 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                             {"Console", "panel.console"},
                             {"Project Settings", "panel.project_settings"},
                             {"Validation", "panel.validation"}};
-#if PLATFORMATOR_ENABLE_EDITOR_SESSION
                         hostPanels.emplace_back("Game", "panel.game");
-#endif
                         for (const auto &[label, panelId] : hostPanels)
                         {
                             const std::string menuLabel = std::string(label) + "###host-panel." + panelId;
@@ -6151,12 +6110,10 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                         ? closingTab->workspace().document().sourcePath->filename().string()
                         : "Untitled scene";
                     bool canKeepGameRunning = false;
-#if PLATFORMATOR_ENABLE_EDITOR_SESSION
                     const auto *playSession = gamePipeline.play_session();
                     canKeepGameRunning = playSession != nullptr &&
                         playSession->state() != PlaySessionState::Idle &&
                         playSession->state() != PlaySessionState::Stopping;
-#endif
                     ImGui::TextWrapped("The embedded Game was launched from %s.", sceneName.c_str());
                     ImGui::TextWrapped("Stop the game before closing, or keep it running from its saved launch snapshot?");
                     ImGui::BeginDisabled(!canKeepGameRunning);
@@ -6177,7 +6134,6 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                     ImGui::SameLine();
                     if (ImGui::Button("Stop Game"))
                     {
-#if PLATFORMATOR_ENABLE_EDITOR_SESSION
                         const auto *session = gamePipeline.play_session();
                         showGameSessionClosePrompt = false;
                         if (gamePipeline.busy() && session != nullptr &&
@@ -6196,15 +6152,6 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                             if (!result)
                                 statusMessage = result.message;
                         }
-#else
-                        const TabId id = *pendingGameSessionCloseTab;
-                        const auto decision = pendingGameSessionCloseDecision;
-                        pendingGameSessionCloseTab.reset();
-                        showGameSessionClosePrompt = false;
-                        const auto result = perform_close_document_tab(id, decision);
-                        if (!result)
-                            statusMessage = result.message;
-#endif
                         ImGui::CloseCurrentPopup();
                     }
                     ImGui::SameLine();
@@ -6702,11 +6649,9 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                         else if (command == "window/project" || command == "view/project")
                             preferences.panelVisibility["panel.project"] =
                                 !preferences.panelVisibility["panel.project"];
-#if PLATFORMATOR_ENABLE_EDITOR_SESSION
                         else if (command == "window/game" || command == "view/game")
                             preferences.panelVisibility["panel.game"] =
                                 !preferences.panelVisibility["panel.game"];
-#endif
                         else if (command == "window/animation" || command == "view/animation")
                             showAnimationEditorWindow = !showAnimationEditorWindow;
                         else if (command == "window/console" || command == "view/console")
@@ -6779,7 +6724,6 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                     {
                         return;
                     }
-#if PLATFORMATOR_ENABLE_EDITOR_SESSION
                     if (action.nodeId.starts_with("main/panel/game/") &&
                         action.action == "activate")
                     {
@@ -6787,7 +6731,6 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                             gamePanel.dispatch_semantic_action(*playSession, action);
                         return;
                     }
-#endif
                     if (action.nodeId.starts_with("main/panel/project_settings/") && !projectLocked)
                     {
                         if (action.action == "activate" &&
@@ -7236,11 +7179,9 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
                     preferences.panelVisibility[panelId] ? "shown" : "hidden",
                     preferences.panelVisibility[panelId], SemanticRole::CheckBox);
             }
-#if PLATFORMATOR_ENABLE_EDITOR_SESSION
             addMenuCommand("window/game", "window", "Game", true,
                            preferences.panelVisibility["panel.game"] ? "shown" : "hidden",
                            preferences.panelVisibility["panel.game"], SemanticRole::CheckBox);
-#endif
             addMenuCommand("window/animation", "window", "Animation Assets", true,
                            showAnimationEditorWindow ? "shown" : "hidden",
                            showAnimationEditorWindow, SemanticRole::CheckBox);
@@ -7803,7 +7744,6 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
             restore_panel_context(previousConsoleContext);
             preferences.panelVisibility["panel.console"] = showConsole;
 
-#if PLATFORMATOR_ENABLE_EDITOR_SESSION
             bool showGame = show_panel("panel.game");
             ImGuiContext *previousGameContext = activate_panel_context("panel.game");
             SDL_Renderer *gameFrameRenderer = renderer;
@@ -7850,7 +7790,6 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
             end_panel_window(gameFrame);
             restore_panel_context(previousGameContext);
             preferences.panelVisibility["panel.game"] = showGame;
-#endif
 
             bool showInspector = show_panel("panel.inspector");
             ImGuiContext *previousInspectorContext = activate_panel_context("panel.inspector");
@@ -8716,9 +8655,7 @@ int run_editor_impl(int argc, char *argv[], std::optional<EditorAppProbeOptions>
             accessibilitySnapshots.retire(identity.layoutId, identity.generation);
             sceneTextures.release_renderer(host->renderer());
             projectPanel.release_renderer(host->renderer());
-#if PLATFORMATOR_ENABLE_EDITOR_SESSION
             gamePanel.release_renderer(host->renderer());
-#endif
         }
 #if defined(__APPLE__)
         detachedMacAccessibility.clear();

@@ -144,6 +144,8 @@ class GameObject : public BaseObject
     GameObject *setName(const std::string &name);
     GameObject *setTag(const std::string &tag);
 
+    // The caller owns the component until attachment commits. Errors from subsequent idle
+    // reconciliation propagate with the component already owned by this object.
     void addComponent(Component *component);
     bool removeComponent(ComponentType componentType);
     void addChild(GameObject *child);
@@ -181,7 +183,6 @@ class GameObject : public BaseObject
     void updateCollider();
     void queueTransform(bool refreshImmediate = true);
     void refreshImmediatePositions();
-    void addComponentInternal(Component *component);
     void attachComponent(Component *component);
     void flushMutations();
     Component *getColliderByShape(bool box) const;

@@ -364,7 +364,7 @@ std::vector<std::array<uint32_t, 3>> solveAgainstSharedKinematicFloor(size_t wor
 
 struct SolverResult
 {
-    std::vector<std::array<uint32_t, 3>> motion;
+    std::vector<std::array<uint32_t, 6>> motion;
     std::vector<std::array<uint32_t, 7>> contacts;
     bool operator==(const SolverResult &) const = default;
 };
@@ -375,8 +375,9 @@ SolverResult captureSolverResult(const PhysicsManager &physics, const std::vecto
     for (const auto *body : bodies)
     {
         const auto &v = body->getVelocity();
-        result.motion.push_back(std::bit_cast<std::array<uint32_t, 3>>(
-            std::array{v.x(), v.y(), body->getAngularVelocity()}));
+        const auto p = body->getGameObject()->getPosition();
+        result.motion.push_back(std::bit_cast<std::array<uint32_t, 6>>(
+            std::array{v.x(), v.y(), body->getAngularVelocity(), p.x(), p.y(), body->getGameObject()->getRotation()}));
     }
     for (const auto *pair : physics.getContactPairs())
     {
@@ -502,7 +503,10 @@ void cancellationPreservesDeferredGridFlush(size_t workers)
             "All deferred trigger pairs reach narrow phase on the following step");
 }
 
-std::vector<SolverResult> solveConnectedColumns(size_t workers, bool sparse = false)
+enum class ColumnPlatform { None, Distant, Touching };
+
+std::vector<SolverResult> solveConnectedColumns(size_t workers, bool sparse = false, bool solverOnly = false,
+                                               ColumnPlatform platform = ColumnPlatform::None)
 {
     tbb::global_control concurrency(tbb::global_control::max_allowed_parallelism, workers);
     platformator::Runtime runtime(physicsOnly());
@@ -515,34 +519,134 @@ std::vector<SolverResult> solveConnectedColumns(size_t workers, bool sparse = fa
                                  ->setVelocity({float(column % 5), float(10 + row)}));
     // The cap connects all columns after their independent constraints have entered the solver.
     bodies.push_back(addSolverBox(runtime, columns * 10.f, 38.f, columns * 20.f + 20, DYNAMIC));
+    if (platform != ColumnPlatform::None)
+    {
+        const float y = platform == ColumnPlatform::Touching ? 47.5f : 1000.f;
+        addSolverBox(runtime, columns * 10.f, y, 10.f, KINEMATIC)->setVelocity({20.f, 0.f});
+    }
     if (sparse)
         for (int i = 0; i < 3000; ++i)
             runtime.createGameObject()->addComponent<Rigidbody>(STATIC, false);
 
     auto &physics = *platformator_detail::RuntimeAccess::physicsManager();
     physics.checkForCollisions();
-    require(physics.getContactPairs().size() == columns * 5, "The cap connects all four-body columns");
+    require(physics.getContactPairs().size() == columns * 5 + (platform == ColumnPlatform::Touching),
+            "The cap connects all four-body columns and the platform contributes only when touching");
 #if PLATFORMATOR_ENABLE_WORK_PROBES
     platformator_test::work.solverOrderedBatchDispatches = 0;
+    platformator_test::work.solverColoredWideDispatches = 0;
+    platformator_test::work.solverColoredEligibilityContactVisits = 0;
 #endif
     std::vector<SolverResult> results;
     for (int step = 0; step < 2; ++step)
     {
-        physics.applyPhysics(dt);
-        // Cancel only around the solver to exercise the ordered-batch context in isolation.
-        tbb::task_group caller;
-        require(caller.run_and_wait([&] {
-                    caller.cancel();
-                    physics.resolveCollisions(dt);
-                }) == tbb::canceled,
-                "The enclosing task was cancelled");
+        if (solverOnly)
+        {
+            // Cancel only around the solver to exercise the ordered-batch context in isolation.
+            tbb::task_group caller;
+            require(caller.run_and_wait([&] {
+                        caller.cancel();
+                        physics.solveDynamics(dt);
+                    }) == tbb::canceled,
+                    "The enclosing task was cancelled");
+        }
+        else
+        {
+            runtime.simulateFrame(dt);
+        }
         results.push_back(captureSolverResult(physics, bodies));
     }
 #if PLATFORMATOR_ENABLE_WORK_PROBES
     if (workers > 1 && tbb::this_task_arena::max_concurrency() > 1)
         require(platformator_test::work.solverOrderedBatchDispatches == 2, "Both steps exercise ordered batches");
+    if (platformator_solver_simd::cpuSupportsAVX2())
+    {
+        require(platformator_test::work.solverColoredWideDispatches == (platform == ColumnPlatform::Touching ? 0 : 2),
+                "A moving kinematic disables the wide solver only in its own contact island");
+        const size_t visits = platformator_test::work.solverColoredEligibilityContactVisits;
+        require(platform == ColumnPlatform::None ? visits == 0 : visits > 0 && visits <= 2 * (columns * 5 + 1),
+                "Kinematic eligibility scans only the island contacts when needed");
+        if (workers == 1 && !solverOnly)
+            std::cout << "Colored pile platform=" << static_cast<int>(platform) << " eligibility visits=" << visits
+                      << " wide dispatches=" << platformator_test::work.solverColoredWideDispatches << '\n';
+    }
 #endif
     return results;
+}
+
+void checkSolverDeltasAfterContactLoss(bool reuseRegistrationSlot)
+{
+    platformator::Runtime runtime(physicsOnly());
+    for (int i = 0; i < 2048; ++i)
+        runtime.createGameObject()->addComponent<Rigidbody>(STATIC, false);
+    addSolverBox(runtime, 0.f, 9.5f, 10.f, STATIC);
+    auto *body = addSolverBox(runtime, 0.f, 0.f, 10.f, DYNAMIC);
+    body->setVelocity({0.f, 15.f});
+    runtime.simulateFrame(dt);
+    auto *object = body->getGameObject();
+    object->setPosition({500.f, 0.f});
+    if (reuseRegistrationSlot)
+        body = object->addComponent<Rigidbody>(DYNAMIC, false)->getComponent<Rigidbody>();
+    body->setVelocity({0.f, 0.f})->setForce({120.f, 0.f});
+#if PLATFORMATOR_ENABLE_WORK_PROBES
+    platformator_test::work.solverDeltaSlotsInitialized = 0;
+#endif
+    runtime.simulateFrame(dt);
+    require(std::abs(body->getVelocity().x() - 1.f) < 0.0001f &&
+                std::abs(object->getX() - (500.f + static_cast<float>(dt))) < 0.0001f,
+            "Contact loss and a reused slot must both integrate fresh forces and movement");
+#if PLATFORMATOR_ENABLE_WORK_PROBES
+    require(platformator_test::work.solverDeltaSlotsInitialized == 0,
+            "The contact-free step must initialize no registered-body solver slots");
+#endif
+}
+
+void gridSizingSampleBound()
+{
+#if PLATFORMATOR_ENABLE_WORK_PROBES
+    for (size_t population : {511, 512, 513, 1023})
+    {
+        platformator::Runtime runtime(physicsOnly());
+        platformator_test::work.gridSizingSampleVisits = 0;
+        runtime.simulateFrameWithCustomCallback(dt, [&](double) {
+            for (size_t index = 0; index < population; ++index)
+                runtime.createGameObject()->setPosition({static_cast<float>(index) * 100.f, 0.f})
+                    ->addComponent<BoxCollider>(1.f, 1.f);
+        });
+        require(platformator_test::work.gridSizingSampleVisits == std::min<size_t>(512, population),
+                "Initial sizing samples at most 512 representative entries");
+    }
+#endif
+}
+
+void gridSizingRetriesAfterCooldown()
+{
+    platformator::Runtime runtime(physicsOnly());
+    std::vector<BoxCollider *> colliders;
+    runtime.simulateFrameWithCustomCallback(dt, [&](double) {
+        for (int index = 0; index < 130; ++index)
+        {
+            auto *object = runtime.createGameObject()->setPosition({100.f, 100.f})->addComponent<BoxCollider>(25.f, 25.f);
+            auto *collider = object->getComponent<BoxCollider>();
+            collider->setCollisionMask(0);
+            colliders.push_back(collider);
+        }
+    });
+    const auto *physics = platformator_detail::RuntimeAccess::physicsManager();
+    require(physics->getGridCellSize() == 200.f, "The dense grid begins with the same size after its density check");
+    runtime.simulateFrameWithCustomCallback(dt, [&](double) {
+        for (auto *collider : colliders)
+        {
+            collider->setWidth(1.f);
+            collider->setHeight(1.f);
+        }
+    });
+    require(physics->getGridCellSize() == 200.f, "An unchanged sizing check starts a cooldown");
+    for (int step = 0; step < 121 && physics->getGridCellSize() == 200.f; ++step)
+        runtime.simulateFrameWithCustomCallback(dt, [&](double) {
+            colliders.front()->setOffset({step % 2 ? 0.25f : 0.5f, 0.f});
+        });
+    require(physics->getGridCellSize() == 12.5f, "A later flush must adapt to the new geometry");
 }
 
 std::vector<SolverResult> solveUnbalancedIslands(size_t workers)
@@ -572,7 +676,7 @@ std::vector<SolverResult> solveUnbalancedIslands(size_t workers)
         platformator_test::work.solverIslandJobs = 0;
         platformator_test::work.solverLargestIslandJob = 0;
 #endif
-        physics.resolveCollisions(dt);
+        runtime.simulateFrame(dt);
 #if PLATFORMATOR_ENABLE_WORK_PROBES
         if (workers > 1 && tbb::this_task_arena::max_concurrency() > 1)
             require(platformator_test::work.solverIslandJobs == 3 &&
@@ -624,8 +728,20 @@ int main()
         const auto connectedSerial = solveConnectedColumns(1);
         require(connectedSerial == solveConnectedColumns(6) && connectedSerial == solveConnectedColumns(6, true),
                 "Dense and sparse ordered batches preserve serial velocities and cached impulses");
+        require(solveConnectedColumns(1, false, true) == solveConnectedColumns(6, false, true),
+                "The ordered solver is isolated from cancellation without the runtime's own task context");
+        require(connectedSerial == solveConnectedColumns(1, false, false, ColumnPlatform::Distant) &&
+                    connectedSerial == solveConnectedColumns(6, false, false, ColumnPlatform::Distant),
+                "A distant moving platform must leave the pile trajectory unchanged");
+        require(solveConnectedColumns(1, false, false, ColumnPlatform::Touching) ==
+                    solveConnectedColumns(6, false, false, ColumnPlatform::Touching),
+                "The moving-platform fallback must remain deterministic");
         require(solveUnbalancedIslands(1) == solveUnbalancedIslands(6),
                 "Dense and sparse job setup preserve serial outputs across registered slot changes");
+        checkSolverDeltasAfterContactLoss(false);
+        checkSolverDeltasAfterContactLoss(true);
+        gridSizingSampleBound();
+        gridSizingRetriesAfterCooldown();
         std::cout << "[PASS] physics bookkeeping contracts\n";
         return 0;
     }

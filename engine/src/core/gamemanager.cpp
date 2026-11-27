@@ -10,6 +10,7 @@
 #include "benchmark/benchmark.h"
 #include "core/constants.h"
 #include "core/membership.h"
+#include "core/vectorcapacity.h"
 #include "physics/physicstaskcontext.h"
 #include "platformator/animator.h"
 #include "platformator/audio.h"
@@ -113,7 +114,7 @@ GameObject *GameManager::createGameObject()
     auto cleanup = [](GameObject *object) { delete object; };
     std::unique_ptr<GameObject, decltype(cleanup)> gameObject(new GameObject(), cleanup);
     assignFileId(*gameObject);
-    gameObjects.reserve(gameObjects.size() + 1);
+    platformator_detail::reserveForAppend(gameObjects, 1);
     registerIdentity(*gameObject, platformator_detail::ObjectKind::GameObject);
     gameObjects.push_back(gameObject.get());
     gameObject->setGameManagerIteratorIndex(gameObjects.size() - 1);
@@ -172,8 +173,8 @@ void GameManager::registerGameObjectSubtree(GameObject *gameObject)
             }
         }
 
-        gameObjects.reserve(gameObjects.size() + subtree.size());
-        reconciliations.reserve(reconciliations.size() + totalComponents);
+        platformator_detail::reserveForAppend(gameObjects, subtree.size());
+        platformator_detail::reserveForAppend(reconciliations, totalComponents);
         idToObjectMap.reserve(idToObjectMap.size() + subtree.size() + totalComponents);
 
         for (GameObject *obj : subtree)
@@ -519,22 +520,64 @@ bool GameManager::simulateAndRenderFrame(double timeDelta, const std::function<v
 // Component Subsystem Registration & Script Dispatch
 // ============================================================================
 
+void GameManager::registerComponentIdentity(Component *component)
+{
+    using enum platformator_detail::ObjectKind;
+    static constexpr platformator_detail::ObjectKind kinds[] = {
+        Animator, Audio, Camera, Collider, Rigidbody, ScriptComponent, Sprite};
+    auto kind = kinds[component->getType()];
+    if (kind == Collider)
+    {
+        kind = static_cast<::Collider *>(component)->getColliderType() == ColliderType::BoxCollider
+                   ? BoxCollider
+                   : CircleCollider;
+    }
+    registerIdentity(*component, kind);
+}
+
+void GameManager::prepareComponentAttachment(GameObject &object, Component &component, Component *old)
+{
+    using platformator_detail::reserveForAppend;
+    reserveForAppend(reconciliations, old && !old->reconcileQueued ? 2 : 1);
+    if (old)
+        reserveForAppend(retiredComponents, 1);
+    if (component.getType() == RIGID_BODY)
+        physicsManager->reserveAttachmentWork(static_cast<Rigidbody *>(old), object.getComponent<Collider>());
+
+    const auto previousNextId = nextFileId;
+    const auto previousId = component.id;
+    const auto previousLifecycle = component.lifecycle;
+    const auto previousOwner = component.getGameObject();
+    auto attachmentNextId = previousNextId;
+    try
+    {
+        assignFileId(component);
+        attachmentNextId = nextFileId;
+        registerComponentIdentity(&component);
+        component.setGameObject(&object);
+    }
+    catch (...)
+    {
+        if (component.getHandle())
+        {
+            idToObjectMap.erase(component.getId());
+            registry.erase(component);
+        }
+        component.lifecycle = previousLifecycle;
+        component.id = previousId;
+        component.gameObject = previousOwner;
+        if (nextFileId == attachmentNextId)
+            nextFileId = previousNextId;
+        throw;
+    }
+}
+
 void GameManager::notifyComponentAdded(Component *component)
 {
     if (!component->getHandle())
     {
-        using enum platformator_detail::ObjectKind;
-        static constexpr platformator_detail::ObjectKind kinds[] = {
-            Animator, Audio, Camera, Collider, Rigidbody, ScriptComponent, Sprite};
-        auto kind = kinds[component->getType()];
-        if (kind == Collider)
-        {
-            kind = static_cast<::Collider *>(component)->getColliderType() == ColliderType::BoxCollider
-                       ? BoxCollider
-                       : CircleCollider;
-        }
-        reconciliations.reserve(reconciliations.size() + 1);
-        registerIdentity(*component, kind);
+        platformator_detail::reserveForAppend(reconciliations, 1);
+        registerComponentIdentity(component);
     }
     queueReconciliation(component);
 }

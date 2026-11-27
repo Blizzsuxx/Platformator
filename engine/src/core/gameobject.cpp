@@ -219,43 +219,27 @@ void GameObject::attachComponent(Component *component)
         throw std::invalid_argument("Component cannot be null");
     if (component->getHandle())
         throw std::invalid_argument("Component already belongs to a runtime/build");
-    if (getIsRegisteredInGameManager())
-    {
-        auto &manager = platformator_detail::RuntimeAccess::gameManager();
-        manager.assignFileId(*component);
-        addComponentInternal(component);
-        manager.notifyComponentAdded(component);
-        return;
-    }
-    addComponentInternal(component);
-}
-
-void GameObject::flushMutations()
-{
-    if (getIsRegisteredInGameManager())
-        platformator_detail::RuntimeAccess::gameManager().flushIfIdle();
-}
-
-Component *GameObject::getColliderByShape(bool box) const
-{
-    auto *collider = static_cast<Collider *>(components[COLLIDER]);
-    return collider && (collider->getColliderType() == ColliderType::BoxCollider) == box ? collider : nullptr;
-}
-
-void GameObject::addComponentInternal(Component *component)
-{
     const ComponentType type = component->getType();
-    if (components[type] != nullptr)
+    if (type < 0 || type >= COMPONENT_TYPE_COUNT)
+        throw std::invalid_argument("Unknown component type");
+    auto *old = components[type];
+    if (auto *owner = component->getGameObject(); owner && owner->components[type] == component)
+        throw std::invalid_argument("Component is already attached");
+    auto *manager = getIsRegisteredInGameManager() ? &platformator_detail::RuntimeAccess::gameManager() : nullptr;
+    if (manager)
+        manager->prepareComponentAttachment(*this, *component, old);
+    else
+        component->setGameObject(this);
+
+    if (old)
     {
-        auto *old = components[type];
-        if (getIsRegisteredInGameManager())
-            platformator_detail::RuntimeAccess::gameManager().retireComponent(old);
+        if (manager)
+            manager->retireComponent(old);
         else
             delete old;
     }
 
     components[type] = component;
-    component->setGameObject(this);
 
     if (type == ComponentType::COLLIDER || type == ComponentType::RIGID_BODY)
     {
@@ -277,6 +261,20 @@ void GameObject::addComponentInternal(Component *component)
     if (type == ComponentType::RIGID_BODY)
         if (auto *collider = getComponent<Collider>())
             collider->invalidateResponse();
+    if (manager)
+        manager->notifyComponentAdded(component);
+}
+
+void GameObject::flushMutations()
+{
+    if (getIsRegisteredInGameManager())
+        platformator_detail::RuntimeAccess::gameManager().flushIfIdle();
+}
+
+Component *GameObject::getColliderByShape(bool box) const
+{
+    auto *collider = static_cast<Collider *>(components[COLLIDER]);
+    return collider && (collider->getColliderType() == ColliderType::BoxCollider) == box ? collider : nullptr;
 }
 
 bool GameObject::removeComponent(ComponentType componentType)

@@ -274,7 +274,6 @@ RuntimeOptions parseRuntimeOptions(int argc, char *args[], const std::string &de
     const bool anySessionDescriptor = commandReadHandle || eventWriteHandle || frameMappingHandle;
     if (editorSessionRequested || anySessionDescriptor)
     {
-#if PLATFORMATOR_ENABLE_EDITOR_SESSION
         if (!editorSessionRequested || !commandReadHandle || !eventWriteHandle || !frameMappingHandle)
             throw std::runtime_error("editor-session v1 requires its command, event, and frame descriptors.");
         if (*commandReadHandle != 3 || *eventWriteHandle != 4 || *frameMappingHandle != 5)
@@ -283,9 +282,6 @@ RuntimeOptions parseRuntimeOptions(int argc, char *args[], const std::string &de
             throw std::runtime_error("editor-session v1 cannot be combined with smoke or headless runtime modes.");
         runtimeOptions.editorSession = EditorSessionLaunchOptions{
             *commandReadHandle, *eventWriteHandle, *frameMappingHandle};
-#else
-        throw std::runtime_error("this runner was built without editor-session support.");
-#endif
     }
 
     return runtimeOptions;

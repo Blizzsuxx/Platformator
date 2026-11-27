@@ -12,6 +12,7 @@
 #include "benchmark/workprobe.h"
 #include "core/gamemanager.h"
 #include "core/runtimeaccess.h"
+#include "core/vectorcapacity.h"
 #include "platformator/sprite.h"
 #include "rendering/spriterendergeometry.h"
 
@@ -29,7 +30,6 @@ struct ScopedBenchmarkTiming
             std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - start).count();
         const std::uint64_t ns = elapsed > 0 ? static_cast<std::uint64_t>(elapsed) : 0;
         ++timing.calls;
-        timing.lastNs = ns;
         timing.totalNs += ns;
     }
 };
@@ -585,14 +585,12 @@ void SDLWindow::renderSpritesBatched(Camera *camera, const platformator_detail::
             batchTexA = 1.0f;
             SDL_GetTextureColorModFloat(batchTexture, &batchTexR, &batchTexG, &batchTexB);
             SDL_GetTextureAlphaModFloat(batchTexture, &batchTexA);
-            batchPromoteAlphaBlend =
-                ((modulated ? (color.a < 255) : (batchTexA < 1.0f)) && batchTexBlendMode == SDL_BLENDMODE_NONE);
+            batchPromoteAlphaBlend = platformator_detail::shouldPromoteSpriteAlphaBlend(color, batchTexBlendMode);
             batchTexSizeValid = false;
         }
         else
         {
-            const bool promoteAlpha =
-                ((modulated ? (color.a < 255) : (batchTexA < 1.0f)) && batchTexBlendMode == SDL_BLENDMODE_NONE);
+            const bool promoteAlpha = platformator_detail::shouldPromoteSpriteAlphaBlend(color, batchTexBlendMode);
             if (promoteAlpha != batchPromoteAlphaBlend)
             {
                 flushBatch();
@@ -613,10 +611,14 @@ void SDLWindow::renderSpritesBatched(Camera *camera, const platformator_detail::
             }
             if (batchTexSizeValid)
             {
-                u0 = src->x / batchTexW;
-                v0 = src->y / batchTexH;
-                u1 = (src->x + src->w) / batchTexW;
-                v1 = (src->y + src->h) / batchTexH;
+                const SDL_FRect bounds{0, 0, batchTexW, batchTexH};
+                SDL_FRect clipped{};
+                if (!SDL_GetRectIntersectionFloat(src, &bounds, &clipped))
+                    continue;
+                u0 = clipped.x / batchTexW;
+                v0 = clipped.y / batchTexH;
+                u1 = (clipped.x + clipped.w) / batchTexW;
+                v1 = (clipped.y + clipped.h) / batchTexH;
             }
         }
 

@@ -642,6 +642,66 @@ void testClearColorOverride()
         headlessRuntime.simulateFrame(dt);
     }
 }
+void testDirectAndBatchedSourceRectParity()
+{
+    ScopedTempDir tmp("platformator_sprite_source_parity");
+    const auto path = tmp.dir / "assets/textures/atlas.bmp";
+    auto *atlas = SDL_CreateSurface(16, 16, SDL_PIXELFORMAT_RGB24);
+    require(atlas != nullptr, "Create atlas");
+    require(SDL_FillSurfaceRect(atlas, nullptr, SDL_MapSurfaceRGB(atlas, 255, 0, 0)), "Fill red atlas region");
+    const SDL_Rect right{8, 0, 8, 16};
+    require(SDL_FillSurfaceRect(atlas, &right, SDL_MapSurfaceRGB(atlas, 0, 255, 0)), "Fill green atlas region");
+    const bool saved = SDL_SaveBMP(atlas, path.string().c_str());
+    SDL_DestroySurface(atlas);
+    require(saved, "Save test atlas");
+
+    RuntimeOptions options;
+    options.assetRoot = (tmp.dir / "assets").string();
+    options.windowSettings.width = 320;
+    options.windowSettings.height = 240;
+    options.windowSettings.clearColor = {255, 255, 255, 255};
+    platformator::Runtime runtime(options);
+    auto *camera = runtime.createGameObject()->addComponent<Camera>(320.f, 240.f)->getComponent<Camera>();
+    camera->setCamera({0, 0, 320, 240});
+    auto *asset = runtime.loadTexture("assets/textures/atlas.bmp");
+    auto *texture = asset->getTexture();
+    require(SDL_SetTextureBlendMode(texture, SDL_BLENDMODE_NONE) && SDL_SetTextureAlphaMod(texture, 128),
+            "Set caller-supplied texture blend and alpha");
+
+    const SDL_FRect sources[] = {{20, 0, 4, 16}, {12, 0, 12, 16}, {0, 0, 8, 16}, {8, 0, 8, 16}};
+    std::vector<Sprite *> sprites;
+    std::vector<SampleRequest> samples;
+    for (const auto &source : sources)
+    {
+        const int x = 40 + static_cast<int>(sprites.size()) * 70;
+        auto *object = runtime.createGameObject()->setPosition({static_cast<float>(x), 120.f});
+        auto *sprite = object->addComponent<Sprite>(asset, 40.f, 40.f)->getComponent<Sprite>();
+        sprite->setSourceRect(source);
+        sprites.push_back(sprite);
+        samples.push_back({x, 120});
+    }
+    SDL_BlendMode blendAfter = SDL_BLENDMODE_INVALID;
+    const auto modulation = renderAndCaptureSamples(runtime, samples, texture, &blendAfter);
+    require(modulation.a == 128 && blendAfter == SDL_BLENDMODE_NONE, "Batch must preserve the shared texture state");
+
+    auto *renderer = runtime.getRenderer();
+    require(SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255) && SDL_RenderClear(renderer), "Clear direct output");
+    for (auto *sprite : sprites)
+        camera->render(sprite, renderer, 320, 240);
+    auto *surface = SDL_RenderReadPixels(renderer, nullptr);
+    require(surface != nullptr, "Read direct output");
+    const SDL_Color colors[] = {{255, 255, 255, 255}, {0, 255, 0, 255}, {255, 0, 0, 255}, {0, 255, 0, 255}};
+    for (size_t i = 0; i < samples.size(); ++i)
+    {
+        const auto &sample = samples[i];
+        Uint8 r, g, b, a;
+        require(SDL_ReadSurfacePixel(surface, sample.x, sample.y, &r, &g, &b, &a), "Read direct sample");
+        require(r == colors[i].r && g == colors[i].g && b == colors[i].b &&
+                    sample.r == r && sample.g == g && sample.b == b,
+                "Direct and batched source rectangle and alpha behavior must agree");
+    }
+    SDL_DestroySurface(surface);
+}
 } // namespace
 
 int main()
@@ -654,6 +714,7 @@ int main()
         testColorEditsDoNotInvalidateCullingOrOrder();
         testPreModulatedTexturePreservation();
         testAllRenderPathsSharedTextureTinting();
+        testDirectAndBatchedSourceRectParity();
         testClearColorOverride();
         std::cout << "[PASS] sprite tinting tests\n";
         return 0;

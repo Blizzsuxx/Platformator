@@ -14,6 +14,8 @@ class Scene
 
     std::string filePath;
 
+    // Loads synchronously on the idle runtime owner thread and returns borrowed roots.
+    // Use Runtime::requestLoadScene() from callbacks.
     std::vector<GameObject *> loadScene();
     std::filesystem::path resolvedFilePath() const;
     void saveScene(const std::vector<GameObject *> &gameObjects) const;

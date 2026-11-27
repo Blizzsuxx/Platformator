@@ -22,13 +22,9 @@ class TemplateBuildResolver final : public platformator_detail::RuntimeReference
     TemplateBuildResolver(GameManager &manager,
                           const std::unordered_map<int, platformator_detail::ObjectKind> &protoKinds,
                           std::optional<std::string> &invalidInternalReferenceError,
-                          std::vector<Asset::Reference<TextureWrapper>> &textures,
-                          std::vector<Asset::Reference<AudioWrapper>> &audio,
-                          std::vector<Asset::Reference<AnimationClip>> &clips,
-                          std::vector<Asset::Reference<Template>> &nestedTemplates)
+                          platformator_detail::AssetRetentionLedger &retainedAssets)
         : RuntimeReferenceResolver(manager), protoKinds(protoKinds),
-          invalidInternalReferenceError(invalidInternalReferenceError), textures(textures), audio(audio), clips(clips),
-          nestedTemplates(nestedTemplates)
+          invalidInternalReferenceError(invalidInternalReferenceError), retainedAssets(retainedAssets)
     {
     }
 
@@ -60,23 +56,17 @@ class TemplateBuildResolver final : public platformator_detail::RuntimeReference
 
     TextureWrapper *loadTexture(const std::string &path) override
     {
-        TextureWrapper *loaded = RuntimeReferenceResolver::loadTexture(path);
-        textures.push_back(Asset::retain(loaded));
-        return loaded;
+        return retainedAssets.retain(RuntimeReferenceResolver::loadTexture(path));
     }
 
     AudioWrapper *loadAudio(const std::string &path) override
     {
-        AudioWrapper *loaded = RuntimeReferenceResolver::loadAudio(path);
-        audio.push_back(Asset::retain(loaded));
-        return loaded;
+        return retainedAssets.retain(RuntimeReferenceResolver::loadAudio(path));
     }
 
     AnimationClip *loadAnimationClip(const std::string &path) override
     {
-        AnimationClip *loaded = RuntimeReferenceResolver::loadAnimationClip(path);
-        clips.push_back(Asset::retain(loaded));
-        return loaded;
+        return retainedAssets.retain(RuntimeReferenceResolver::loadAnimationClip(path));
     }
 
     Template *loadTemplate(const std::string &path) override
@@ -88,8 +78,7 @@ class TemplateBuildResolver final : public platformator_detail::RuntimeReference
             deferredCyclicPaths.insert(path);
             return nullptr;
         }
-        nestedTemplates.push_back(Asset::retain(loaded));
-        return loaded;
+        return retainedAssets.retain(loaded);
     }
 
     bool allowDeferredTemplate(const std::string &path) override
@@ -100,10 +89,7 @@ class TemplateBuildResolver final : public platformator_detail::RuntimeReference
   private:
     const std::unordered_map<int, platformator_detail::ObjectKind> &protoKinds;
     std::optional<std::string> &invalidInternalReferenceError;
-    std::vector<Asset::Reference<TextureWrapper>> &textures;
-    std::vector<Asset::Reference<AudioWrapper>> &audio;
-    std::vector<Asset::Reference<AnimationClip>> &clips;
-    std::vector<Asset::Reference<Template>> &nestedTemplates;
+    platformator_detail::AssetRetentionLedger &retainedAssets;
     std::unordered_set<std::string> deferredCyclicPaths;
 };
 
@@ -188,6 +174,7 @@ void Template::ObjectDeleter::operator()(GameObject *object) const
     delete object;
 }
 
+Template::Template() = default;
 Template::~Template() = default;
 
 void Template::freeFromRuntime()
@@ -236,8 +223,8 @@ void Template::loadFromJsonDocument(const nlohmann::json &document, GameManager 
             static_cast<BuildState *>(context)->protoKinds.emplace(object.getId(), kind);
         }};
 
-    TemplateBuildResolver buildResolver(manager, buildState.protoKinds, invalidInternalReferenceError, textures, audio,
-                                        clips, nestedTemplates);
+    retainedAssets = std::make_unique<platformator_detail::AssetRetentionLedger>();
+    TemplateBuildResolver buildResolver(manager, buildState.protoKinds, invalidInternalReferenceError, *retainedAssets);
     platformator_detail::buildObjectSubtree(rootRecord, buildResolver, sink, nullptr);
 
     for (const auto &object : objects)

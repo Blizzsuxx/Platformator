@@ -5,6 +5,7 @@
 #include <platformator/scriptregistration.h>
 #include <platformator/boxcollider.h>
 #include <platformator/rigidbody.h>
+#include <platformator/scene.h>
 #include <platformator/sprite.h>
 
 using namespace test_support;
@@ -66,11 +67,26 @@ int main()
         writeScene(a, "old");
         writeScene(b, "new");
         platformator::Runtime runtime;
-        runtime.loadScene(a.string());
+        const auto roots = Scene(a.string()).loadScene();
+        require(std::find(roots.begin(), roots.end(), runtime.getGameObject("old")) != roots.end(),
+                "Synchronous scene loading must return the incoming roots");
         ObjectReference<GameObject> old(runtime.getGameObject("old"));
         runtime.simulateFrameWithCustomCallback(dt, [&](double) {
+            bool rejected = false;
+            try
+            {
+                Scene(b.string()).loadScene();
+            }
+            catch (const std::logic_error &)
+            {
+                rejected = true;
+            }
+            require(rejected && old, "Root-returning scene load must reject a callback invocation");
+        });
+        require(old && !runtime.getGameObject("new"), "Rejected load must not queue a scene transition");
+        runtime.simulateFrameWithCustomCallback(dt, [&](double) {
             runtime.loadScene("superseded-file-must-not-be-opened.scene");
-            runtime.loadScene(b.string());
+            runtime.requestLoadScene(b.string());
             require(old && old->getName() == "old", "Scene requests must not retire the running callback's scene");
         });
         require(!old && !runtime.getGameObject("old") && runtime.getGameObject("new"), "Load must replace the scene");

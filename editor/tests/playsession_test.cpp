@@ -1,10 +1,8 @@
 #include "playsession.h"
 #include "behaviorcatalog.h"
 #include "test_support.h"
-#if PLATFORMATOR_ENABLE_EDITOR_SESSION
 #include "editor/editorsession.h"
 #include "panels/game.h"
-#endif
 
 #include <editor/editorprotocol.h>
 #include <platformator/behavior.h>
@@ -38,7 +36,7 @@
 #include <utility>
 #include <vector>
 
-#if !defined(_WIN32) && PLATFORMATOR_ENABLE_EDITOR_SESSION
+#if !defined(_WIN32)
 #include "platform/sessionchannel_posix.h"
 #include <fcntl.h>
 #include <sys/mman.h>
@@ -602,7 +600,7 @@ namespace
                 "frame transport closes after the session is stopped");
     }
 
-#if !defined(_WIN32) && PLATFORMATOR_ENABLE_EDITOR_SESSION
+#if !defined(_WIN32)
     void test_game_panel_upload_visibility_controls_and_read_only_semantics()
     {
         const bool ownsSdlVideo = (SDL_WasInit(SDL_INIT_VIDEO) & SDL_INIT_VIDEO) == 0;
@@ -1936,7 +1934,7 @@ namespace
         require(!nodes.empty(), "GamePanel must emit semantic nodes in idle state");
     }
 
-#if !defined(_WIN32) && PLATFORMATOR_ENABLE_EDITOR_SESSION
+#if !defined(_WIN32)
     void test_game_panel_gui_draw_and_layout()
     {
         const bool ownsSdlVideo = (SDL_WasInit(SDL_INIT_VIDEO) & SDL_INIT_VIDEO) == 0;
@@ -2185,7 +2183,7 @@ int main()
         test_embedded_game_input_forwarding_and_serialization();
         test_game_panel_input_capture_lifecycle();
         test_game_panel_compact_presentation_and_aspect_row();
-#if !defined(_WIN32) && PLATFORMATOR_ENABLE_EDITOR_SESSION
+#if !defined(_WIN32)
         test_game_panel_upload_visibility_controls_and_read_only_semantics();
         test_game_panel_gui_draw_and_layout();
         test_child_session_validates_descriptors_and_services_owner_thread();

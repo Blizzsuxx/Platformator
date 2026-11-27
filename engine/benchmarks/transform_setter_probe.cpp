@@ -388,8 +388,7 @@ Json runFrames(bool physicsOnlyScope, size_t workers)
             fixture.runtime->simulateFrame(frameDelta);
             return;
         }
-        fixture.physics->applyPhysics(frameDelta);
-        fixture.physics->applyMovement(frameDelta);
+        fixture.physics->integrateMovementForBenchmark(frameDelta);
         fixture.runtime->simulateFrame(synchronizationDelta);
     };
     for (size_t frame = 0; frame < warmupFrames; ++frame)
@@ -405,8 +404,7 @@ Json runFrames(bool physicsOnlyScope, size_t workers)
         }
 
         const auto start = Clock::now();
-        fixture.physics->applyPhysics(frameDelta);
-        fixture.physics->applyMovement(frameDelta);
+        fixture.physics->integrateMovementForBenchmark(frameDelta);
         samples.push_back(std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now() - start).count());
         fixture.runtime->simulateFrame(synchronizationDelta);
     }
@@ -417,7 +415,7 @@ Json runFrames(bool physicsOnlyScope, size_t workers)
 
     auto result = baseRecord(physicsOnlyScope ? "physics-integrate-move" : "complete-step", workers);
     result["timing_boundary"] = physicsOnlyScope
-                                    ? "Clock covers PhysicsManager applyPhysics(frameDelta) + applyMovement(frameDelta); Runtime::simulateFrame(synchronizationDelta) follows untimed"
+                                    ? "Clock covers PhysicsManager::integrateMovementForBenchmark(frameDelta); Runtime::simulateFrame(synchronizationDelta) follows untimed"
                                     : "Runtime::simulateFrame, full headless simulation step";
     result["warmup_frames"] = warmupFrames;
     result["measured_frames"] = measuredFrames;

@@ -543,25 +543,15 @@ std::vector<platformator::RaycastHit> PhysicsManager::raycastAll(const Eigen::Ve
     traverseRayCandidates(origin, dir, maxDistance, limit, collisionMask, includeTriggers,
                           [&](const platformator::RaycastHit &candidate) { hits.push_back(candidate); });
 
-    if (hits.size() > 1)
-    {
-        std::sort(hits.begin(), hits.end(), [](const platformator::RaycastHit &a, const platformator::RaycastHit &b)
-                  {
-            if (a.collider != b.collider)
-                return a.collider < b.collider;
-            return a.distance < b.distance; });
-        hits.erase(std::unique(hits.begin(), hits.end(),
-                               [](const platformator::RaycastHit &a, const platformator::RaycastHit &b)
-                               {
-                                   return a.collider == b.collider;
-                               }),
-                   hits.end());
-    }
-
-    std::sort(hits.begin(), hits.end(), [](const platformator::RaycastHit &a, const platformator::RaycastHit &b)
-              {
+    std::sort(hits.begin(), hits.end(), [](const auto &a, const auto &b) {
         if (a.distance != b.distance)
             return a.distance < b.distance;
-        return a.collider->getId() < b.collider->getId(); });
+        return a.collider->getId() < b.collider->getId();
+    });
+    // Repeated visits intersect the same published geometry and yield the same distance.
+    hits.erase(std::unique(hits.begin(), hits.end(), [](const auto &a, const auto &b) {
+                   return a.collider == b.collider;
+               }),
+               hits.end());
     return hits;
 }

@@ -9,6 +9,7 @@
 #include <oneapi/tbb/task_arena.h>
 
 #include "benchmark/benchmark.h"
+#include "benchmark/workprobe.h"
 #include "core/constants.h"
 #include "core/membership.h"
 #include "physics/physicsmanager.h"
@@ -57,13 +58,20 @@ float Grid::selectQuantizedCellSize(const std::vector<Collider *> &colliders)
 
     std::vector<float> dynamicExtents;
     std::vector<float> allExtents;
-    const size_t n = colliders.size();
-    const size_t stride = std::max<size_t>(1, n / maxSamples);
-    dynamicExtents.reserve(std::min(n, maxSamples));
-    allExtents.reserve(std::min(n, maxSamples));
+    const size_t sampleCount = std::min(colliders.size(), maxSamples);
+    if (sampleCount < 16)
+        return GRID_CELL_SIZE;
+    dynamicExtents.reserve(sampleCount);
+    allExtents.reserve(sampleCount);
+    const size_t intervals = sampleCount - 1;
+    const size_t stride = (colliders.size() - 1) / intervals;
+    const size_t remainder = (colliders.size() - 1) % intervals;
+    PLATFORMATOR_WORK_ADD(gridSizingSampleVisits, sampleCount);
 
-    for (size_t i = 0; i < n; i += stride)
+    for (size_t sample = 0; sample < sampleCount; ++sample)
     {
+        // Spread the samples across the entire collection, including both ends.
+        const size_t i = sample * stride + sample * remainder / intervals;
         const Collider *c = colliders[i];
         if (c == nullptr || (!c->desiredInGrid && !c->getIsRegisteredInGrid()))
         {
@@ -738,10 +746,10 @@ void Grid::flushPendingWork()
         if (totalColliders >= 128 && totalColliders >= cells.size() * 96)
         {
             const float desiredCellSize = selectQuantizedCellSize(allColliders);
+            resizeCooldown = 120;
             if (desiredCellSize <= cellSize * 0.5f)
             {
                 rebuildGridForCellSize(desiredCellSize);
-                resizeCooldown = 120;
             }
         }
     }

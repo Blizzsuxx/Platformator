@@ -168,6 +168,24 @@ class WrongKindBehavior : public ::Behavior
     SERIALIZABLE_SCRIPT(WrongKindBehavior, brokenBodyRef)
 };
 
+class CloneResolutionFailure : public ::Behavior
+{
+  public:
+    inline static platformator::ObjectHandle attemptedClone;
+    std::string getTypeName() const override { return "CloneResolutionFailure"; }
+    Behavior *clone() const override { return new CloneResolutionFailure(*this); }
+    void serialize(nlohmann::json &json) const override { json = nlohmann::json::object(); }
+    void deserialize(const nlohmann::json &) override {}
+    void resolveReferences(platformator::ReferenceResolver &) override
+    {
+        if (getGameObject()->getLifecycle() == ObjectLifecycle::Live)
+        {
+            attemptedClone = getGameObject()->getHandle();
+            throw std::runtime_error("Injected published clone resolution failure");
+        }
+    }
+};
+
 class SlimeCycleBehavior : public ::Behavior
 {
   public:
@@ -687,6 +705,36 @@ void testUs2AndUs4CompositeAndRollbackAndExternalClearing()
     });
     require(midStepThrew && runtime.getAllGameObjects().size() == countBeforeFailure && gState.wrongKindDestroys == 0,
             "Failed mid-step instantiation must throw and avoid invoking onDestroy on partial clones");
+
+    const auto originalHandle = instA->getHandle();
+    size_t growths = 0;
+    runtime.simulateFrameWithCustomCallback(dt, [&](double) {
+        for (int index = 0; index < 128; ++index)
+        {
+            const auto capacity = runtime.getAllGameObjects().capacity();
+            compTpl->instantiate();
+            growths += runtime.getAllGameObjects().capacity() != capacity;
+        }
+    });
+    require(growths <= 8 && runtime.resolveHandle(originalHandle, platformator_detail::ObjectKind::GameObject) == instA,
+            "Repeated template registration must grow geometrically and preserve existing handles");
+
+    platformator::registerScriptFactory("CloneResolutionFailure", []() -> ::Behavior * {
+        return new CloneResolutionFailure();
+    });
+    auto failingRoot = rootJson;
+    for (auto &component : failingRoot["components"])
+        if (component["type"] == ComponentType::SCRIPT)
+            component["behaviors"].push_back({{"type", "CloneResolutionFailure"}});
+    writeJsonFile(tmp.dir / "assets/templates/failing-registration.pttemplate",
+                  makeTemplateDoc("FailingRegistration", failingRoot));
+    auto *failingTemplate = runtime.loadTemplate("assets/templates/failing-registration.pttemplate");
+    const auto countBeforeRollback = runtime.getAllGameObjects().size();
+    requireThrow([&] { failingTemplate->instantiate(); }, "Published clone resolution must exercise rollback");
+    require(CloneResolutionFailure::attemptedClone &&
+                !runtime.resolveHandle(CloneResolutionFailure::attemptedClone, platformator_detail::ObjectKind::GameObject) &&
+                runtime.getAllGameObjects().size() == countBeforeRollback,
+            "Failed published clone resolution must remove the entire newly registered subtree");
 }
 
 void testUs4CyclesMidStepCollisionAndCleanup()

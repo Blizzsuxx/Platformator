@@ -38,7 +38,6 @@ namespace platformator
         for (const auto &descriptor : BehaviorFactoryRegistry::getInstance().registeredDescriptors())
             behaviors.push_back(script_descriptor_json(descriptor));
         nlohmann::json catalog = {{"schema_version", 1}, {"behaviors", std::move(behaviors)}};
-#if PLATFORMATOR_ENABLE_EDITOR_SESSION
         // These controls are available only in the opt-in runner, where the
         // owner-thread loop services Pause, Resume, and one fixed Step.
         catalog["editor_capabilities"] = {
@@ -49,7 +48,6 @@ namespace platformator
                                       {"height", 360}, {"max_hz", 60} }},
             {"live_asset_reload", false},
             {"input_forwarding", true}};
-#endif
         return catalog;
     }
 } // namespace platformator

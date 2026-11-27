@@ -7,8 +7,10 @@
 #endif
 
 #include <editor/editorprotocol.h>
+#include <platformator/behavior.h>
 #include <platformator/runner.h>
 #include <platformator/runtime.h>
+#include <platformator/scriptcomponent.h>
 #include <platformator/scriptregistration.h>
 #include "rendering/sdlwindow.h"
 

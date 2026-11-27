@@ -3,22 +3,11 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
-#include <cmath>
 #include <limits>
+#include <memory>
 #include <stdexcept>
-#include <unordered_set>
 
-#include "platformator/animator.h"
-#include "platformator/audio.h"
-#include "platformator/boxcollider.h"
-#include "platformator/camera.h"
-#include "platformator/circlecollider.h"
-#include "platformator/gameobject.h"
-#include "platformator/rigidbody.h"
-#include "platformator/runtime.h"
-#include "platformator/scriptcomponent.h"
 #include "platformator/scriptregistration.h"
-#include "platformator/sprite.h"
 #include "rendering/sdlwindow.h"
 
 #if !defined(_WIN32)
@@ -45,359 +34,6 @@ constexpr std::size_t ReadChunkBytes = 16U * 1024U;
 constexpr auto MinimumCaptureInterval = std::chrono::microseconds(16'667);
 constexpr std::size_t ReservedFrameMessages = 8;
 constexpr std::size_t ReservedFrameBytes = 16U * 1024U;
-constexpr std::size_t MaximumInspectionObjects = 4096;
-constexpr std::size_t MaximumHierarchyPageItems = 64;
-constexpr std::size_t MaximumHierarchyNameBytes = 128;
-constexpr std::size_t MaximumInspectedBehaviors = 8;
-
-std::string bounded_utf8(std::string_view text, std::size_t byteLimit, bool &truncated)
-{
-    return metadata_detail::bounded_utf8_prefix(text, byteLimit, truncated);
-}
-
-const char *object_kind_name(platformator_detail::ObjectKind kind) noexcept
-{
-    using platformator_detail::ObjectKind;
-    switch (kind)
-    {
-    case ObjectKind::GameObject: return "game_object";
-    case ObjectKind::Animator: return "animator";
-    case ObjectKind::Audio: return "audio";
-    case ObjectKind::Camera: return "camera";
-    case ObjectKind::Collider: return "collider";
-    case ObjectKind::BoxCollider: return "box_collider";
-    case ObjectKind::CircleCollider: return "circle_collider";
-    case ObjectKind::Rigidbody: return "rigidbody";
-    case ObjectKind::ScriptComponent: return "script_component";
-    case ObjectKind::Sprite: return "sprite";
-    case ObjectKind::Component: return "component";
-    case ObjectKind::BaseObject: return "base_object";
-    }
-    return "unknown";
-}
-
-nlohmann::json handle_json(platformator::ObjectHandle handle,
-                           platformator_detail::ObjectKind kind)
-{
-    return {{"runtime_serial", handle.runtimeSerial}, {"slot", handle.slot},
-            {"generation", handle.generation}, {"kind", object_kind_name(kind)}};
-}
-
-nlohmann::json safe_number(double value)
-{
-    return std::isfinite(value) ? nlohmann::json(value) : nlohmann::json(nullptr);
-}
-
-bool read_unsigned(const nlohmann::json &value, std::uint64_t &result)
-{
-    if (value.is_number_unsigned())
-    {
-        result = value.get<std::uint64_t>();
-        return true;
-    }
-    if (!value.is_number_integer())
-        return false;
-    const auto signedValue = value.get<std::int64_t>();
-    if (signedValue < 0)
-        return false;
-    result = static_cast<std::uint64_t>(signedValue);
-    return true;
-}
-
-struct PendingHierarchyObject
-{
-    GameObject *object = nullptr;
-    platformator::ObjectHandle parent{};
-    bool hasParent = false;
-    std::size_t depth = 0;
-    std::size_t siblingIndex = 0;
-};
-
-bool build_hierarchy_snapshot(platformator::Runtime &runtime,
-                              std::vector<nlohmann::json> &snapshot, std::string &error)
-{
-    const auto &allObjects = runtime.getAllGameObjects();
-    if (allObjects.size() > MaximumInspectionObjects)
-    {
-        error = "runtime hierarchy exceeds the 4096 object inspection bound";
-        return false;
-    }
-
-    std::unordered_set<GameObject *> liveObjects;
-    liveObjects.reserve(allObjects.size());
-    for (GameObject *object : allObjects)
-        if (object != nullptr && object->getLifecycle() == ObjectLifecycle::Live)
-            liveObjects.insert(object);
-
-    std::vector<PendingHierarchyObject> pending;
-    pending.reserve(liveObjects.size());
-    std::vector<GameObject *> roots;
-    roots.reserve(liveObjects.size());
-    for (GameObject *object : allObjects)
-        if (object != nullptr && liveObjects.contains(object) && object->getParent() == nullptr)
-            roots.push_back(object);
-    for (std::size_t index = roots.size(); index > 0; --index)
-    {
-        pending.push_back({roots[index - 1], {}, false, 0, index - 1});
-    }
-
-    snapshot.clear();
-    snapshot.reserve(liveObjects.size());
-    std::unordered_set<GameObject *> visited;
-    visited.reserve(liveObjects.size());
-    while (!pending.empty())
-    {
-        const auto current = pending.back();
-        pending.pop_back();
-        GameObject *object = current.object;
-        if (object == nullptr || !liveObjects.contains(object) || !visited.insert(object).second)
-        {
-            error = "runtime hierarchy contains a stale or repeated child";
-            return false;
-        }
-        if (current.depth > 256)
-        {
-            error = "runtime hierarchy exceeds the 256 level inspection bound";
-            return false;
-        }
-        const auto handle = object->getHandle();
-        if (!handle || handle.runtimeSerial != runtime.getRuntimeSerial())
-        {
-            error = "runtime hierarchy contains an object without a current handle";
-            return false;
-        }
-        bool nameTruncated = false;
-        const std::string name = bounded_utf8(object->getName(), MaximumHierarchyNameBytes,
-                                              nameTruncated);
-        nlohmann::json parent = nullptr;
-        if (current.hasParent)
-            parent = handle_json(current.parent, platformator_detail::ObjectKind::GameObject);
-        snapshot.push_back({{"handle", handle_json(handle, platformator_detail::ObjectKind::GameObject)},
-                            {"file_id", object->getId()}, {"name", name},
-                            {"name_truncated", nameTruncated}, {"active", object->getActive()},
-                            {"parent", std::move(parent)}, {"depth", current.depth},
-                            {"sibling_index", current.siblingIndex}});
-
-        const auto &children = object->getChildren();
-        for (std::size_t index = children.size(); index > 0; --index)
-        {
-            GameObject *child = children[index - 1];
-            if (child != nullptr && liveObjects.contains(child))
-                pending.push_back({child, handle, true, current.depth + 1, index - 1});
-        }
-    }
-    if (visited.size() != liveObjects.size())
-    {
-        error = "runtime hierarchy contains an unparented or unreachable object";
-        return false;
-    }
-    return true;
-}
-
-nlohmann::json script_component_snapshot(const ScriptComponent &component)
-{
-    constexpr platformator::ScriptInspectionLimits limits{24, 128, 8, 4096};
-    nlohmann::json behaviors = nlohmann::json::array();
-    const auto &instances = component.getBehaviors();
-    const std::size_t count = std::min(instances.size(), MaximumInspectedBehaviors);
-    for (std::size_t index = 0; index < count; ++index)
-    {
-        Behavior *behavior = instances[index];
-        if (behavior == nullptr)
-        {
-            behaviors.push_back({{"provider_available", false},
-                                 {"unavailable_reason", "behavior instance is unavailable"}});
-            continue;
-        }
-        try
-        {
-            const std::string typeName = behavior->getTypeName();
-            bool typeTruncated = false;
-            const std::string displayType = bounded_utf8(typeName, 128, typeTruncated);
-            const auto inspected = platformator::inspectRegisteredScriptFields(typeName, *behavior, limits);
-            nlohmann::json fields = nlohmann::json::array();
-            for (const auto &field : inspected.fields)
-            {
-                bool nameTruncated = false;
-                bool reasonTruncated = false;
-                fields.push_back({{"name", bounded_utf8(field.name, 128, nameTruncated)},
-                                  {"kind", field.kind}, {"available", field.available},
-                                  {"truncated", field.truncated || nameTruncated},
-                                  {"value", field.value},
-                                  {"unavailable_reason", bounded_utf8(field.unavailableReason, 256,
-                                                                       reasonTruncated)}});
-            }
-            if (!inspected.providerAvailable)
-            {
-                const auto catalog = platformator::exportRegisteredBehaviorCatalog();
-                for (const auto &descriptor : catalog.value("behaviors", nlohmann::json::array()))
-                {
-                    if (!descriptor.is_object() || descriptor.value("name", std::string{}) != typeName)
-                        continue;
-                    const auto declaredFields = descriptor.find("fields");
-                    if (declaredFields == descriptor.end() || !declaredFields->is_array())
-                        break;
-                    for (const auto &declared : *declaredFields)
-                    {
-                        if (!declared.is_object())
-                            continue;
-                        bool nameTruncated = false;
-                        fields.push_back({{"name", bounded_utf8(declared.value("name", std::string{}),
-                                                                  128, nameTruncated)},
-                                          {"kind", declared.value("kind", std::string("opaque_json"))},
-                                          {"available", false}, {"truncated", nameTruncated},
-                                          {"value", nullptr},
-                                          {"unavailable_reason", "no generated read-only accessor"}});
-                    }
-                    break;
-                }
-            }
-            behaviors.push_back({{"type", displayType}, {"type_truncated", typeTruncated},
-                                 {"provider_available", inspected.providerAvailable},
-                                 {"output_truncated", inspected.outputTruncated},
-                                 {"omitted_field_count", inspected.omittedFieldCount},
-                                 {"fields", std::move(fields)}});
-        }
-        catch (const std::exception &exception)
-        {
-            bool reasonTruncated = false;
-            behaviors.push_back({{"provider_available", false},
-                                 {"unavailable_reason", bounded_utf8(exception.what(), 256,
-                                                                      reasonTruncated)}});
-        }
-        catch (...)
-        {
-            behaviors.push_back({{"provider_available", false},
-                                 {"unavailable_reason", "generated field provider failed"}});
-        }
-    }
-    return {{"behaviors", std::move(behaviors)}, {"omitted_behavior_count", instances.size() - count}};
-}
-
-nlohmann::json component_snapshot(Component &component)
-{
-    using platformator_detail::ObjectKind;
-    ObjectKind kind = ObjectKind::Component;
-    const char *typeName = "unknown";
-    nlohmann::json properties = nlohmann::json::object();
-    switch (component.getType())
-    {
-    case ANIMATOR:
-    {
-        auto &value = static_cast<Animator &>(component);
-        kind = ObjectKind::Animator;
-        typeName = "animator";
-        bool clipNameTruncated = false;
-        const std::string clipPath = value.getCurrentClip() ? value.getCurrentClip()->getFilePath() : std::string{};
-        properties = {{"playing", value.getIsPlaying()}, {"paused", value.getIsPaused()},
-                      {"frame_index", value.getCurrentFrameIndex()},
-                      {"playback_speed", safe_number(value.getPlaybackSpeed())},
-                      {"clip_name", bounded_utf8(clipPath, 128, clipNameTruncated)},
-                      {"clip_name_truncated", clipNameTruncated}};
-        break;
-    }
-    case AUDIO:
-    {
-        auto &value = static_cast<Audio &>(component);
-        kind = ObjectKind::Audio;
-        typeName = "audio";
-        bool pathTruncated = false;
-        properties = {{"file_path", bounded_utf8(value.getFilePath(), 256, pathTruncated)},
-                      {"path_truncated", pathTruncated}, {"auto_play", value.getAutoPlay()},
-                      {"gain", safe_number(value.getGain())},
-                      {"loop_count", safe_number(value.getLoopCount())},
-                      {"playing", value.isPlaying()}, {"paused", value.isPaused()}};
-        break;
-    }
-    case CAMERA:
-    {
-        auto &value = static_cast<Camera &>(component);
-        kind = ObjectKind::Camera;
-        typeName = "camera";
-        const auto rect = value.getCamera();
-        properties = {{"width", safe_number(value.getWidth())},
-                      {"height", safe_number(value.getHeight())},
-                      {"rect", {{"x", safe_number(rect.x)}, {"y", safe_number(rect.y)},
-                                 {"w", safe_number(rect.w)}, {"h", safe_number(rect.h)}}}};
-        break;
-    }
-    case COLLIDER:
-    {
-        auto &value = static_cast<Collider &>(component);
-        const auto offset = value.getOffset();
-        properties = {{"trigger", value.getIsTrigger()}, {"collision_group", value.getCollisionGroup()},
-                      {"collision_mask", value.getCollisionMask()},
-                      {"offset", {{"x", safe_number(offset.x())}, {"y", safe_number(offset.y())}}}};
-        if (value.getColliderType() == ColliderType::BoxCollider)
-        {
-            auto &box = static_cast<BoxCollider &>(component);
-            kind = ObjectKind::BoxCollider;
-            typeName = "box_collider";
-            properties["width"] = safe_number(box.getWidthWithoutScale());
-            properties["height"] = safe_number(box.getHeightWithoutScale());
-        }
-        else
-        {
-            auto &circle = static_cast<CircleCollider &>(component);
-            kind = ObjectKind::CircleCollider;
-            typeName = "circle_collider";
-            properties["radius"] = safe_number(circle.getRadiusWithoutScale());
-        }
-        break;
-    }
-    case RIGID_BODY:
-    {
-        auto &value = static_cast<Rigidbody &>(component);
-        kind = ObjectKind::Rigidbody;
-        typeName = "rigidbody";
-        const auto velocity = value.getVelocity();
-        const auto force = value.getForce();
-        properties = {{"velocity", {{"x", safe_number(velocity.x())}, {"y", safe_number(velocity.y())}}},
-                      {"force", {{"x", safe_number(force.x())}, {"y", safe_number(force.y())}}},
-                      {"mass", safe_number(value.getMass())},
-                      {"angular_velocity", safe_number(value.getAngularVelocity())},
-                      {"torque", safe_number(value.getTorque())},
-                      {"friction", safe_number(value.getFriction())},
-                      {"restitution", safe_number(value.getRestitution())},
-                      {"body_type", static_cast<int>(value.getBodyType())},
-                      {"gravity", value.getGravity()}, {"sleeping", value.getIsSleeping()}};
-        break;
-    }
-    case SCRIPT:
-    {
-        auto &value = static_cast<ScriptComponent &>(component);
-        kind = ObjectKind::ScriptComponent;
-        typeName = "script_component";
-        properties = script_component_snapshot(value);
-        break;
-    }
-    case SPRITE:
-    {
-        auto &value = static_cast<Sprite &>(component);
-        kind = ObjectKind::Sprite;
-        typeName = "sprite";
-        bool pathTruncated = false;
-        const auto *texture = value.getTextureWrapper();
-        properties = {{"width", safe_number(value.getWidthWithoutScale())},
-                      {"height", safe_number(value.getHeightWithoutScale())},
-                      {"flip", static_cast<int>(value.getFlip())},
-                      {"asset_path", texture ? nlohmann::json(bounded_utf8(texture->getFilePath(),
-                                                        256, pathTruncated)) : nlohmann::json(nullptr)},
-                      {"path_truncated", pathTruncated}};
-        if (value.hasSourceRect())
-        {
-            const auto *source = value.getSourceRect();
-            properties["source_rect"] = {{"x", safe_number(source->x)}, {"y", safe_number(source->y)},
-                                          {"w", safe_number(source->w)}, {"h", safe_number(source->h)}};
-        }
-        break;
-    }
-    case COMPONENT_TYPE_COUNT:
-        break;
-    }
-    return {{"handle", handle_json(component.getHandle(), kind)}, {"file_id", component.getId()},
-            {"type", typeName}, {"properties", std::move(properties)}};
-}
 
 #if !defined(_WIN32)
 std::string system_error(const char *operation, int error)
@@ -405,8 +41,7 @@ std::string system_error(const char *operation, int error)
     return std::string(operation) + ": " + std::strerror(error);
 }
 
-bool validate_pipe_descriptor(int descriptor, int requiredAccess, const char *label,
-                              std::string &error)
+bool validate_pipe_descriptor(int descriptor, int requiredAccess, const char *label, std::string &error)
 {
     const int descriptorFlags = ::fcntl(descriptor, F_GETFD);
     const int statusFlags = ::fcntl(descriptor, F_GETFL);
@@ -416,8 +51,7 @@ bool validate_pipe_descriptor(int descriptor, int requiredAccess, const char *la
         error = system_error(label, errno);
         return false;
     }
-    if (!S_ISFIFO(status.st_mode) || (statusFlags & O_ACCMODE) != requiredAccess ||
-        (statusFlags & O_NONBLOCK) == 0)
+    if (!S_ISFIFO(status.st_mode) || (statusFlags & O_ACCMODE) != requiredAccess || (statusFlags & O_NONBLOCK) == 0)
     {
         error = std::string(label) + " must be a nonblocking pipe with the expected access mode";
         return false;
@@ -515,17 +149,14 @@ EditorSessionService::EditorSessionService(EditorSessionLaunchOptions launch)
         const int mappingDescriptorFlags = ::fcntl(mappingFd_, F_GETFD);
         const int mappingStatusFlags = ::fcntl(mappingFd_, F_GETFL);
         struct stat mappingStatus{};
-        if (mappingDescriptorFlags < 0 || mappingStatusFlags < 0 ||
-            ::fstat(mappingFd_, &mappingStatus) != 0)
+        if (mappingDescriptorFlags < 0 || mappingStatusFlags < 0 || ::fstat(mappingFd_, &mappingStatus) != 0)
             throw std::invalid_argument(system_error("cannot inspect session frame mapping", errno));
         if ((mappingStatusFlags & O_ACCMODE) != O_RDWR || !S_ISREG(mappingStatus.st_mode) ||
-            mappingStatus.st_size < 0 ||
-            static_cast<std::uint64_t>(mappingStatus.st_size) != FrameMappingBytes)
+            mappingStatus.st_size < 0 || static_cast<std::uint64_t>(mappingStatus.st_size) != FrameMappingBytes)
             throw std::invalid_argument("frame mapping descriptor must name exactly two 640x360 RGBA8 slots");
         if (::fcntl(mappingFd_, F_SETFD, mappingDescriptorFlags | FD_CLOEXEC) < 0)
             throw std::runtime_error(system_error("cannot make frame mapping close-on-exec", errno));
-        mappingAddress_ = ::mmap(nullptr, FrameMappingBytes, PROT_READ | PROT_WRITE, MAP_SHARED,
-                                 mappingFd_, 0);
+        mappingAddress_ = ::mmap(nullptr, FrameMappingBytes, PROT_READ | PROT_WRITE, MAP_SHARED, mappingFd_, 0);
         if (mappingAddress_ == MAP_FAILED)
         {
             mappingAddress_ = nullptr;
@@ -584,19 +215,11 @@ bool EditorSessionService::pump_impl(std::uint64_t runtimeSerial, ::SDLWindow *w
     {
         if (!pendingRequests_.empty())
         {
-            auto request = std::move(pendingRequests_.front());
+            auto pending = std::move(pendingRequests_.front());
             pendingRequests_.pop_front();
-            std::string encodedError;
-            const auto encoded = editor_session::encode_frame(
-                request, editor_session::Direction::Request, encodedError);
-            if (!encodedError.empty())
-            {
-                fail("buffered session request could not be accounted: " + encodedError, runtimeSerial);
-                break;
-            }
-            pendingRequestBytes_ -= std::min(pendingRequestBytes_, encoded.size());
+            pendingRequestBytes_ -= std::min(pendingRequestBytes_, pending.encodedBytes);
             ++handled;
-            if (!accept_request(std::move(request), runtimeSerial, window))
+            if (!accept_request(std::move(pending.message), runtimeSerial, window))
                 break;
             continue;
         }
@@ -608,8 +231,8 @@ bool EditorSessionService::pump_impl(std::uint64_t runtimeSerial, ::SDLWindow *w
         {
             const auto transferred = static_cast<std::size_t>(count);
             remaining -= transferred;
-            const auto decoded = incoming_.feed(std::span<const std::uint8_t>(
-                reinterpret_cast<const std::uint8_t *>(buffer.data()), transferred));
+            const auto decoded = incoming_.feed(
+                std::span<const std::uint8_t>(reinterpret_cast<const std::uint8_t *>(buffer.data()), transferred));
             if (!decoded.succeeded())
             {
                 fail(decoded.error, runtimeSerial);
@@ -618,11 +241,11 @@ bool EditorSessionService::pump_impl(std::uint64_t runtimeSerial, ::SDLWindow *w
             for (const auto &request : decoded.messages)
             {
                 std::string encodedError;
-                const auto encoded = editor_session::encode_frame(
-                    request, editor_session::Direction::Request, encodedError);
-                if (!encodedError.empty() || encoded.size() >
-                        editor_session::MaximumQueuedBytes -
-                            std::min(pendingRequestBytes_, editor_session::MaximumQueuedBytes))
+                const auto encoded =
+                    editor_session::encode_frame(request, editor_session::Direction::Request, encodedError);
+                if (!encodedError.empty() ||
+                    encoded.size() > editor_session::MaximumQueuedBytes -
+                                         std::min(pendingRequestBytes_, editor_session::MaximumQueuedBytes))
                 {
                     fail(encodedError.empty() ? "decoded request backlog exceeded its byte bound"
                                               : "decoded request could not be accounted: " + encodedError,
@@ -630,7 +253,7 @@ bool EditorSessionService::pump_impl(std::uint64_t runtimeSerial, ::SDLWindow *w
                     break;
                 }
                 pendingRequestBytes_ += encoded.size();
-                pendingRequests_.push_back(request);
+                pendingRequests_.push_back({request, encoded.size()});
             }
             if (failed_)
                 break;
@@ -667,8 +290,7 @@ void EditorSessionService::simulation_step_completed(std::uint64_t runtimeSerial
     try
     {
         if (!enqueue_event("step_completed",
-                           nlohmann::json{{"request_sequence", requestSequence},
-                                          {"step_number", stepNumber}},
+                           nlohmann::json{{"request_sequence", requestSequence}, {"step_number", stepNumber}},
                            runtimeSerial, true))
         {
             fail("could not queue the accepted Step completion", runtimeSerial);
@@ -709,64 +331,157 @@ void EditorSessionService::finish(std::uint64_t runtimeSerial) noexcept
     }
 }
 
-bool EditorSessionService::accept_request(editor_session::Message message,
-                                         std::uint64_t runtimeSerial,
-                                         ::SDLWindow *window)
+bool EditorSessionService::handle_hello_request(editor_session::Message message, std::uint64_t runtimeSerial,
+                                                ::SDLWindow *window)
 {
-    const auto enqueue_inspection_event = [&](std::string type, nlohmann::json body) {
-        if (enqueue_event(std::move(type), std::move(body), runtimeSerial, true))
-            return true;
-        fail("could not queue the bounded runtime inspection response", runtimeSerial);
-        return false;
-    };
-
-    if (!helloAccepted_)
+    if (message.type != "hello" || message.sequence != 1 || !requestSequences_.accept(message.sequence))
     {
-        if (message.type != "hello" || message.sequence != 1 ||
-            !requestSequences_.accept(message.sequence))
+        fail("the first editor-session request must be hello with sequence one", runtimeSerial);
+        return false;
+    }
+    helloAccepted_ = true;
+    nonce_ = std::move(message.nonce);
+    playGeneration_ = message.playGeneration;
+    const auto catalog = exportRegisteredBehaviorCatalog();
+    capabilities_ = editor_session::read_session_capabilities(catalog);
+    if (!capabilities_.supported)
+    {
+        fail(capabilities_.error.empty() ? "this runner does not expose a compatible editor-session protocol"
+                                         : capabilities_.error,
+             runtimeSerial);
+        return false;
+    }
+    if (window != nullptr)
+    {
+        if (!window->enableEditorSessionControls())
         {
-            fail("the first editor-session request must be hello with sequence one", runtimeSerial);
+            fail("could not initialize editor-session pause controls", runtimeSerial);
             return false;
         }
-        helloAccepted_ = true;
-        nonce_ = std::move(message.nonce);
-        playGeneration_ = message.playGeneration;
-        const auto catalog = exportRegisteredBehaviorCatalog();
-        capabilities_ = editor_session::read_session_capabilities(catalog);
-        if (!capabilities_.supported)
+        if (capabilities_.frameStream)
         {
-            fail(capabilities_.error.empty()
-                     ? "this runner does not expose a compatible editor-session protocol"
-                     : capabilities_.error,
-                 runtimeSerial);
-            return false;
+            window->setEditorSessionFrameCapture(
+                [this, runtimeSerial](::SDL_Renderer *renderer, int width, int height) {
+                    capture_frame(runtimeSerial, renderer, width, height);
+                });
         }
-        if (window != nullptr)
+    }
+    const auto capabilities = catalog.find("editor_capabilities");
+    const nlohmann::json capabilityBody =
+        capabilities == catalog.end() ? nlohmann::json::object() : *capabilities;
+    if (!enqueue_event("capabilities", capabilityBody, runtimeSerial) ||
+        !enqueue_event("ready", nlohmann::json::object(), runtimeSerial))
+    {
+        fail("could not queue initial session capability and ready events", runtimeSerial);
+        return false;
+    }
+    return true;
+}
+
+bool EditorSessionService::handle_pause_state_request(const editor_session::Message &message,
+                                                      std::uint64_t runtimeSerial, ::SDLWindow *window, bool pause)
+{
+    if (!capabilities_.playControl || window == nullptr || window->isEditorSessionPaused() == pause ||
+        !window->setEditorSessionPaused(pause))
+    {
+        fail(pause ? "Pause is unavailable or invalid in the current session state"
+                   : "Resume is unavailable or invalid in the current session state",
+             runtimeSerial);
+        return false;
+    }
+    if (!enqueue_event("state",
+                       nlohmann::json{{"state", pause ? "paused" : "running"},
+                                      {"request_sequence", message.sequence}},
+                       runtimeSerial, true))
+    {
+        fail(pause ? "could not acknowledge the accepted Pause request"
+                   : "could not acknowledge the accepted Resume request",
+             runtimeSerial);
+        return false;
+    }
+    return true;
+}
+
+bool EditorSessionService::handle_input_request(const editor_session::Message &message, ::SDLWindow *window)
+{
+    if (message.type == "release_all_inputs")
+    {
+        if (window)
+            window->releaseEditorInput();
+        for (const auto &[scancode, keycode] : heldKeys_)
         {
-            if (!window->enableEditorSessionControls())
-            {
-                fail("could not initialize editor-session pause controls", runtimeSerial);
-                return false;
-            }
-            if (capabilities_.frameStream)
-            {
-                window->setEditorSessionFrameCapture(
-                    [this, runtimeSerial](::SDL_Renderer *renderer, int width, int height) {
-                        capture_frame(runtimeSerial, renderer, width, height);
-                    });
-            }
+            SDL_Event event{};
+            event.type = SDL_EVENT_KEY_UP;
+            event.key.scancode = static_cast<SDL_Scancode>(scancode);
+            event.key.key = static_cast<SDL_Keycode>(keycode);
+            event.key.down = false;
+            SDL_PushEvent(&event);
         }
-        const auto capabilities = catalog.find("editor_capabilities");
-        const nlohmann::json capabilityBody = capabilities == catalog.end()
-            ? nlohmann::json::object() : *capabilities;
-        if (!enqueue_event("capabilities", capabilityBody, runtimeSerial) ||
-            !enqueue_event("ready", nlohmann::json::object(), runtimeSerial))
-        {
-            fail("could not queue initial session capability and ready events", runtimeSerial);
-            return false;
-        }
+        heldKeys_.clear();
         return true;
     }
+    if (!capabilities_.inputForwarding)
+        return false;
+    if (message.type == "key_down" || message.type == "key_up")
+    {
+        const bool down = message.type == "key_down";
+        const auto scancode = message.body.value("scancode", 0);
+        const auto keycode = message.body.value("keycode", 0);
+        const auto modifiers = message.body.value("modifiers", 0);
+        SDL_Event event{};
+        event.type = down ? SDL_EVENT_KEY_DOWN : SDL_EVENT_KEY_UP;
+        event.key.scancode = static_cast<SDL_Scancode>(scancode);
+        event.key.key = static_cast<SDL_Keycode>(keycode);
+        event.key.mod = static_cast<SDL_Keymod>(modifiers);
+        event.key.down = down;
+        if (window)
+            window->setEditorKey(event.key.scancode, down);
+        SDL_PushEvent(&event);
+        if (down)
+            heldKeys_.push_back({scancode, keycode});
+        else if (auto it = std::find(heldKeys_.begin(), heldKeys_.end(), std::make_pair(scancode, keycode));
+                 it != heldKeys_.end())
+            heldKeys_.erase(it);
+        return true;
+    }
+    if (message.type == "mouse_move")
+    {
+        const auto x = message.body.value("x", 0.0f);
+        const auto y = message.body.value("y", 0.0f);
+        SDL_Event event{};
+        event.type = SDL_EVENT_MOUSE_MOTION;
+        event.motion.x = x;
+        event.motion.y = y;
+        if (window)
+            window->setEditorMouse(x, y);
+        SDL_PushEvent(&event);
+        return true;
+    }
+    if (message.type == "mouse_button")
+    {
+        const auto button = message.body.value("button", 1);
+        const auto down = message.body.value("down", true);
+        const auto x = message.body.value("x", 0.0f);
+        const auto y = message.body.value("y", 0.0f);
+        SDL_Event event{};
+        event.type = down ? SDL_EVENT_MOUSE_BUTTON_DOWN : SDL_EVENT_MOUSE_BUTTON_UP;
+        event.button.button = static_cast<Uint8>(button);
+        event.button.down = down;
+        event.button.x = x;
+        event.button.y = y;
+        if (window)
+            window->setEditorMouse(x, y, button, down);
+        SDL_PushEvent(&event);
+        return true;
+    }
+    return false;
+}
+
+bool EditorSessionService::accept_request(editor_session::Message message, std::uint64_t runtimeSerial,
+                                          ::SDLWindow *window)
+{
+    if (!helloAccepted_)
+        return handle_hello_request(std::move(message), runtimeSerial, window);
 
     if (message.nonce != nonce_ || message.playGeneration != playGeneration_)
     {
@@ -785,42 +500,8 @@ bool EditorSessionService::accept_request(editor_session::Message message,
             stoppedEventQueued_ = enqueue_event("stopped", nlohmann::json::object(), runtimeSerial);
         return false;
     }
-    if (message.type == "pause")
-    {
-        if (!capabilities_.playControl || window == nullptr || window->isEditorSessionPaused() ||
-            !window->setEditorSessionPaused(true))
-        {
-            fail("Pause is unavailable or invalid in the current session state", runtimeSerial);
-            return false;
-        }
-        if (!enqueue_event("state",
-                           nlohmann::json{{"state", "paused"},
-                                          {"request_sequence", message.sequence}},
-                           runtimeSerial, true))
-        {
-            fail("could not acknowledge the accepted Pause request", runtimeSerial);
-            return false;
-        }
-        return true;
-    }
-    if (message.type == "resume")
-    {
-        if (!capabilities_.playControl || window == nullptr || !window->isEditorSessionPaused() ||
-            !window->setEditorSessionPaused(false))
-        {
-            fail("Resume is unavailable or invalid in the current session state", runtimeSerial);
-            return false;
-        }
-        if (!enqueue_event("state",
-                           nlohmann::json{{"state", "running"},
-                                          {"request_sequence", message.sequence}},
-                           runtimeSerial, true))
-        {
-            fail("could not acknowledge the accepted Resume request", runtimeSerial);
-            return false;
-        }
-        return true;
-    }
+    if (message.type == "pause" || message.type == "resume")
+        return handle_pause_state_request(message, runtimeSerial, window, message.type == "pause");
     if (message.type == "step")
     {
         if (!capabilities_.playControl || window == nullptr || !window->isEditorSessionPaused() ||
@@ -874,318 +555,22 @@ bool EditorSessionService::accept_request(editor_session::Message message,
         frameSlotSequences_[slotIndex] = 0;
         return true;
     }
-    if (message.type == "key_down")
-    {
-        if (!capabilities_.inputForwarding)
-            return false;
-        const auto scancode = message.body.value("scancode", 0);
-        const auto keycode = message.body.value("keycode", 0);
-        const auto modifiers = message.body.value("modifiers", 0);
-        SDL_Event event{};
-        event.type = SDL_EVENT_KEY_DOWN;
-        event.key.scancode = static_cast<SDL_Scancode>(scancode);
-        event.key.key = static_cast<SDL_Keycode>(keycode);
-        event.key.mod = static_cast<SDL_Keymod>(modifiers);
-        event.key.down = true;
-        if (window) window->setEditorKey(event.key.scancode, true);
-        SDL_PushEvent(&event);
-        heldKeys_.push_back({scancode, keycode});
-        return true;
-    }
-    if (message.type == "key_up")
-    {
-        if (!capabilities_.inputForwarding)
-            return false;
-        const auto scancode = message.body.value("scancode", 0);
-        const auto keycode = message.body.value("keycode", 0);
-        const auto modifiers = message.body.value("modifiers", 0);
-        SDL_Event event{};
-        event.type = SDL_EVENT_KEY_UP;
-        event.key.scancode = static_cast<SDL_Scancode>(scancode);
-        event.key.key = static_cast<SDL_Keycode>(keycode);
-        event.key.mod = static_cast<SDL_Keymod>(modifiers);
-        event.key.down = false;
-        if (window) window->setEditorKey(event.key.scancode, false);
-        SDL_PushEvent(&event);
-        auto it = std::find(heldKeys_.begin(), heldKeys_.end(), std::make_pair(scancode, keycode));
-        if (it != heldKeys_.end())
-            heldKeys_.erase(it);
-        return true;
-    }
-    if (message.type == "mouse_move")
-    {
-        if (!capabilities_.inputForwarding)
-            return false;
-        const auto x = message.body.value("x", 0.0f);
-        const auto y = message.body.value("y", 0.0f);
-        SDL_Event event{};
-        event.type = SDL_EVENT_MOUSE_MOTION;
-        event.motion.x = x;
-        event.motion.y = y;
-        if (window) window->setEditorMouse(x, y);
-        SDL_PushEvent(&event);
-        return true;
-    }
-    if (message.type == "mouse_button")
-    {
-        if (!capabilities_.inputForwarding)
-            return false;
-        const auto button = message.body.value("button", 1);
-        const auto down = message.body.value("down", true);
-        const auto x = message.body.value("x", 0.0f);
-        const auto y = message.body.value("y", 0.0f);
-        SDL_Event event{};
-        event.type = down ? SDL_EVENT_MOUSE_BUTTON_DOWN : SDL_EVENT_MOUSE_BUTTON_UP;
-        event.button.button = static_cast<Uint8>(button);
-        event.button.down = down;
-        event.button.x = x;
-        event.button.y = y;
-        if (window) window->setEditorMouse(x, y, button, down);
-        SDL_PushEvent(&event);
-        return true;
-    }
-    if (message.type == "release_all_inputs")
-    {
-        if (window) window->releaseEditorInput();
-        for (const auto &[scancode, keycode] : heldKeys_)
-        {
-            SDL_Event event{};
-            event.type = SDL_EVENT_KEY_UP;
-            event.key.scancode = static_cast<SDL_Scancode>(scancode);
-            event.key.key = static_cast<SDL_Keycode>(keycode);
-            event.key.down = false;
-            SDL_PushEvent(&event);
-        }
-        heldKeys_.clear();
-        return true;
-    }
+    if (message.type == "key_down" || message.type == "key_up" || message.type == "mouse_move" ||
+        message.type == "mouse_button" || message.type == "release_all_inputs")
+        return handle_input_request(message, window);
     if (message.type == "list_objects")
-    {
-        if (!inspectionPageGate_.try_begin())
-        {
-            if (!enqueue_inspection_event("inspection_busy",
-                    {{"request_sequence", message.sequence},
-                     {"message", "wait for the outstanding inspection response"}}))
-                return false;
-            return true;
-        }
-
-        auto respond = [&](std::string status, nlohmann::json details = nlohmann::json::object()) {
-            details["status"] = std::move(status);
-            details["request_sequence"] = message.sequence;
-            return enqueue_inspection_event("object_page", std::move(details));
-        };
-        if (!capabilities_.runtimeInspection)
-            return respond("unsupported", {{"message", "runtime inspection is not advertised"}});
-        const auto serialValue = message.body.find("runtime_serial");
-        std::uint64_t requestedRuntimeSerial = 0;
-        if (serialValue == message.body.end() || !read_unsigned(*serialValue, requestedRuntimeSerial))
-            return respond("invalid", {{"message", "runtime_serial must be an unsigned integer"}});
-        auto *runtime = platformator::Runtime::tryGetCurrent();
-        if (runtime == nullptr || runtime->getRuntimeSerial() != runtimeSerial ||
-            requestedRuntimeSerial != runtimeSerial)
-        {
-            hierarchySnapshot_.clear();
-            hierarchySnapshotRevision_ = 0;
-            nextHierarchyCursor_ = 0;
-            return respond("stale", {{"runtime_serial", runtimeSerial},
-                                      {"message", "request belongs to another Runtime"}});
-        }
-
-        std::uint64_t cursor = 0;
-        std::uint64_t snapshotRevision = 0;
-        const auto cursorValue = message.body.find("cursor");
-        const auto revisionValue = message.body.find("snapshot_revision");
-        const bool hasCursor = cursorValue != message.body.end();
-        const bool hasRevision = revisionValue != message.body.end();
-        if (hasCursor != hasRevision ||
-            (hasCursor && !read_unsigned(*cursorValue, cursor)) ||
-            (hasRevision && !read_unsigned(*revisionValue, snapshotRevision)))
-            return respond("invalid", {{"message", "continuations require unsigned cursor and snapshot_revision"}});
-
-        std::size_t pageSize = MaximumHierarchyPageItems;
-        if (const auto pageSizeValue = message.body.find("page_size"); pageSizeValue != message.body.end())
-        {
-            std::uint64_t requestedPageSize = 0;
-            if (!read_unsigned(*pageSizeValue, requestedPageSize) || requestedPageSize == 0 ||
-                requestedPageSize > MaximumHierarchyPageItems)
-                return respond("invalid", {{"message", "page_size must be between 1 and 64"}});
-            pageSize = static_cast<std::size_t>(requestedPageSize);
-        }
-
-        if (!hasCursor)
-        {
-            if (nextInspectionRevision_ == 0)
-                return respond("unavailable", {{"message", "inspection revision space is exhausted"}});
-            std::vector<nlohmann::json> newSnapshot;
-            std::string snapshotError;
-            if (!build_hierarchy_snapshot(*runtime, newSnapshot, snapshotError))
-            {
-                hierarchySnapshot_.clear();
-                hierarchySnapshotRevision_ = 0;
-                nextHierarchyCursor_ = 0;
-                return respond("limit_exceeded", {{"message", std::move(snapshotError)}});
-            }
-            hierarchySnapshot_ = std::move(newSnapshot);
-            hierarchySnapshotRevision_ = nextInspectionRevision_;
-            nextInspectionRevision_ = nextInspectionRevision_ ==
-                    std::numeric_limits<std::uint64_t>::max()
-                ? 0 : nextInspectionRevision_ + 1;
-            nextHierarchyCursor_ = 0;
-            snapshotRevision = hierarchySnapshotRevision_;
-            cursor = 0;
-        }
-        else
-        {
-            if (snapshotRevision == 0 || snapshotRevision != hierarchySnapshotRevision_ ||
-                cursor != nextHierarchyCursor_)
-            {
-                return respond("stale", {{"snapshot_revision", snapshotRevision},
-                                          {"message", "snapshot continuation is expired or out of order"}});
-            }
-            std::vector<nlohmann::json> currentSnapshot;
-            std::string snapshotError;
-            if (!build_hierarchy_snapshot(*runtime, currentSnapshot, snapshotError) ||
-                currentSnapshot != hierarchySnapshot_)
-            {
-                hierarchySnapshot_.clear();
-                hierarchySnapshotRevision_ = 0;
-                nextHierarchyCursor_ = 0;
-                return respond("stale", {{"snapshot_revision", snapshotRevision},
-                                          {"message", snapshotError.empty()
-                                              ? "hierarchy changed during pagination"
-                                              : std::move(snapshotError)}});
-            }
-        }
-
-        if (cursor > hierarchySnapshot_.size())
-            return respond("invalid", {{"snapshot_revision", snapshotRevision},
-                                        {"message", "cursor is beyond the snapshot"}});
-        const std::size_t start = static_cast<std::size_t>(cursor);
-        const std::size_t finish = std::min(start + pageSize, hierarchySnapshot_.size());
-        nlohmann::json objects = nlohmann::json::array();
-        for (std::size_t index = start; index < finish; ++index)
-            objects.push_back(hierarchySnapshot_[index]);
-        const bool hasMore = finish < hierarchySnapshot_.size();
-        nlohmann::json nextCursor = hasMore ? nlohmann::json(finish) : nlohmann::json(nullptr);
-        const bool enqueued = respond("ok", {{"runtime_serial", runtimeSerial},
-                                              {"snapshot_revision", snapshotRevision},
-                                              {"cursor", start}, {"next_cursor", nextCursor},
-                                              {"objects", std::move(objects)}});
-        if (!enqueued)
-            return false;
-        if (hasMore)
-            nextHierarchyCursor_ = finish;
-        else
-        {
-            hierarchySnapshot_.clear();
-            hierarchySnapshotRevision_ = 0;
-            nextHierarchyCursor_ = 0;
-        }
-        return true;
-    }
+        return handle_list_objects(message, runtimeSerial);
     if (message.type == "inspect_object")
-    {
-        if (!inspectionPageGate_.try_begin())
-        {
-            if (!enqueue_inspection_event("inspection_busy",
-                    {{"request_sequence", message.sequence},
-                     {"message", "wait for the outstanding inspection response"}}))
-                return false;
-            return true;
-        }
+        return handle_inspect_object(message, runtimeSerial);
 
-        auto respond = [&](std::string status, nlohmann::json details = nlohmann::json::object()) {
-            details["status"] = std::move(status);
-            details["request_sequence"] = message.sequence;
-            return enqueue_inspection_event("object_snapshot", std::move(details));
-        };
-        if (!capabilities_.runtimeInspection)
-            return respond("unsupported", {{"message", "runtime inspection is not advertised"}});
-        const auto serialValue = message.body.find("runtime_serial");
-        const auto handleValue = message.body.find("handle");
-        std::uint64_t requestedRuntimeSerial = 0;
-        std::uint64_t slot = 0;
-        std::uint64_t generation = 0;
-        if (serialValue == message.body.end() || !read_unsigned(*serialValue, requestedRuntimeSerial) ||
-            handleValue == message.body.end() || !handleValue->is_object() ||
-            !handleValue->contains("slot") || !read_unsigned((*handleValue)["slot"], slot) ||
-            slot > std::numeric_limits<std::uint32_t>::max() ||
-            !handleValue->contains("generation") ||
-            !read_unsigned((*handleValue)["generation"], generation) || generation == 0 ||
-            !handleValue->contains("kind") || !(*handleValue)["kind"].is_string() ||
-            (*handleValue)["kind"].get<std::string>() != "game_object")
-            return respond("invalid", {{"message", "inspect_object requires a game_object handle"}});
-        auto *runtime = platformator::Runtime::tryGetCurrent();
-        if (runtime == nullptr || runtime->getRuntimeSerial() != runtimeSerial ||
-            requestedRuntimeSerial != runtimeSerial)
-            return respond("stale", {{"runtime_serial", runtimeSerial},
-                                      {"message", "request belongs to another Runtime"}});
-
-        const platformator::ObjectHandle handle{static_cast<std::uint32_t>(slot), generation,
-                                                requestedRuntimeSerial};
-        auto *base = runtime->resolveHandle(handle, platformator_detail::ObjectKind::GameObject);
-        auto *object = base == nullptr ? nullptr : static_cast<GameObject *>(base);
-        if (object == nullptr || object->getLifecycle() != ObjectLifecycle::Live)
-            return respond("stale", {{"runtime_serial", runtimeSerial},
-                                      {"handle", handle_json(handle,
-                                          platformator_detail::ObjectKind::GameObject)},
-                                      {"message", "GameObject handle is stale or retired"}});
-
-        const auto position = object->getPosition();
-        const auto &scale = object->getScale();
-        bool nameTruncated = false;
-        bool tagTruncated = false;
-        nlohmann::json parent = nullptr;
-        if (GameObject *parentObject = object->getParent(); parentObject != nullptr &&
-            parentObject->getLifecycle() == ObjectLifecycle::Live)
-            parent = handle_json(parentObject->getHandle(), platformator_detail::ObjectKind::GameObject);
-
-        nlohmann::json children = nlohmann::json::array();
-        const auto &objectChildren = object->getChildren();
-        const std::size_t childCount = std::min(objectChildren.size(), MaximumHierarchyPageItems);
-        for (std::size_t index = 0; index < childCount; ++index)
-        {
-            GameObject *child = objectChildren[index];
-            if (child != nullptr && child->getLifecycle() == ObjectLifecycle::Live)
-                children.push_back(handle_json(child->getHandle(),
-                                               platformator_detail::ObjectKind::GameObject));
-        }
-        nlohmann::json components = nlohmann::json::array();
-        Component *const *objectComponents = object->getComponents();
-        for (std::size_t index = 0; index < COMPONENT_TYPE_COUNT; ++index)
-            if (objectComponents[index] != nullptr &&
-                objectComponents[index]->getLifecycle() == ObjectLifecycle::Live)
-                components.push_back(component_snapshot(*objectComponents[index]));
-
-        nlohmann::json details = nlohmann::json::object();
-        details["runtime_serial"] = runtimeSerial;
-        details["handle"] = handle_json(handle, platformator_detail::ObjectKind::GameObject);
-        details["file_id"] = object->getId();
-        details["name"] = bounded_utf8(object->getName(), MaximumHierarchyNameBytes, nameTruncated);
-        details["name_truncated"] = nameTruncated;
-        details["tag"] = bounded_utf8(object->getTag(), MaximumHierarchyNameBytes, tagTruncated);
-        details["tag_truncated"] = tagTruncated;
-        details["active"] = object->getActive();
-        details["position"] = {{"x", safe_number(position.x())},
-                                {"y", safe_number(position.y())}};
-        details["scale"] = {{"x", safe_number(scale.x())}, {"y", safe_number(scale.y())}};
-        details["rotation"] = safe_number(object->getRotation());
-        details["parent"] = std::move(parent);
-        details["children"] = std::move(children);
-        details["omitted_child_count"] = objectChildren.size() - childCount;
-        details["components"] = std::move(components);
-        return respond("ok", std::move(details));
-    }
     fail("unsupported editor-session command: " + message.type, runtimeSerial);
     return false;
 }
 
 void EditorSessionService::capture_frame(std::uint64_t runtimeSerial, ::SDL_Renderer *renderer,
-                                        int width, int height) noexcept
+                                         int width, int height) noexcept
 {
-    if (!captureVisible_ || !capabilities_.frameStream || failed_ || stopRequested_ ||
-        renderer == nullptr)
+    if (!captureVisible_ || !capabilities_.frameStream || failed_ || stopRequested_ || renderer == nullptr)
         return;
     const auto now = std::chrono::steady_clock::now();
     if (lastFrameCapture_ != std::chrono::steady_clock::time_point{} &&
@@ -1204,7 +589,19 @@ void EditorSessionService::capture_frame(std::uint64_t runtimeSerial, ::SDL_Rend
         }
     if (slotIndex == frameSlotBusy_.size())
         return;
+
+    struct SlotGuard
+    {
+        bool &busy;
+        bool active = true;
+        ~SlotGuard() noexcept
+        {
+            if (active)
+                busy = false;
+        }
+    };
     frameSlotBusy_[slotIndex] = true;
+    SlotGuard slotGuard{frameSlotBusy_[slotIndex]};
 
     int outputWidth = 0;
     int outputHeight = 0;
@@ -1212,42 +609,33 @@ void EditorSessionService::capture_frame(std::uint64_t runtimeSerial, ::SDL_Rend
         !SDL_GetRenderOutputSize(renderer, &outputWidth, &outputHeight) ||
         outputWidth != static_cast<int>(FrameWidth) || outputHeight != static_cast<int>(FrameHeight))
     {
-        frameSlotBusy_[slotIndex] = false;
         fail("session renderer output is not exactly 640x360", runtimeSerial);
         return;
     }
     if (mappingAddress_ == nullptr || mappingBytes_ != FrameMappingBytes || nextFrameSequence_ == 0)
     {
-        frameSlotBusy_[slotIndex] = false;
         fail("session frame mapping or sequence is unavailable", runtimeSerial);
         return;
     }
 
-    SDL_Surface *readback = SDL_RenderReadPixels(renderer, nullptr);
-    if (readback == nullptr)
+    using SurfacePtr = std::unique_ptr<SDL_Surface, decltype(&SDL_DestroySurface)>;
+    SurfacePtr readback(SDL_RenderReadPixels(renderer, nullptr), SDL_DestroySurface);
+    if (!readback)
     {
-        frameSlotBusy_[slotIndex] = false;
         fail(std::string("session frame readback failed: ") + SDL_GetError(), runtimeSerial);
         return;
     }
-    SDL_Surface *rgba = SDL_ConvertSurface(readback, SDL_PIXELFORMAT_RGBA32);
-    SDL_DestroySurface(readback);
-    if (rgba == nullptr || rgba->w != static_cast<int>(FrameWidth) ||
-        rgba->h != static_cast<int>(FrameHeight) || rgba->pitch < static_cast<int>(FrameStride) ||
-        rgba->pixels == nullptr)
+    SurfacePtr rgba(SDL_ConvertSurface(readback.get(), SDL_PIXELFORMAT_RGBA32), SDL_DestroySurface);
+    readback.reset();
+    if (!rgba || rgba->w != static_cast<int>(FrameWidth) || rgba->h != static_cast<int>(FrameHeight) ||
+        rgba->pitch < static_cast<int>(FrameStride) || rgba->pixels == nullptr)
     {
-        if (rgba != nullptr)
-            SDL_DestroySurface(rgba);
-        frameSlotBusy_[slotIndex] = false;
         fail("session readback could not be converted to bounded RGBA8 pixels", runtimeSerial);
         return;
     }
-    if (!SDL_LockSurface(rgba))
+    if (!SDL_LockSurface(rgba.get()))
     {
-        SDL_DestroySurface(rgba);
-        frameSlotBusy_[slotIndex] = false;
-        fail(std::string("session RGBA readback could not be locked: ") + SDL_GetError(),
-             runtimeSerial);
+        fail(std::string("session RGBA readback could not be locked: ") + SDL_GetError(), runtimeSerial);
         return;
     }
 
@@ -1256,8 +644,8 @@ void EditorSessionService::capture_frame(std::uint64_t runtimeSerial, ::SDL_Rend
     for (std::size_t row = 0; row < FrameHeight; ++row)
         std::copy_n(source + row * static_cast<std::size_t>(rgba->pitch), FrameStride,
                     destination + row * FrameStride);
-    SDL_UnlockSurface(rgba);
-    SDL_DestroySurface(rgba);
+    SDL_UnlockSurface(rgba.get());
+    rgba.reset();
     std::atomic_thread_fence(std::memory_order_release);
 
     const std::uint64_t frameSequence = nextFrameSequence_;
@@ -1268,19 +656,18 @@ void EditorSessionService::capture_frame(std::uint64_t runtimeSerial, ::SDL_Rend
                        {"stride", FrameStride}, {"format", "rgba8"}},
         runtimeSerial, false);
     if (!queued)
-    {
-        frameSlotBusy_[slotIndex] = false;
         return;
-    }
+
+    slotGuard.active = false;
     frameSlotSequences_[slotIndex] = frameSequence;
-    nextFrameSequence_ = frameSequence == std::numeric_limits<std::uint64_t>::max()
-        ? 0 : frameSequence + 1;
+    nextFrameSequence_ =
+        frameSequence == std::numeric_limits<std::uint64_t>::max() ? 0 : frameSequence + 1;
     lastFrameCapture_ = now;
     flush_events();
 }
 
 bool EditorSessionService::enqueue_event(std::string type, nlohmann::json body,
-                                        std::uint64_t runtimeSerial, bool reliable)
+                                         std::uint64_t runtimeSerial, bool reliable)
 {
     if (!helloAccepted_ || nextEventSequence_ == 0 || runtimeSerial == 0)
         return false;
@@ -1293,8 +680,8 @@ bool EditorSessionService::enqueue_event(std::string type, nlohmann::json body,
     event.body = std::move(body);
     if (!outgoing_.enqueue(event, reliable))
         return false;
-    nextEventSequence_ = nextEventSequence_ == std::numeric_limits<std::uint64_t>::max()
-        ? 0 : nextEventSequence_ + 1;
+    nextEventSequence_ =
+        nextEventSequence_ == std::numeric_limits<std::uint64_t>::max() ? 0 : nextEventSequence_ + 1;
     return true;
 }
 
@@ -1312,8 +699,8 @@ bool EditorSessionService::flush_events()
             inspectionPageGate_.complete();
             return true;
         }
-        const auto result = write_without_sigpipe(eventWrite_,
-                                                  bytes.first(std::min(remaining, bytes.size())));
+        const auto result =
+            write_without_sigpipe(eventWrite_, bytes.first(std::min(remaining, bytes.size())));
         if (result.status == WriteStatus::WouldBlock ||
             (result.status == WriteStatus::Progress && result.bytes == 0))
             return true;
@@ -1329,8 +716,8 @@ bool EditorSessionService::flush_events()
             continue;
         }
         failed_ = true;
-        lastError_ = result.error.empty()
-            ? "session event channel closed before queued events were delivered" : result.error;
+        lastError_ = result.error.empty() ? "session event channel closed before queued events were delivered"
+                                          : result.error;
         return false;
     }
     if (outgoing_.size() == 0)

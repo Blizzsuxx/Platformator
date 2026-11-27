@@ -103,6 +103,36 @@ Keep builds under `build/`, outside report directories. Retain a compact report,
 
 Historical reports remain historical observations when raw artifacts were deleted. Do not claim their old samples or checksums have been reverified.
 
+## Box2D v3.2.0 upstream workloads
+
+The paired runners use the original [Box2D v3.2.0 scene builders](https://github.com/erincatto/box2d/blob/v3.2.0/shared/benchmarks.c) and their Release populations. Each capture selects one scenario and inherits CPU affinity. The original Box2D CLI is also available as a separate build target called `benchmark`.
+
+| Scenario | Dynamic boxes | Scene details |
+| --- | ---: | --- |
+| `large_pyramid` | 5,050 | A 100-box-wide pyramid on a single box floor. Sleeping is disabled. |
+| `many_pyramids` | 22,000 | A 20 × 20 array of 10-box-wide pyramids. Platformator uses 20 thin box floors with aligned top surfaces in place of Box2D's 20 segments on one body. Sleeping is disabled. |
+| `smash` | 9,601 | A heavy projectile moves toward a packed wall of 9,600 initially sleeping boxes in zero gravity. The first impact is around step 69, so use `--warmup-steps 65` to capture it. |
+
+From the repository root, reuse the pinned checkout if it already exists.
+
+```sh
+git clone --depth 1 --branch v3.2.0 https://github.com/erincatto/box2d.git build/box2d-v3.2.0-src
+cmake --preset benchmark
+cmake --build --preset benchmark --parallel 4 --target platformator_box2d_reference_runner
+cmake -S engine/benchmarks/box2d/upstream -B build/box2d-upstream-reference -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build build/box2d-upstream-reference --parallel 4 --target box2d_upstream_reference_runner
+python3 engine/benchmarks/capture_box2d_upstream.py \
+  --platformator build/benchmark/platformator_box2d_reference_runner \
+  --box2d build/box2d-upstream-reference/box2d_upstream_reference_runner \
+  --scenario large_pyramid --output build/box2d-large-pyramid-pilot
+```
+
+The driver uses 3 fresh processes per engine, 5 warmup steps, 30 measured steps, a 600-second timeout and a 50 MiB output budget. `report.json` records run medians, executable hashes and commands. The run JSON files contain every step duration in nanoseconds and the body, shape and awake counts at each measurement boundary. The coordinator stops on the first failed run and leaves its partial files in place. The [first single-worker pilot](results/box2d-v3.2.0-large-pyramid/report.json) recorded 2.16 ms/step for Box2D and 8.37 ms/step for Platformator on an AMD Ryzen 5 7535HS, pinned to logical CPU 2.
+
+Both runners advance at 60 Hz. Platformator uses 9.81 world units per meter and reflects the Y axis to match the upstream gravity and geometry. The timing wraps the normal headless `Runtime::simulateFrame` call on Platformator and `b2World_Step` on Box2D. Box2D uses its native scheduler, four solver substeps and continuous collision. Platformator uses its native discrete solver and includes runtime bookkeeping. Interpret timings alongside the scene state and solver settings because contact and sleep behavior can diverge.
+
+The other upstream scenes depend on features beyond these ports. `joint_grid`, `rain`, `spinner`, `tumbler`, `washer` and `sleep` exercise joints or motors. `compounds` and `junkyard` require polygon compounds or additional shapes. `queries`, `tree_cast` and `tile_world` exercise shape queries or Box2D's dynamic tree directly. The native `benchmark --list` lists these workloads.
+
 ## GUI editor capture
 
 The editor probe target is `platformator_editor_gui_probe`; the capture driver is `editor/benchmarks/capture_gui.py`. It supports one matched `idle` or `hover` workload and defaults to 3 repetitions, 5 warmup frames, 30 measured frames, 50 MiB and 600 seconds. See the current command template and limitations in [GUI Cleanup Quickstart](../../specs/012-gui-cleanup/quickstart.md#7-focused-gui-evidence-after-correctness). Do not run a comparison without a behavior-equivalent baseline. The previous GUI binary and deleted raw evidence are not available for re-verification, so comparative acceptance remains open until a valid baseline exists.

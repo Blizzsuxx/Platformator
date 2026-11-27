@@ -46,8 +46,23 @@ class EditorSessionService
     std::span<std::byte> frame_mapping() noexcept;
 
   private:
+    struct PendingRequest
+    {
+        editor_session::Message message;
+        std::size_t encodedBytes = 0;
+    };
+
     bool accept_request(editor_session::Message message, std::uint64_t runtimeSerial,
                         ::SDLWindow *window);
+    bool handle_hello_request(editor_session::Message message, std::uint64_t runtimeSerial,
+                              ::SDLWindow *window);
+    bool handle_pause_state_request(const editor_session::Message &message, std::uint64_t runtimeSerial,
+                                    ::SDLWindow *window, bool pause);
+    bool handle_input_request(const editor_session::Message &message, ::SDLWindow *window);
+    bool handle_list_objects(const editor_session::Message &message, std::uint64_t runtimeSerial);
+    bool handle_inspect_object(const editor_session::Message &message, std::uint64_t runtimeSerial);
+    bool enqueue_inspection_event(std::string type, nlohmann::json body, std::uint64_t runtimeSerial);
+    void reset_hierarchy_snapshot() noexcept;
     bool pump_impl(std::uint64_t runtimeSerial, ::SDLWindow *window);
     void capture_frame(std::uint64_t runtimeSerial, ::SDL_Renderer *renderer,
                        int width, int height) noexcept;
@@ -67,7 +82,7 @@ class EditorSessionService
     editor_session::InspectionPageGate inspectionPageGate_;
     editor_session::SessionCapabilities capabilities_;
     editor_session::BoundedQueue outgoing_{editor_session::Direction::Event};
-    std::deque<editor_session::Message> pendingRequests_;
+    std::deque<PendingRequest> pendingRequests_;
     std::size_t pendingRequestBytes_ = 0;
     std::vector<nlohmann::json> hierarchySnapshot_;
     std::uint64_t hierarchySnapshotRevision_ = 0;

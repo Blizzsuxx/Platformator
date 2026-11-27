@@ -562,6 +562,12 @@ void PhysicsManager::processNarrowPhasePair(const ColliderPair *pair)
 
 void PhysicsManager::updateSleepingStates(double timeDelta)
 {
+#if PLATFORMATOR_ENABLE_BENCHMARKS
+    if (benchmarkSleepingDisabled)
+    {
+        return;
+    }
+#endif
     PLATFORMATOR_WORK_ADD(sleepBodies, sleepCandidates.size());
     if (sleepCandidates.empty())
     {

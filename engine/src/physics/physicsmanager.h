@@ -1,5 +1,6 @@
 #pragma once
 
+#include "buildconfig.h"
 #include "platformator/collision.h"
 #include "physics/broadphase/grid.h"
 #include "core/helpers.h"
@@ -69,6 +70,12 @@ public:
 
     const Eigen::Vector2f &getGravityVector() const;
     const Eigen::Vector2f &getGravityVectorNormalized() const;
+#if PLATFORMATOR_ENABLE_BENCHMARKS
+    void disableSleepingForBenchmark()
+    {
+        benchmarkSleepingDisabled = true;
+    }
+#endif
     void refreshSolverPairs(Collider *collider);
     void refreshResponse(Collider *collider);
 
@@ -85,6 +92,9 @@ public:
                                                      bool includeTriggers = false) const;
 
 private:
+#if PLATFORMATOR_ENABLE_BENCHMARKS
+    bool benchmarkSleepingDisabled = false;
+#endif
     template <typename HitCallback>
     bool traverseRayCandidates(const Eigen::Vector2f &origin, const Eigen::Vector2d &dir, float maxDistance,
                                const double &limit, uint64_t collisionMask, bool includeTriggers,

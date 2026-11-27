@@ -1,0 +1,116 @@
+{
+  "scenario": "large_pyramid",
+  "workers": 1,
+  "warmup_steps": 5,
+  "measure_steps": 30,
+  "repetitions": 3,
+  "capture_command": [
+    "engine/benchmarks/capture_box2d_upstream.py",
+    "--platformator",
+    "build/benchmark/platformator_box2d_reference_runner",
+    "--box2d",
+    "build/box2d-upstream-reference/box2d_upstream_reference_runner",
+    "--scenario",
+    "large_pyramid",
+    "--output",
+    "engine/benchmarks/results/box2d-v3.2.0-large-pyramid"
+  ],
+  "commands": {
+    "Box2D v3.2.0": [
+      "/home/user/Projects/Platformator/build/box2d-upstream-reference/box2d_upstream_reference_runner",
+      "--scenario",
+      "large_pyramid",
+      "--workers",
+      "1",
+      "--warmup-steps",
+      "5",
+      "--measure-steps",
+      "30"
+    ],
+    "Platformator": [
+      "/home/user/Projects/Platformator/build/benchmark/platformator_box2d_reference_runner",
+      "--scenario",
+      "large_pyramid",
+      "--workers",
+      "1",
+      "--warmup-steps",
+      "5",
+      "--measure-steps",
+      "30"
+    ]
+  },
+  "sdl_environment": {
+    "SDL_VIDEODRIVER": "dummy",
+    "SDL_AUDIODRIVER": "dummy",
+    "SDL_RENDER_DRIVER": "software"
+  },
+  "system": "Linux-6.12.117-1-MANJARO-x86_64-with-glibc2.44",
+  "cpu_affinity": [
+    2
+  ],
+  "engines": {
+    "Box2D v3.2.0": {
+      "executable_sha256": "1c5520145d0f8ec31f67a78d5527a5b70d4631dd884a731528a965b808d6ecd5",
+      "runs": [
+        {
+          "file": "box2d-1.json",
+          "median_ms": 2.833489
+        },
+        {
+          "file": "box2d-2.json",
+          "median_ms": 2.082885
+        },
+        {
+          "file": "box2d-3.json",
+          "median_ms": 2.16147
+        }
+      ],
+      "identity": {
+        "avx2_available": true,
+        "commit": "178495ba35695aefe9c321e569d2277f06db3b90",
+        "compiler": "GNU 16.2.1",
+        "configuration": "Release",
+        "continuous_collision": true,
+        "double_precision": false,
+        "engine": "Box2D v3.2.0",
+        "scheduler": "native",
+        "sub_steps": 4,
+        "timed_call": "b2World_Step"
+      },
+      "median_of_run_medians_ms": 2.16147
+    },
+    "Platformator": {
+      "executable_sha256": "fb22c5a9558ccbeb576f47f8523263ecd04b3f6fd25a1d414735de1fd3ff3028",
+      "runs": [
+        {
+          "file": "platformator-1.json",
+          "median_ms": 8.3734255
+        },
+        {
+          "file": "platformator-2.json",
+          "median_ms": 8.1430675
+        },
+        {
+          "file": "platformator-3.json",
+          "median_ms": 8.889943
+        }
+      ],
+      "identity": {
+        "commit": "999166b21f1e33a289847c4b35c7a9bfe8ca3318",
+        "compiler": "GNU 16.2.1",
+        "compiler_flags": " -O3 -DNDEBUG",
+        "configuration": "Release",
+        "dirty": true,
+        "engine": "Platformator",
+        "sanitizer": "none",
+        "solver_iterations": 10,
+        "source_sha256": "2e7b7365b9c405253bf6930a21b8eb8e0478d9154ec062a7b8bed9b7b94558f5",
+        "timed_call": "Runtime::simulateFrame",
+        "units_per_meter": 9.809999465942383,
+        "work_probes": false
+      },
+      "median_of_run_medians_ms": 8.3734255
+    }
+  },
+  "cpu_model": "AMD Ryzen 5 7535HS with Radeon Graphics"
+}

@@ -22,9 +22,8 @@ if(NOT PLATFORMATOR_ENABLE_BENCHMARKS)
     list(REMOVE_ITEM PLATFORMATOR_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/benchmark/benchmark.cpp")
 endif()
 if(NOT PLATFORMATOR_ENABLE_EDITOR_SESSION)
-    list(REMOVE_ITEM PLATFORMATOR_SOURCES
-        "${CMAKE_CURRENT_SOURCE_DIR}/src/editor/editorprotocol.cpp"
-        "${CMAKE_CURRENT_SOURCE_DIR}/src/editor/editorsession.cpp")
+    file(GLOB EDITOR_SESSION_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/editor/*.cpp")
+    list(REMOVE_ITEM PLATFORMATOR_SOURCES ${EDITOR_SESSION_SOURCES})
 endif()
 
 configure_file(

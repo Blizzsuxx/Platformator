@@ -23,6 +23,12 @@ foreach(probe platformator_benchmark_runner platformator_transform_setter_probe 
     target_link_libraries(${probe} PRIVATE Platformator::platformator)
     target_include_directories(${probe} PRIVATE "${PLATFORMATOR_ENGINE_DIR}/src" "${PLATFORMATOR_ENGINE_DIR}/tests" "${PLATFORMATOR_ENGINE_BINARY_DIR}/generated")
 endforeach()
+
+add_executable(platformator_box2d_reference_runner box2d/upstream/platformator_runner.cpp)
+target_link_libraries(platformator_box2d_reference_runner PRIVATE Platformator::platformator)
+target_include_directories(platformator_box2d_reference_runner PRIVATE
+    "${PLATFORMATOR_ENGINE_DIR}/src" "${PLATFORMATOR_ENGINE_BINARY_DIR}/generated")
+
 file(COPY "${CMAKE_CURRENT_SOURCE_DIR}/assets/" DESTINATION "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/assets")
 set(PLATFORMATOR_BUILD_BENCHMARK_TESTS ON)
 if(PLATFORMATOR_BUILD_BENCHMARK_TESTS)

@@ -215,11 +215,34 @@ void BoxCollider::generateVertices()
 
 void BoxCollider::updateCollider()
 {
-    publishedHalfWidth = getWidth() * 0.5f;
-    publishedHalfHeight = getHeight() * 0.5f;
-    generateNormals();
-    generateVertices();
-    generateProjections();
+    const GameObject *object = getGameObject();
+    const Eigen::Vector2f &scale = object->getScale();
+    publishedHalfWidth = width * scale.x() * 0.5f;
+    publishedHalfHeight = height * scale.y() * 0.5f;
+
+    const float c = object->getCosRotation();
+    const float s = object->getSinRotation();
+    normals[0] = Eigen::Vector2f(c, s);
+    normals[1] = Eigen::Vector2f(-s, c);
+
+    const Eigen::Vector2f &center = getCachedWorldPosition();
+    const float hxX = c * publishedHalfWidth;
+    const float hxY = s * publishedHalfWidth;
+    const float hyX = -s * publishedHalfHeight;
+    const float hyY = c * publishedHalfHeight;
+
+    // top left, top right, bottom right, bottom left
+    vertices[0] = Eigen::Vector2f(center.x() - hxX - hyX, center.y() - hxY - hyY);
+    vertices[1] = Eigen::Vector2f(center.x() + hxX - hyX, center.y() + hxY - hyY);
+    vertices[2] = Eigen::Vector2f(center.x() + hxX + hyX, center.y() + hxY + hyY);
+    vertices[3] = Eigen::Vector2f(center.x() - hxX + hyX, center.y() - hxY + hyY);
+
+    const float extentX = std::abs(hxX) + std::abs(hyX);
+    const float extentY = std::abs(hxY) + std::abs(hyY);
+    xProjections.getMin()->setProjectedPosition(center.x() - extentX);
+    xProjections.getMax()->setProjectedPosition(center.x() + extentX);
+    yProjections.getMin()->setProjectedPosition(center.y() - extentY);
+    yProjections.getMax()->setProjectedPosition(center.y() + extentY);
 }
 
 Edge BoxCollider::getEdgeWithNormal(const Eigen::Vector2f &normal) const

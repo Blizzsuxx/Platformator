@@ -89,10 +89,17 @@ void Collider::prepareSync()
 void Collider::prepareSyncFromCache()
 {
     const auto *object = getGameObject();
-    cachedWorldPosition =
-        object->worldPosition +
-        Eigen::Vector2f(offset.x() * object->getCosRotation() - offset.y() * object->getSinRotation(),
-                        offset.x() * object->getSinRotation() + offset.y() * object->getCosRotation());
+    if (offset.x() == 0.0f && offset.y() == 0.0f)
+    {
+        cachedWorldPosition = object->worldPosition;
+    }
+    else
+    {
+        const float c = object->getCosRotation();
+        const float s = object->getSinRotation();
+        cachedWorldPosition =
+            object->worldPosition + Eigen::Vector2f(offset.x() * c - offset.y() * s, offset.x() * s + offset.y() * c);
+    }
     updateCollider();
     calculateGridCellRange();
     stateVersion++;

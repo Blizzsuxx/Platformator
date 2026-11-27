@@ -2,9 +2,9 @@
 #include "physics/broadphase/aabb.h"
 
 ColliderPair::ColliderPair(Collider *a, Collider *b)
-    : objectA(nullptr), objectB(nullptr), collision(nullptr), objectAStateVersion(-1), objectBStateVersion(-1),
-      narrowPhaseQueueIndex(SIZE_MAX), adjacencyIndexA(SIZE_MAX),
-      adjacencyIndexB(SIZE_MAX), witnessCount(0)
+    : objectA(nullptr), objectB(nullptr), collisionStorage(), objectAStateVersion(-1), objectBStateVersion(-1),
+      narrowPhaseQueueIndex(SIZE_MAX), adjacencyIndexA(SIZE_MAX), adjacencyIndexB(SIZE_MAX), witnessCount(0),
+      hasCollision(false)
 {
     if (a->getHandle() < b->getHandle())
     {
@@ -16,33 +16,25 @@ ColliderPair::ColliderPair(Collider *a, Collider *b)
         objectA = b;
         objectB = a;
     }
-    collision = nullptr;
 }
 
-ColliderPair::~ColliderPair()
-{
-    delete collision;
-}
+ColliderPair::~ColliderPair() = default;
 
 Collision *ColliderPair::getOrCreateCollisionNoEvent() const
 {
-    if (collision == nullptr)
+    if (!hasCollision)
     {
-        collision = new Collision(objectA, objectB);
+        collisionStorage = Collision(objectA, objectB);
+        hasCollision = true;
     }
 
     updateCachedCollisionVersions();
 
-    return collision;
+    return &collisionStorage;
 }
 
 void ColliderPair::clearCollisionNoEvent() const
 {
-    if (collision != nullptr)
-    {
-        delete collision;
-        collision = nullptr;
-    }
-
+    hasCollision = false;
     updateCachedCollisionVersions();
 }

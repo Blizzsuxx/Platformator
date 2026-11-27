@@ -1,7 +1,6 @@
 #pragma once
 
 #include <cstddef>
-#include <cstdint>
 #include <vector>
 
 #include "core/flathash.h"
@@ -9,8 +8,6 @@
 #include "core/flatset.h"
 #include "core/slotpool.h"
 #include "physics/broadphase/segmentedintervallist.h"
-#include "physics/colliderpair.h"
-#include "physics/collision.h"
 #include "platformator/collider.h"
 
 class Grid;

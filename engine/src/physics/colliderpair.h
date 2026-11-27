@@ -17,7 +17,7 @@ class ColliderPair
 
     Collision *getCollision() const
     {
-        return collision;
+        return hasCollision ? &collisionStorage : nullptr;
     }
     Collision *getOrCreateCollisionNoEvent() const;
 
@@ -101,7 +101,7 @@ class ColliderPair
     Collider *objectA;
     Collider *objectB;
 
-    mutable Collision *collision;
+    mutable Collision collisionStorage;
     mutable uint64_t objectAStateVersion;
     mutable uint64_t objectBStateVersion;
     mutable size_t narrowPhaseQueueIndex;
@@ -110,6 +110,7 @@ class ColliderPair
     mutable int witnessCount;
     mutable size_t contactIndex = SIZE_MAX;
     mutable size_t solverIndex = SIZE_MAX;
+    mutable bool hasCollision = false;
     mutable bool resultHadContact = false;
 #if PLATFORMATOR_ENABLE_WORK_PROBES
     mutable bool resultTestedGeometry = false;

@@ -324,7 +324,10 @@ uint8_t Rigidbody::integrateLocal(double timeDelta)
     }
     if (rotated)
     {
-        object->rotation = std::fmod(object->rotation + angularVelocity * timeDelta, 2.0 * std::numbers::pi);
+        constexpr double twoPi = 2.0 * std::numbers::pi;
+        const double nextRotation = static_cast<double>(object->rotation) + static_cast<double>(angularVelocity) * timeDelta;
+        object->rotation =
+            static_cast<float>((nextRotation > -twoPi && nextRotation < twoPi) ? nextRotation : std::fmod(nextRotation, twoPi));
         object->sinRotation = std::sin(object->rotation);
         object->cosRotation = std::cos(object->rotation);
     }

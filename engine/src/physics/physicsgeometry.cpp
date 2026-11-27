@@ -7,14 +7,13 @@
 #include "platformator/circlecollider.h"
 #include <cmath>
 #include <limits>
-#include <span>
 
 namespace physics_geometry
 {
 namespace
 {
 // Circle dispatch builds its own manifold; clipping below is exclusively box/box.
-void calculateBoxContactPoints(Collision *collision);
+void calculateBoxContactPoints(Collision *collision, const BoxCollider *referenceBox, const BoxCollider *incidentBox);
 
 void generateFallbackContactPoint(Collision *collision)
 {
@@ -67,7 +66,7 @@ void circleBoxCollision(const ColliderPair &pair, const Eigen::Vector2f &gravity
     const auto &axes = box->getAxes();
     const Eigen::Vector2f delta = circle->getCachedWorldPosition() - box->getCachedWorldPosition();
     const Eigen::Vector2f local(delta.dot(axes[0]), delta.dot(axes[1]));
-    const Eigen::Vector2f half(box->getWidth() * 0.5f, box->getHeight() * 0.5f);
+    const Eigen::Vector2f half(box->getPublishedHalfWidth(), box->getPublishedHalfHeight());
     const Eigen::Vector2f closest = local.cwiseMax(-half).cwiseMin(half);
     const Eigen::Vector2f gap = local - closest;
     const float radius = circle->getRadius(), squared = gap.squaredNorm();
@@ -110,96 +109,159 @@ void circleBoxCollision(const ColliderPair &pair, const Eigen::Vector2f &gravity
     collision->updateSupportState(gravityDirection);
 }
 
-bool checkProjections(std::span<const Eigen::Vector2f> normals, const Collider *referenceCollider,
-                      const Collider *incidentCollider, float &minOverlap, Eigen::Vector2f &minNormal,
-                      const Collider *&realIncidentCollider)
+inline Edge boxEdgeAndUnitTangent(const BoxCollider *box, const Eigen::Vector2f &normal,
+                                  Eigen::Vector2f &outTangent) noexcept
 {
-    for (long unsigned int i = 0; i < normals.size(); i++)
-    {
-        const Eigen::Vector2f &normal = normals[i];
-        Eigen::Vector2f projections1 = referenceCollider->projectOntoAxis(
-            normal); // we are using the index on the owner of the normal to further optimize projection
-        Eigen::Vector2f projections2 = incidentCollider->projectOntoAxis(
-            normal); // TODO: see if it's better to approximate from the perspective of the incident or reference object
+    const auto &axes = box->getAxes();
+    const auto &verts = box->getVertices();
+    const float projX = normal.dot(axes[0]);
+    const float projY = normal.dot(axes[1]);
 
-        if (projections1.y() < projections2.x() || projections2.y() < projections1.x())
+    if (std::abs(projX) > std::abs(projY))
+    {
+        if (projX > 0.0f)
         {
-            return false;
+            outTangent = axes[1];
+            return Edge(verts[1], verts[1], verts[2], EDGE4);
         }
-        else
-        {
-            float overlap = std::min(projections1.y() - projections2.x(), projections2.y() - projections1.x());
-            if (overlap < minOverlap &&
-                (realIncidentCollider == incidentCollider || overlap < minOverlap * 0.98f - 0.001f))
-            {
-                minOverlap = overlap;
-                minNormal = normal;
-                realIncidentCollider = incidentCollider;
-            }
-        }
+        outTangent = -axes[1];
+        return Edge(verts[3], verts[3], verts[0], EDGE2);
     }
 
-    return true;
+    if (projY > 0.0f)
+    {
+        outTangent = -axes[0];
+        return Edge(verts[2], verts[2], verts[3], EDGE3);
+    }
+    outTangent = axes[0];
+    return Edge(verts[0], verts[0], verts[1], EDGE1);
+}
+
+inline Edge boxEdgeWithNormal(const BoxCollider *box, const Eigen::Vector2f &normal) noexcept
+{
+    const auto &axes = box->getAxes();
+    const auto &verts = box->getVertices();
+    const float projX = normal.dot(axes[0]);
+    const float projY = normal.dot(axes[1]);
+
+    if (std::abs(projX) > std::abs(projY))
+    {
+        if (projX > 0.0f)
+        {
+            return Edge(verts[1], verts[1], verts[2], EDGE4);
+        }
+        return Edge(verts[3], verts[3], verts[0], EDGE2);
+    }
+
+    if (projY > 0.0f)
+    {
+        return Edge(verts[2], verts[2], verts[3], EDGE3);
+    }
+    return Edge(verts[0], verts[0], verts[1], EDGE1);
 }
 } // namespace
 
 void updateContactGeometry(const ColliderPair &pair, const Eigen::Vector2f &gravityDirection)
 {
-    const Collider *referenceCollider = pair.getObjectA();
-    const Collider *incidentCollider = pair.getObjectB();
-    if (referenceCollider->getColliderType() == ColliderType::CircleCollider &&
-        incidentCollider->getColliderType() == ColliderType::CircleCollider)
+    const Collider *colliderA = pair.getObjectA();
+    const Collider *colliderB = pair.getObjectB();
+    const ColliderType typeA = colliderA->getColliderType();
+    const ColliderType typeB = colliderB->getColliderType();
+
+    if (typeA != ColliderType::BoxCollider || typeB != ColliderType::BoxCollider)
     {
-        circleCircleCollision(pair, gravityDirection);
-        return;
-    }
-    if (referenceCollider->getColliderType() == ColliderType::CircleCollider ||
-        incidentCollider->getColliderType() == ColliderType::CircleCollider)
-    {
-        circleBoxCollision(pair, gravityDirection);
+        if (typeA == ColliderType::CircleCollider && typeB == ColliderType::CircleCollider)
+        {
+            circleCircleCollision(pair, gravityDirection);
+        }
+        else
+        {
+            circleBoxCollision(pair, gravityDirection);
+        }
         return;
     }
 
-    float minOverlap = std::numeric_limits<float>::max();
-    Eigen::Vector2f minNormal;
-    const Collider *realIncidentCollider = incidentCollider;
+    // Analytical 2D OBB SAT: avoids virtual projectOntoAxis calls and 4-vertex projection loops.
+    const auto *boxA = static_cast<const BoxCollider *>(colliderA);
+    const auto *boxB = static_cast<const BoxCollider *>(colliderB);
+    const auto &axesA = boxA->getAxes();
+    const auto &axesB = boxB->getAxes();
+    const float hAx = boxA->getPublishedHalfWidth();
+    const float hAy = boxA->getPublishedHalfHeight();
+    const float hBx = boxB->getPublishedHalfWidth();
+    const float hBy = boxB->getPublishedHalfHeight();
 
-    std::span<const Eigen::Vector2f> normals = static_cast<const BoxCollider *>(referenceCollider)->getAxes();
-    if (checkProjections(normals, referenceCollider, incidentCollider, minOverlap, minNormal, realIncidentCollider) ==
-        false)
+    const Eigen::Vector2f delta = boxB->getCachedWorldPosition() - boxA->getCachedWorldPosition();
+
+    const float absR00 = std::abs(axesA[0].dot(axesB[0]));
+    const float absR01 = std::abs(axesA[0].dot(axesB[1]));
+    const float distA0 = delta.dot(axesA[0]);
+    const float overlapA0 = (hAx + hBx * absR00 + hBy * absR01) - std::abs(distA0);
+    if (overlapA0 < 0.0f)
     {
         pair.clearCollisionNoEvent();
         return;
     }
 
-    normals = static_cast<const BoxCollider *>(incidentCollider)->getAxes();
-
-    if (checkProjections(normals, incidentCollider, referenceCollider, minOverlap, minNormal, realIncidentCollider) ==
-        false)
+    const float absR10 = std::abs(axesA[1].dot(axesB[0]));
+    const float absR11 = std::abs(axesA[1].dot(axesB[1]));
+    const float distA1 = delta.dot(axesA[1]);
+    const float overlapA1 = (hAy + hBx * absR10 + hBy * absR11) - std::abs(distA1);
+    if (overlapA1 < 0.0f)
     {
         pair.clearCollisionNoEvent();
         return;
     }
+
+    const float distB0 = delta.dot(axesB[0]);
+    const float overlapB0 = (hBx + hAx * absR00 + hAy * absR10) - std::abs(distB0);
+    if (overlapB0 < 0.0f)
+    {
+        pair.clearCollisionNoEvent();
+        return;
+    }
+
+    const float distB1 = delta.dot(axesB[1]);
+    const float overlapB1 = (hBy + hAx * absR01 + hAy * absR11) - std::abs(distB1);
+    if (overlapB1 < 0.0f)
+    {
+        pair.clearCollisionNoEvent();
+        return;
+    }
+
+    float minOverlap = overlapA0;
+    Eigen::Vector2f minNormal = distA0 < 0.0f ? (-axesA[0]).eval() : axesA[0];
+    bool swapped = false;
+
+    if (overlapA1 < minOverlap)
+    {
+        minOverlap = overlapA1;
+        minNormal = distA1 < 0.0f ? (-axesA[1]).eval() : axesA[1];
+    }
+
+    if (overlapB0 < minOverlap && overlapB0 < minOverlap * 0.98f - 0.001f)
+    {
+        minOverlap = overlapB0;
+        minNormal = distB0 > 0.0f ? (-axesB[0]).eval() : axesB[0];
+        swapped = true;
+    }
+
+    if (overlapB1 < minOverlap && (swapped || overlapB1 < minOverlap * 0.98f - 0.001f))
+    {
+        minNormal = distB1 > 0.0f ? (-axesB[1]).eval() : axesB[1];
+        swapped = true;
+    }
+
+    const BoxCollider *referenceBox = swapped ? boxB : boxA;
+    const BoxCollider *incidentBox = swapped ? boxA : boxB;
 
     Collision *collision = pair.getOrCreateCollisionNoEvent();
-
     collision->clearSupportState();
-
-    collision->setIncidentObject(realIncidentCollider);
-    collision->setReferenceObject(realIncidentCollider == incidentCollider ? referenceCollider : incidentCollider);
-
-    // Ensure the normal points from reference toward incident
-    Eigen::Vector2f directionVector = collision->getIncidentObject()->getCachedWorldPosition() -
-                                      collision->getReferenceObject()->getCachedWorldPosition();
-    if (minNormal.dot(directionVector) < 0)
-    {
-        minNormal = -minNormal;
-    }
-
-    // Store the corrected normal
+    collision->setIncidentObject(incidentBox);
+    collision->setReferenceObject(referenceBox);
     collision->setNormal(minNormal);
 
-    calculateBoxContactPoints(collision);
+    calculateBoxContactPoints(collision, referenceBox, incidentBox);
     // Float SAT can round a sub-ulp separating gap to overlap. Clipping must
     // produce an actual manifold before this pair contributes events or support.
     if (!collision->getContactPoints().count)
@@ -212,21 +274,15 @@ void updateContactGeometry(const ColliderPair &pair, const Eigen::Vector2f &grav
 
 namespace
 {
-void calculateBoxContactPoints(Collision *collision)
+void calculateBoxContactPoints(Collision *collision, const BoxCollider *referenceBox, const BoxCollider *incidentBox)
 {
-    const Collider *referenceCollider = collision->getReferenceObject();
-    const Collider *incidentCollider = collision->getIncidentObject();
     const Eigen::Vector2f &normal = collision->getNormal();
 
-    const Edge referenceEdge = referenceCollider->getEdgeWithNormal(normal);
-    const Edge incidentEdge = incidentCollider->getEdgeWithNormal(-normal);
-
-    // the edge vector
-    Eigen::Vector2f referenceEdgeVector = referenceEdge.getEdgeVector();
-    referenceEdgeVector.normalize();
+    Eigen::Vector2f referenceEdgeVector;
+    const Edge referenceEdge = boxEdgeAndUnitTangent(referenceBox, normal, referenceEdgeVector);
+    const Edge incidentEdge = boxEdgeWithNormal(incidentBox, -normal);
 
     ClipVertex incidentVertices[2];
-
     incidentVertices[0] = ClipVertex(
         incidentEdge.v1, makeContactFeature(NO_EDGE, NO_EDGE, getStartVertexAdjacentEdge(incidentEdge.edgeNumber),
                                             incidentEdge.edgeNumber));
@@ -237,7 +293,7 @@ void calculateBoxContactPoints(Collision *collision)
     ClipVertex clippedVertices1[2];
     ClipVertex clippedVertices2[2];
 
-    double o1 = referenceEdgeVector.dot(referenceEdge.v1);
+    const float o1 = referenceEdgeVector.dot(referenceEdge.v1);
     int clippedCount = clipSegmentToLine(clippedVertices1, incidentVertices, referenceEdgeVector, o1,
                                          getStartVertexAdjacentEdge(referenceEdge.edgeNumber));
     if (clippedCount < 2)
@@ -247,11 +303,8 @@ void calculateBoxContactPoints(Collision *collision)
         return;
     }
 
-    // clip whats left of the incident edge by the
-    // second vertex of the reference edge
-    // but we need to clip in the opposite direction
-    // so we flip the direction and offset
-    double o2 = referenceEdgeVector.dot(referenceEdge.v2);
+    // Clip what's left of the incident edge by the second vertex of the reference edge.
+    const float o2 = referenceEdgeVector.dot(referenceEdge.v2);
     clippedCount = clipSegmentToLine(clippedVertices2, clippedVertices1, -referenceEdgeVector, -o2,
                                      getEndVertexAdjacentEdge(referenceEdge.edgeNumber));
     if (clippedCount < 2)
@@ -261,14 +314,16 @@ void calculateBoxContactPoints(Collision *collision)
         return;
     }
 
-    double max = normal.dot(referenceEdge.max);
+    const float max = normal.dot(referenceEdge.max);
 
     ClipPoints cp;
+    float separations[2];
     for (int i = 0; i < clippedCount; ++i)
     {
-        float separation = normal.dot(clippedVertices2[i].point) - max;
+        const float separation = normal.dot(clippedVertices2[i].point) - max;
         if (separation <= 0.0f)
         {
+            separations[cp.count] = separation;
             cp.add(clippedVertices2[i]);
         }
     }
@@ -278,8 +333,7 @@ void calculateBoxContactPoints(Collision *collision)
     ClipPointsWithData &contactPoints = collision->getContactPoints();
     for (size_t i = 0; i < contactPoints.count; i++)
     {
-        float separation = normal.dot(cp.points[i].point) - max;
-        contactPoints.points[i].separation = separation;
+        contactPoints.points[i].separation = separations[i];
     }
 }
 } // namespace

@@ -8,6 +8,7 @@
 #include "oneapi/tbb.h"
 #include "platformator/boxcollider.h"
 #include "platformator/circlecollider.h"
+#include "platformator/sprite.h"
 #include "core/runtimeaccess.h"
 #include "benchmark/workprobe.h"
 
@@ -59,6 +60,13 @@ void PhysicsManager::applyMovement(double timeDelta)
     {
         return;
     }
+
+    constexpr uint8_t FLAG_TRANSLATED = 1 << 0;
+    constexpr uint8_t FLAG_ROTATED = 1 << 1;
+    constexpr uint8_t FLAG_FAST_ROOT_LEAF = 1 << 2;
+    constexpr uint8_t FLAG_NEED_PUBLISH = 1 << 3;
+    constexpr uint8_t FLAG_HAS_SPRITE = 1 << 4;
+
     auto &manager = platformator_detail::RuntimeAccess::gameManager();
     const auto publishMoved = [&](GameObject *object, bool translated, bool rotated) {
         const bool handledBySubtreeSync =
@@ -74,39 +82,128 @@ void PhysicsManager::applyMovement(double timeDelta)
             manager.queueTransform(object, false);
         }
     };
+
+    const auto integrateAndClassify = [&](Rigidbody *body, Collider *&outFastCollider) -> uint8_t {
+        outFastCollider = nullptr;
+        const uint8_t changes = body->integrateLocal(timeDelta);
+        if (changes == 0)
+        {
+            return 0;
+        }
+        GameObject *object = body->getGameObject();
+        if (object->parent == nullptr && object->children.empty() && object->transformQueueIndex == SIZE_MAX)
+        {
+            const bool translated = (changes & FLAG_TRANSLATED) != 0;
+            const bool rotated = (changes & FLAG_ROTATED) != 0;
+            bool worldChanged = false;
+            if (translated)
+            {
+                worldChanged = object->worldPosition != object->position;
+                object->worldPosition = object->position;
+                object->immediateWorldPosition = object->position;
+            }
+            uint8_t flags = static_cast<uint8_t>(changes | FLAG_FAST_ROOT_LEAF);
+            if (worldChanged || rotated)
+            {
+                flags |= FLAG_NEED_PUBLISH;
+                if (object->getComponent<Sprite>() != nullptr)
+                {
+                    flags |= FLAG_HAS_SPRITE;
+                }
+                if (auto *collider = object->getComponent<Collider>())
+                {
+                    collider->dirty |= Collider::Geometry;
+                    if (collider->getIsRegisteredInPhysicsManager())
+                    {
+                        outFastCollider = collider;
+                    }
+                }
+            }
+            return flags;
+        }
+        return changes;
+    };
+
     if (totalMoving < BODY_INTEGRATION_PARALLEL_THRESHOLD)
     {
+        const auto processOne = [&](Rigidbody *body) {
+            Collider *fastCollider = nullptr;
+            const uint8_t flags = integrateAndClassify(body, fastCollider);
+            if (flags == 0)
+            {
+                return;
+            }
+            if ((flags & FLAG_FAST_ROOT_LEAF) != 0)
+            {
+                if ((flags & FLAG_TRANSLATED) != 0)
+                {
+                    PLATFORMATOR_WORK_ADD(transformVisits, 1);
+                }
+                if ((flags & FLAG_NEED_PUBLISH) != 0)
+                {
+                    if ((flags & FLAG_HAS_SPRITE) != 0)
+                    {
+                        manager.publishRenderGeometryChange(body->getGameObject());
+                    }
+                    if (fastCollider != nullptr)
+                    {
+                        PLATFORMATOR_WORK_ADD(colliderSyncRequests, 1);
+                        grid.queueSyncCollider(fastCollider);
+                    }
+                }
+                return;
+            }
+            publishMoved(body->getGameObject(), (flags & FLAG_TRANSLATED) != 0, (flags & FLAG_ROTATED) != 0);
+        };
         for (auto *body : awakeDynamicBodies)
         {
-            if (const auto changes = body->integrateLocal(timeDelta))
-            {
-                publishMoved(body->getGameObject(), (changes & 1) != 0, (changes & 2) != 0);
-            }
+            processOne(body);
         }
         for (auto *body : movingKinematicBodies)
         {
-            if (const auto changes = body->integrateLocal(timeDelta))
-            {
-                publishMoved(body->getGameObject(), (changes & 1) != 0, (changes & 2) != 0);
-            }
+            processOne(body);
         }
         return;
     }
+
     movedBodyChanges.resize(totalMoving);
+    movedFastColliders.resize(totalMoving);
+    const size_t awakeCount = awakeDynamicBodies.size();
     tbb::parallel_for(size_t(0), totalMoving, [&](size_t i) {
-        auto *body =
-            i < awakeDynamicBodies.size() ? awakeDynamicBodies[i] : movingKinematicBodies[i - awakeDynamicBodies.size()];
-        movedBodyChanges[i] = static_cast<uint8_t>(body->integrateLocal(timeDelta));
+        auto *body = i < awakeCount ? awakeDynamicBodies[i] : movingKinematicBodies[i - awakeCount];
+        movedBodyChanges[i] = integrateAndClassify(body, movedFastColliders[i]);
     });
+
     for (size_t i = 0; i < totalMoving; ++i)
     {
-        const uint8_t changes = movedBodyChanges[i];
-        if (changes != 0)
+        const uint8_t flags = movedBodyChanges[i];
+        if (flags == 0)
         {
-            auto *body = i < awakeDynamicBodies.size() ? awakeDynamicBodies[i]
-                                                       : movingKinematicBodies[i - awakeDynamicBodies.size()];
-            publishMoved(body->getGameObject(), (changes & 1) != 0, (changes & 2) != 0);
+            continue;
         }
+        if ((flags & FLAG_FAST_ROOT_LEAF) != 0)
+        {
+            if ((flags & FLAG_TRANSLATED) != 0)
+            {
+                PLATFORMATOR_WORK_ADD(transformVisits, 1);
+            }
+            if ((flags & FLAG_NEED_PUBLISH) != 0)
+            {
+                if ((flags & FLAG_HAS_SPRITE) != 0)
+                {
+                    auto *body = i < awakeCount ? awakeDynamicBodies[i] : movingKinematicBodies[i - awakeCount];
+                    manager.publishRenderGeometryChange(body->getGameObject());
+                }
+                if (Collider *fastCollider = movedFastColliders[i])
+                {
+                    PLATFORMATOR_WORK_ADD(colliderSyncRequests, 1);
+                    grid.queueSyncCollider(fastCollider);
+                }
+            }
+            continue;
+        }
+        auto *body = i < awakeCount ? awakeDynamicBodies[i] : movingKinematicBodies[i - awakeCount];
+        publishMoved(body->getGameObject(), (flags & FLAG_TRANSLATED) != 0, (flags & FLAG_ROTATED) != 0);
     }
 }
 
@@ -263,6 +360,7 @@ void PhysicsManager::clearAll()
     supportDeltaBodies.clear();
     pendingPhysicsEvents.clear();
     movedBodyChanges.clear();
+    movedFastColliders.clear();
     grid.clearAll();
 }
 
@@ -294,6 +392,7 @@ void PhysicsManager::narrowPhase()
                           { processNarrowPhasePair(pendingPairs[i]); });
     }
 
+    const bool noPendingBodyChanges = pendingBodyChanges.empty();
     for (auto *pair : pendingPairs)
     {
         PLATFORMATOR_WORK_ADD(geometryPairs, pair->resultTestedGeometry ? 1 : 0);
@@ -305,12 +404,34 @@ void PhysicsManager::narrowPhase()
             const auto type = hasContact ? PhysicsEvent::COLLISION_ENTER : PhysicsEvent::COLLISION_EXIT;
             addPendingPhysicsEvent(makePhysicsEvent(type, pair, collision));
         }
-        else if (pair->solverIndex == SIZE_MAX && !pair->contributedSupportBodyA && !pair->contributedSupportBodyB &&
-                 (pair->contactIndex != SIZE_MAX) == hasContact)
+        else if (!hasContact && pair->solverIndex == SIZE_MAX && !pair->contributedSupportBodyA &&
+                 !pair->contributedSupportBodyB && pair->contactIndex == SIZE_MAX)
         {
-            // A surviving trigger is already live after the geometry pass and can neither support nor solve.
-            if (!hasContact || pair->getObjectA()->getIsTrigger() || pair->getObjectB()->getIsTrigger())
+            continue;
+        }
+        else if (hasContact && pair->contactIndex != SIZE_MAX)
+        {
+            if (pair->solverIndex == SIZE_MAX && !pair->contributedSupportBodyA && !pair->contributedSupportBodyB &&
+                (pair->getObjectA()->getIsTrigger() || pair->getObjectB()->getIsTrigger()))
+            {
+                // A surviving trigger is already live after the geometry pass and can neither support nor solve.
                 continue;
+            }
+            if (noPendingBodyChanges && pair->solverIndex != SIZE_MAX)
+            {
+                const bool referenceIsA = collision->getReferenceObject() == pair->getObjectA();
+                const bool supportsA =
+                    (collision->supportState &
+                     (referenceIsA ? Collision::SUPPORTS_REFERENCE : Collision::SUPPORTS_INCIDENT)) != 0;
+                const bool supportsB =
+                    (collision->supportState &
+                     (referenceIsA ? Collision::SUPPORTS_INCIDENT : Collision::SUPPORTS_REFERENCE)) != 0;
+                if ((pair->contributedSupportBodyA != nullptr) == supportsA &&
+                    (pair->contributedSupportBodyB != nullptr) == supportsB)
+                {
+                    continue;
+                }
+            }
         }
 
         reconcilePairSupport(pair);

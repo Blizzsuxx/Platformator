@@ -121,20 +121,42 @@ private:
     size_t countAwakeDynamicBodies() const;
 #endif
 
+    struct SolverBodyState
+    {
+        Eigen::Vector2f velocity = Eigen::Vector2f::Zero();
+        float angularVelocity = 0.0f;
+        float inverseMass = 0.0f;
+        float inverseMomentOfInertia = 0.0f;
+    };
+
     struct SolverConstraint
     {
         Rigidbody *rbA = nullptr;
         Rigidbody *rbB = nullptr;
         ClipPointsWithData *contactPoints = nullptr;
+        uint32_t bodyIndexA = 0;
+        uint32_t bodyIndexB = 0;
         Eigen::Vector2f normal = Eigen::Vector2f::Zero();
         Eigen::Vector2f tangent = Eigen::Vector2f::Zero();
         Eigen::Vector2f rA[2] = {Eigen::Vector2f::Zero(), Eigen::Vector2f::Zero()};
         Eigen::Vector2f rB[2] = {Eigen::Vector2f::Zero(), Eigen::Vector2f::Zero()};
+        float massNormal[2] = {0.0f, 0.0f};
+        float massTangent[2] = {0.0f, 0.0f};
+        float bias[2] = {0.0f, 0.0f};
+        float accumulatedNormalImpulse[2] = {0.0f, 0.0f};
+        float accumulatedTangentImpulse[2] = {0.0f, 0.0f};
         Eigen::Matrix2f normalK = Eigen::Matrix2f::Zero();
         Eigen::Matrix2f normalMass = Eigen::Matrix2f::Zero();
         float solverFriction = 0.0f;
         uint8_t pointCount = 0;
         bool blockSolve = false;
+    };
+
+    struct IslandSolverScratch
+    {
+        std::vector<SolverConstraint> constraints;
+        std::vector<SolverBodyState> bodies;
+        std::vector<std::pair<size_t, Rigidbody *>> writableBodies;
     };
 
     struct SolverPreStepJob
@@ -146,15 +168,16 @@ private:
 
     void prepareSolverConstraint(const SolverPreStepJob &job, float inverseTimeDelta,
                                  SolverConstraint &outConstraint) const;
-    void applyWarmStart(const SolverConstraint &constraint);
+    static void applyWarmStart(const SolverConstraint &constraint, SolverBodyState &bodyA, SolverBodyState &bodyB) noexcept;
+    static void resolveCollision(SolverConstraint &constraint, SolverBodyState &bodyA, SolverBodyState &bodyB) noexcept;
+    static void storeConstraintImpulses(const SolverConstraint &constraint) noexcept;
     void solveConstraintIterations();
     void solveConstraintsSerial();
     bool prepareSolverIslands();
     void solveIslands();
     bool prepareOrderedSolverBatches();
     void solveOrderedBatches();
-    void resolveCollision(const SolverConstraint &constraint);
-    void resolveKinematicCollision(const Collision *collision);
+    void resolveKinematicCollision(const Collision *collision, Rigidbody *rbA, Rigidbody *rbB);
     void resolveKinematicBodyAgainstNormal(Rigidbody *rigidBody, const Eigen::Vector2f &approachNormal,
                                            float correctionDistance);
     PhysicsEvent makePhysicsEvent(PhysicsEvent::EventType type, const ColliderPair *pair,
@@ -165,7 +188,11 @@ private:
     std::vector<Collider *> colliderComponents;
     std::vector<SolverPreStepJob> solverPreStepJobs;
     std::vector<SolverConstraint> solverConstraints;
-    tbb::enumerable_thread_specific<std::vector<SolverConstraint>> solverIslandLocalConstraints;
+    std::vector<uint32_t> solverBodyLocalIndices;
+    std::vector<SolverBodyState> solverBodyStates;
+    std::vector<std::pair<size_t, Rigidbody *>> solverTouchedWritableBodies;
+    IslandSolverScratch serialSolverScratch;
+    tbb::enumerable_thread_specific<IslandSolverScratch> solverIslandScratch;
 
     struct SolverBodyNode
     {
@@ -191,6 +218,7 @@ private:
     std::vector<PhysicsEvent> pendingPhysicsEvents;
 
     std::vector<uint8_t> movedBodyChanges;
+    std::vector<Collider *> movedFastColliders;
     Grid grid;
 
     Eigen::Vector2f gravityVector;

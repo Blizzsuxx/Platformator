@@ -116,7 +116,11 @@ void buildRigidBodyContainer(b2World &world, const Options &opts, WorldStats &st
     const int circleCount = opts.count - boxCount;
     const float cellSize = boxSize + cellPadding;
     const float usableW = std::max(minW - 2.0f * spawnMargin, cellSize);
-    const size_t cols = std::max<size_t>(1, static_cast<size_t>(usableW / cellSize));
+    const size_t minCols = std::max<size_t>(1, static_cast<size_t>(usableW / cellSize));
+    const double aspectRatio = static_cast<double>(minW) / static_cast<double>(minH);
+    const size_t scaledCols = std::max<size_t>(
+        1, static_cast<size_t>(std::ceil(std::sqrt(static_cast<double>(opts.count) * aspectRatio))));
+    const size_t cols = std::max(minCols, scaledCols);
     const size_t rows = std::max<size_t>(1, (static_cast<size_t>(opts.count) + cols - 1) / cols);
     const float interiorW = std::max(minW, static_cast<float>(cols) * cellSize + 2.0f * spawnMargin);
     const float interiorH = std::max(minH, static_cast<float>(rows) * cellSize + 2.0f * spawnMargin);

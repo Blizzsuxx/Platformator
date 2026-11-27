@@ -87,7 +87,10 @@ func _calculate_layout() -> void:
 	var max_body_extent := maxf(maxf(BOX_SIZE.x, BOX_SIZE.y), CIRCLE_RADIUS * 2.0)
 	_cell_size = max_body_extent + CELL_PADDING
 	var usable_width := maxf(MINIMUM_INTERIOR_WIDTH - 2.0 * SPAWN_MARGIN, _cell_size)
-	_column_count = maxi(1, int(floor(usable_width / _cell_size)))
+	var min_column_count := maxi(1, int(floor(usable_width / _cell_size)))
+	var aspect_ratio := MINIMUM_INTERIOR_WIDTH / MINIMUM_INTERIOR_HEIGHT
+	var scaled_column_count := maxi(1, int(ceil(sqrt(float(_spawned_body_total) * aspect_ratio))))
+	_column_count = maxi(min_column_count, scaled_column_count)
 	var row_count := maxi(1, int(ceil(float(_spawned_body_total) / float(_column_count))))
 	var interior_width := maxf(MINIMUM_INTERIOR_WIDTH, float(_column_count) * _cell_size + 2.0 * SPAWN_MARGIN)
 	var interior_height := maxf(MINIMUM_INTERIOR_HEIGHT, float(row_count) * _cell_size + 2.0 * SPAWN_MARGIN)

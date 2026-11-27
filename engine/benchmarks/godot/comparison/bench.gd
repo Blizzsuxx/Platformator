@@ -207,7 +207,10 @@ func _build_rigid_body_container() -> void:
 	var circle_count := count - box_count
 	var cell_size := 28.0 + CELL_PADDING
 	var usable_w := maxf(MIN_W - 2.0 * SPAWN_MARGIN, cell_size)
-	var cols := maxi(1, int(usable_w / cell_size))
+	var min_cols := maxi(1, int(usable_w / cell_size))
+	var aspect_ratio := MIN_W / MIN_H
+	var scaled_cols := maxi(1, int(ceil(sqrt(float(count) * aspect_ratio))))
+	var cols := maxi(min_cols, scaled_cols)
 	var rows := maxi(1, (count + cols - 1) / cols)
 	var interior_w := maxf(MIN_W, float(cols) * cell_size + 2.0 * SPAWN_MARGIN)
 	var interior_h := maxf(MIN_H, float(rows) * cell_size + 2.0 * SPAWN_MARGIN)

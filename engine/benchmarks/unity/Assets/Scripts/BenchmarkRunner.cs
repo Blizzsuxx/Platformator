@@ -298,7 +298,10 @@ public sealed class BenchmarkRunner : MonoBehaviour
         int circleCount = _count - boxCount;
         float cellSize = boxSize + cellPadding;
         float usableW = Mathf.Max(minW - 2f * spawnMargin, cellSize);
-        int cols = Mathf.Max(1, (int)(usableW / cellSize));
+        int minCols = Mathf.Max(1, (int)(usableW / cellSize));
+        double aspectRatio = (double)minW / (double)minH;
+        int scaledCols = Mathf.Max(1, (int)System.Math.Ceiling(System.Math.Sqrt((double)_count * aspectRatio)));
+        int cols = Mathf.Max(minCols, scaledCols);
         int rows = Mathf.Max(1, (_count + cols - 1) / cols);
         float interiorW = Mathf.Max(minW, cols * cellSize + 2f * spawnMargin);
         float interiorH = Mathf.Max(minH, rows * cellSize + 2f * spawnMargin);

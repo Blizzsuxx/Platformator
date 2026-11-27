@@ -401,7 +401,12 @@ RigidBodyContainerLayout calculateRigidBodyContainerLayout(const BenchmarkRunner
     const float maxBodyExtent = std::max({settings.boxWidth, settings.boxHeight, settings.circleRadius * 2.0f});
     const float cellSize = maxBodyExtent + settings.cellPadding;
     const float usableWidth = std::max(settings.minimumInteriorWidth - 2.0f * settings.spawnMargin, cellSize);
-    const size_t columnCount = std::max<size_t>(1, static_cast<size_t>(usableWidth / cellSize));
+    const size_t minColumnCount = std::max<size_t>(1, static_cast<size_t>(usableWidth / cellSize));
+    const double aspectRatio =
+        static_cast<double>(settings.minimumInteriorWidth) / static_cast<double>(settings.minimumInteriorHeight);
+    const size_t scaledColumnCount = std::max<size_t>(
+        1, static_cast<size_t>(std::ceil(std::sqrt(static_cast<double>(totalBodyCount) * aspectRatio))));
+    const size_t columnCount = std::max(minColumnCount, scaledColumnCount);
     const size_t rowCount = std::max<size_t>(1, (totalBodyCount + columnCount - 1) / columnCount);
     const float interiorWidth = std::max(settings.minimumInteriorWidth,
                                          static_cast<float>(columnCount) * cellSize + 2.0f * settings.spawnMargin);

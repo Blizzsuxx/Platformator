@@ -23,7 +23,8 @@
       "position": 3
     },
     "unity_mt_workers": 6,
-    "unity_elapsed_seconds": 420.24
+    "unity_elapsed_seconds": 420.24,
+    "platformator_refreshed_elapsed_seconds": 52.54
   },
   "sweeps": {
     "broad_phase": [
@@ -38,12 +39,12 @@
           "reps": 5
         },
         "platformator_w6": {
-          "mean_ms": 0.0109,
-          "median_ms": 0.0103,
-          "p95_ms": 0.0151,
-          "avg_awake": 0.0,
-          "avg_active_collisions": 0.0,
-          "reps": 5
+          "mean_ms": 0.0092,
+          "median_ms": 0.0086,
+          "p95_ms": 0.013,
+          "avg_awake_bodies": 0.0,
+          "avg_contacts": 0.0,
+          "reps": 3
         },
         "godot_node": {
           "mean_ms": 0.0202,
@@ -152,12 +153,12 @@
           "reps": 5
         },
         "platformator_w6": {
-          "mean_ms": 0.0197,
-          "median_ms": 0.0183,
-          "p95_ms": 0.0263,
-          "avg_awake": 0.0,
-          "avg_active_collisions": 0.0,
-          "reps": 5
+          "mean_ms": 0.0156,
+          "median_ms": 0.0147,
+          "p95_ms": 0.0207,
+          "avg_awake_bodies": 0.0,
+          "avg_contacts": 0.0,
+          "reps": 3
         },
         "godot_node": {
           "mean_ms": 0.0423,
@@ -266,12 +267,12 @@
           "reps": 5
         },
         "platformator_w6": {
-          "mean_ms": 0.0345,
-          "median_ms": 0.0328,
-          "p95_ms": 0.0441,
-          "avg_awake": 0.0,
-          "avg_active_collisions": 0.0,
-          "reps": 5
+          "mean_ms": 0.0258,
+          "median_ms": 0.0248,
+          "p95_ms": 0.0328,
+          "avg_awake_bodies": 0.0,
+          "avg_contacts": 0.0,
+          "reps": 3
         },
         "godot_node": {
           "mean_ms": 0.0819,
@@ -380,12 +381,12 @@
           "reps": 5
         },
         "platformator_w6": {
-          "mean_ms": 0.0833,
-          "median_ms": 0.0792,
-          "p95_ms": 0.1037,
-          "avg_awake": 0.0,
-          "avg_active_collisions": 0.0,
-          "reps": 5
+          "mean_ms": 0.0585,
+          "median_ms": 0.0564,
+          "p95_ms": 0.0713,
+          "avg_awake_bodies": 0.0,
+          "avg_contacts": 0.0,
+          "reps": 3
         },
         "godot_node": {
           "mean_ms": 0.1984,
@@ -494,12 +495,12 @@
           "reps": 5
         },
         "platformator_w6": {
-          "mean_ms": 0.1266,
-          "median_ms": 0.1208,
-          "p95_ms": 0.1645,
-          "avg_awake": 0.0,
-          "avg_active_collisions": 0.0,
-          "reps": 5
+          "mean_ms": 0.0975,
+          "median_ms": 0.0925,
+          "p95_ms": 0.1273,
+          "avg_awake_bodies": 0.0,
+          "avg_contacts": 0.0,
+          "reps": 3
         },
         "godot_node": {
           "mean_ms": 0.4235,
@@ -608,12 +609,12 @@
           "reps": 5
         },
         "platformator_w6": {
-          "mean_ms": 0.2546,
-          "median_ms": 0.2372,
-          "p95_ms": 0.3579,
-          "avg_awake": 0.0,
-          "avg_active_collisions": 0.0,
-          "reps": 5
+          "mean_ms": 0.1812,
+          "median_ms": 0.1731,
+          "p95_ms": 0.2331,
+          "avg_awake_bodies": 0.0,
+          "avg_contacts": 0.0,
+          "reps": 3
         },
         "godot_node": {
           "mean_ms": 1.1785,
@@ -722,12 +723,12 @@
           "reps": 5
         },
         "platformator_w6": {
-          "mean_ms": 0.5452,
-          "median_ms": 0.4941,
-          "p95_ms": 0.8686,
-          "avg_awake": 0.0,
-          "avg_active_collisions": 0.0,
-          "reps": 5
+          "mean_ms": 0.421,
+          "median_ms": 0.3856,
+          "p95_ms": 0.656,
+          "avg_awake_bodies": 0.0,
+          "avg_contacts": 0.0,
+          "reps": 3
         },
         "godot_node": {
           "mean_ms": 3.019,
@@ -838,12 +839,12 @@
           "reps": 5
         },
         "platformator_w6": {
-          "mean_ms": 0.0153,
-          "median_ms": 0.0109,
-          "p95_ms": 0.0313,
-          "avg_awake": 49.9,
-          "avg_active_collisions": 17.4,
-          "reps": 5
+          "mean_ms": 0.0108,
+          "median_ms": 0.0078,
+          "p95_ms": 0.021,
+          "avg_awake_bodies": 49.8,
+          "avg_contacts": 17.4,
+          "reps": 3
         },
         "godot_node": {
           "mean_ms": 0.098,
@@ -952,12 +953,12 @@
           "reps": 5
         },
         "platformator_w6": {
-          "mean_ms": 0.0381,
-          "median_ms": 0.026,
-          "p95_ms": 0.0732,
-          "avg_awake": 99.4,
-          "avg_active_collisions": 41.2,
-          "reps": 5
+          "mean_ms": 0.0259,
+          "median_ms": 0.0168,
+          "p95_ms": 0.0497,
+          "avg_awake_bodies": 99.3,
+          "avg_contacts": 40.5,
+          "reps": 3
         },
         "godot_node": {
           "mean_ms": 0.1533,
@@ -1066,12 +1067,12 @@
           "reps": 5
         },
         "platformator_w6": {
-          "mean_ms": 0.081,
-          "median_ms": 0.0598,
-          "p95_ms": 0.1443,
-          "avg_awake": 199.6,
-          "avg_active_collisions": 96.0,
-          "reps": 5
+          "mean_ms": 0.0607,
+          "median_ms": 0.0445,
+          "p95_ms": 0.1102,
+          "avg_awake_bodies": 199.6,
+          "avg_contacts": 96.0,
+          "reps": 3
         },
         "godot_node": {
           "mean_ms": 0.2835,
@@ -1180,12 +1181,12 @@
           "reps": 5
         },
         "platformator_w6": {
-          "mean_ms": 0.2648,
-          "median_ms": 0.253,
-          "p95_ms": 0.4654,
-          "avg_awake": 499.4,
-          "avg_active_collisions": 361.2,
-          "reps": 5
+          "mean_ms": 0.1865,
+          "median_ms": 0.1833,
+          "p95_ms": 0.3012,
+          "avg_awake_bodies": 498.7,
+          "avg_contacts": 358.4,
+          "reps": 3
         },
         "godot_node": {
           "mean_ms": 0.8301,
@@ -1294,12 +1295,12 @@
           "reps": 5
         },
         "platformator_w6": {
-          "mean_ms": 0.5869,
-          "median_ms": 0.6579,
-          "p95_ms": 0.8001,
-          "avg_awake": 998.0,
-          "avg_active_collisions": 985.3,
-          "reps": 5
+          "mean_ms": 0.4791,
+          "median_ms": 0.5364,
+          "p95_ms": 0.6575,
+          "avg_awake_bodies": 997.5,
+          "avg_contacts": 1054.3,
+          "reps": 3
         },
         "godot_node": {
           "mean_ms": 2.0239,
@@ -1408,12 +1409,12 @@
           "reps": 5
         },
         "platformator_w6": {
-          "mean_ms": 0.8172,
-          "median_ms": 0.8971,
-          "p95_ms": 1.1975,
-          "avg_awake": 1498.5,
-          "avg_active_collisions": 1410.2,
-          "reps": 5
+          "mean_ms": 0.6404,
+          "median_ms": 0.7202,
+          "p95_ms": 0.883,
+          "avg_awake_bodies": 1498.3,
+          "avg_contacts": 1493.0,
+          "reps": 3
         },
         "godot_node": {
           "mean_ms": 3.6718,
@@ -1522,12 +1523,12 @@
           "reps": 5
         },
         "platformator_w6": {
-          "mean_ms": 0.9647,
-          "median_ms": 1.0978,
-          "p95_ms": 1.4088,
-          "avg_awake": 1998.7,
-          "avg_active_collisions": 1791.2,
-          "reps": 5
+          "mean_ms": 0.7866,
+          "median_ms": 0.888,
+          "p95_ms": 1.1529,
+          "avg_awake_bodies": 1997.8,
+          "avg_contacts": 1823.4,
+          "reps": 3
         },
         "godot_node": {
           "mean_ms": 5.4598,
@@ -1638,12 +1639,12 @@
           "reps": 5
         },
         "platformator_w6": {
-          "mean_ms": 0.1129,
-          "median_ms": 0.1198,
-          "p95_ms": 0.1642,
-          "avg_awake": 171.1,
-          "avg_active_collisions": 242.8,
-          "reps": 5
+          "mean_ms": 0.0783,
+          "median_ms": 0.0832,
+          "p95_ms": 0.1115,
+          "avg_awake_bodies": 163.7,
+          "avg_contacts": 242.1,
+          "reps": 3
         },
         "godot_node": {
           "mean_ms": 0.236,
@@ -1752,12 +1753,12 @@
           "reps": 5
         },
         "platformator_w6": {
-          "mean_ms": 0.1813,
-          "median_ms": 0.1867,
-          "p95_ms": 0.2482,
-          "avg_awake": 413.0,
-          "avg_active_collisions": 603.4,
-          "reps": 5
+          "mean_ms": 0.1361,
+          "median_ms": 0.14,
+          "p95_ms": 0.1917,
+          "avg_awake_bodies": 410.2,
+          "avg_contacts": 609.7,
+          "reps": 3
         },
         "godot_node": {
           "mean_ms": 0.5196,
@@ -1866,12 +1867,12 @@
           "reps": 5
         },
         "platformator_w6": {
-          "mean_ms": 0.3238,
-          "median_ms": 0.3413,
-          "p95_ms": 0.433,
-          "avg_awake": 855.7,
-          "avg_active_collisions": 1207.1,
-          "reps": 5
+          "mean_ms": 0.2361,
+          "median_ms": 0.2394,
+          "p95_ms": 0.3211,
+          "avg_awake_bodies": 829.7,
+          "avg_contacts": 1213.1,
+          "reps": 3
         },
         "godot_node": {
           "mean_ms": 1.042,
@@ -1980,12 +1981,12 @@
           "reps": 5
         },
         "platformator_w6": {
-          "mean_ms": 0.6298,
-          "median_ms": 0.6675,
-          "p95_ms": 0.8517,
-          "avg_awake": 1688.9,
-          "avg_active_collisions": 2414.6,
-          "reps": 5
+          "mean_ms": 0.4845,
+          "median_ms": 0.5066,
+          "p95_ms": 0.6506,
+          "avg_awake_bodies": 1681.5,
+          "avg_contacts": 2411.1,
+          "reps": 3
         },
         "godot_node": {
           "mean_ms": 3.1806,
@@ -2094,12 +2095,12 @@
           "reps": 5
         },
         "platformator_w6": {
-          "mean_ms": 1.6193,
-          "median_ms": 1.7225,
-          "p95_ms": 2.2515,
-          "avg_awake": 4233.4,
-          "avg_active_collisions": 6047.6,
-          "reps": 5
+          "mean_ms": 1.3152,
+          "median_ms": 1.3462,
+          "p95_ms": 2.0132,
+          "avg_awake_bodies": 4192.6,
+          "avg_contacts": 6067.3,
+          "reps": 3
         },
         "godot_node": {
           "mean_ms": 9.9982,
@@ -2208,12 +2209,12 @@
           "reps": 5
         },
         "platformator_w6": {
-          "mean_ms": 4.5199,
-          "median_ms": 4.7201,
-          "p95_ms": 6.4116,
-          "avg_awake": 8376.5,
-          "avg_active_collisions": 12110.8,
-          "reps": 5
+          "mean_ms": 3.804,
+          "median_ms": 3.8656,
+          "p95_ms": 5.373,
+          "avg_awake_bodies": 8371.8,
+          "avg_contacts": 12117.5,
+          "reps": 3
         },
         "godot_node": {
           "mean_ms": 23.6033,
@@ -2309,12 +2310,12 @@
           "reps": 5
         },
         "platformator_w6": {
-          "mean_ms": 7.9579,
-          "median_ms": 8.1718,
-          "p95_ms": 11.5003,
-          "avg_awake": 12519.2,
-          "avg_active_collisions": 18183.0,
-          "reps": 5
+          "mean_ms": 6.471,
+          "median_ms": 6.6104,
+          "p95_ms": 9.3931,
+          "avg_awake_bodies": 12488.7,
+          "avg_contacts": 18267.1,
+          "reps": 3
         },
         "godot_node": {
           "mean_ms": 35.4834,
@@ -2397,12 +2398,12 @@
           "reps": 5
         },
         "platformator_w6": {
-          "mean_ms": 13.4445,
-          "median_ms": 14.0274,
-          "p95_ms": 19.1323,
-          "avg_awake": 16655.4,
-          "avg_active_collisions": 24262.6,
-          "reps": 5
+          "mean_ms": 10.1757,
+          "median_ms": 10.4397,
+          "p95_ms": 14.0703,
+          "avg_awake_bodies": 16646.6,
+          "avg_contacts": 24337.3,
+          "reps": 3
         },
         "godot_node": null,
         "godot_server": {

@@ -1,0 +1,2468 @@
+{
+  "meta": {
+    "reps": 3,
+    "warmup": 120,
+    "measure": 600,
+    "fps": 120,
+    "pin_cores": "0,2,4,6,8,10",
+    "box2d_unit_scale": 0.1,
+    "box2d_v2_version": "2.4.2",
+    "box2d_v2_iterations": {
+      "velocity": 10,
+      "position": 3
+    },
+    "box2d_v3_version": "3.1.1",
+    "box2d_v3_substeps": 4,
+    "box2d_v3_simd": "SSE2 (default x86-64)",
+    "box2d_v3_workers": 6,
+    "platformator_raw": "engine/benchmarks/results/thesis-20261121/raw",
+    "godot_json": "engine/benchmarks/results/godot-comparison-20261122/godot_vs_platformator.json",
+    "unity_engine": "unity_6000.3.22f1",
+    "unity_iterations": {
+      "velocity": 10,
+      "position": 3
+    },
+    "unity_mt_workers": 6,
+    "unity_elapsed_seconds": 420.24
+  },
+  "sweeps": {
+    "broad_phase": [
+      {
+        "n": 50,
+        "platformator_w1": {
+          "mean_ms": 0.0097,
+          "median_ms": 0.0086,
+          "p95_ms": 0.0168,
+          "avg_awake": 0.0,
+          "avg_active_collisions": 0.0,
+          "reps": 5
+        },
+        "platformator_w6": {
+          "mean_ms": 0.0109,
+          "median_ms": 0.0103,
+          "p95_ms": 0.0151,
+          "avg_awake": 0.0,
+          "avg_active_collisions": 0.0,
+          "reps": 5
+        },
+        "godot_node": {
+          "mean_ms": 0.0202,
+          "median_ms": 0.0193,
+          "p95_ms": 0.0273,
+          "avg_active_bodies": 50.0,
+          "avg_collision_pairs": 0.0,
+          "reps": 3,
+          "raw_means": [
+            0.02,
+            0.0213,
+            0.0193
+          ]
+        },
+        "godot_server": {
+          "mean_ms": 0.0126,
+          "median_ms": 0.0117,
+          "p95_ms": 0.018,
+          "avg_active_bodies": 50.0,
+          "avg_collision_pairs": 0.0,
+          "reps": 3,
+          "raw_means": [
+            0.0116,
+            0.0133,
+            0.013
+          ]
+        },
+        "box2d_v2": {
+          "mean_ms": 0.019,
+          "median_ms": 0.0169,
+          "p95_ms": 0.0273,
+          "avg_awake_bodies": 50.0,
+          "avg_contacts": 0.0,
+          "reps": 3,
+          "raw_means": [
+            0.0186,
+            0.0188,
+            0.0196
+          ]
+        },
+        "box2d_v3_w1": {
+          "mean_ms": 0.0061,
+          "median_ms": 0.006,
+          "p95_ms": 0.0065,
+          "avg_awake_bodies": 50.0,
+          "avg_contacts": 0.0,
+          "reps": 3,
+          "raw_means": [
+            0.0061,
+            0.0061,
+            0.0061
+          ]
+        },
+        "box2d_v3_w6": {
+          "mean_ms": 0.01,
+          "median_ms": 0.0094,
+          "p95_ms": 0.0133,
+          "avg_awake_bodies": 50.0,
+          "avg_contacts": 0.0,
+          "reps": 3,
+          "raw_means": [
+            0.0099,
+            0.01,
+            0.0102
+          ]
+        },
+        "unity_w1": {
+          "mean_ms": 0.0092,
+          "median_ms": 0.0059,
+          "p95_ms": 0.0202,
+          "avg_awake_bodies": 50.0,
+          "multithreaded": false,
+          "job_worker_count": 11,
+          "engine": "unity_6000.3.22f1",
+          "reps": 3,
+          "raw_means": [
+            0.0086,
+            0.0093,
+            0.0098
+          ]
+        },
+        "unity_w6": {
+          "mean_ms": 0.0225,
+          "median_ms": 0.019,
+          "p95_ms": 0.0383,
+          "avg_awake_bodies": 50.0,
+          "multithreaded": true,
+          "job_worker_count": 5,
+          "engine": "unity_6000.3.22f1",
+          "reps": 3,
+          "raw_means": [
+            0.0208,
+            0.0204,
+            0.0262
+          ]
+        }
+      },
+      {
+        "n": 100,
+        "platformator_w1": {
+          "mean_ms": 0.0181,
+          "median_ms": 0.0169,
+          "p95_ms": 0.0256,
+          "avg_awake": 0.0,
+          "avg_active_collisions": 0.0,
+          "reps": 5
+        },
+        "platformator_w6": {
+          "mean_ms": 0.0197,
+          "median_ms": 0.0183,
+          "p95_ms": 0.0263,
+          "avg_awake": 0.0,
+          "avg_active_collisions": 0.0,
+          "reps": 5
+        },
+        "godot_node": {
+          "mean_ms": 0.0423,
+          "median_ms": 0.0383,
+          "p95_ms": 0.0613,
+          "avg_active_bodies": 100.0,
+          "avg_collision_pairs": 0.0,
+          "reps": 3,
+          "raw_means": [
+            0.0451,
+            0.0409,
+            0.0408
+          ]
+        },
+        "godot_server": {
+          "mean_ms": 0.0242,
+          "median_ms": 0.0227,
+          "p95_ms": 0.0357,
+          "avg_active_bodies": 100.0,
+          "avg_collision_pairs": 0.0,
+          "reps": 3,
+          "raw_means": [
+            0.0248,
+            0.0231,
+            0.0248
+          ]
+        },
+        "box2d_v2": {
+          "mean_ms": 0.0432,
+          "median_ms": 0.0386,
+          "p95_ms": 0.0618,
+          "avg_awake_bodies": 100.0,
+          "avg_contacts": 0.0,
+          "reps": 3,
+          "raw_means": [
+            0.0432,
+            0.0423,
+            0.0441
+          ]
+        },
+        "box2d_v3_w1": {
+          "mean_ms": 0.0115,
+          "median_ms": 0.0106,
+          "p95_ms": 0.0155,
+          "avg_awake_bodies": 100.0,
+          "avg_contacts": 0.0,
+          "reps": 3,
+          "raw_means": [
+            0.0123,
+            0.0107,
+            0.0115
+          ]
+        },
+        "box2d_v3_w6": {
+          "mean_ms": 0.0151,
+          "median_ms": 0.014,
+          "p95_ms": 0.0214,
+          "avg_awake_bodies": 100.0,
+          "avg_contacts": 0.0,
+          "reps": 3,
+          "raw_means": [
+            0.0151,
+            0.0159,
+            0.0144
+          ]
+        },
+        "unity_w1": {
+          "mean_ms": 0.0214,
+          "median_ms": 0.0118,
+          "p95_ms": 0.0446,
+          "avg_awake_bodies": 100.0,
+          "multithreaded": false,
+          "job_worker_count": 11,
+          "engine": "unity_6000.3.22f1",
+          "reps": 3,
+          "raw_means": [
+            0.0209,
+            0.0218,
+            0.0216
+          ]
+        },
+        "unity_w6": {
+          "mean_ms": 0.0348,
+          "median_ms": 0.0278,
+          "p95_ms": 0.0634,
+          "avg_awake_bodies": 100.0,
+          "multithreaded": true,
+          "job_worker_count": 5,
+          "engine": "unity_6000.3.22f1",
+          "reps": 3,
+          "raw_means": [
+            0.0349,
+            0.0368,
+            0.0326
+          ]
+        }
+      },
+      {
+        "n": 200,
+        "platformator_w1": {
+          "mean_ms": 0.0419,
+          "median_ms": 0.0373,
+          "p95_ms": 0.0667,
+          "avg_awake": 0.0,
+          "avg_active_collisions": 0.0,
+          "reps": 5
+        },
+        "platformator_w6": {
+          "mean_ms": 0.0345,
+          "median_ms": 0.0328,
+          "p95_ms": 0.0441,
+          "avg_awake": 0.0,
+          "avg_active_collisions": 0.0,
+          "reps": 5
+        },
+        "godot_node": {
+          "mean_ms": 0.0819,
+          "median_ms": 0.0723,
+          "p95_ms": 0.1193,
+          "avg_active_bodies": 200.0,
+          "avg_collision_pairs": 0.0,
+          "reps": 3,
+          "raw_means": [
+            0.079,
+            0.0844,
+            0.0822
+          ]
+        },
+        "godot_server": {
+          "mean_ms": 0.0424,
+          "median_ms": 0.0377,
+          "p95_ms": 0.0663,
+          "avg_active_bodies": 200.0,
+          "avg_collision_pairs": 0.0,
+          "reps": 3,
+          "raw_means": [
+            0.0421,
+            0.0425,
+            0.0425
+          ]
+        },
+        "box2d_v2": {
+          "mean_ms": 0.1046,
+          "median_ms": 0.0998,
+          "p95_ms": 0.1584,
+          "avg_awake_bodies": 200.0,
+          "avg_contacts": 0.0,
+          "reps": 3,
+          "raw_means": [
+            0.1067,
+            0.1049,
+            0.1022
+          ]
+        },
+        "box2d_v3_w1": {
+          "mean_ms": 0.0212,
+          "median_ms": 0.0196,
+          "p95_ms": 0.0291,
+          "avg_awake_bodies": 200.0,
+          "avg_contacts": 0.0,
+          "reps": 3,
+          "raw_means": [
+            0.0206,
+            0.0215,
+            0.0215
+          ]
+        },
+        "box2d_v3_w6": {
+          "mean_ms": 0.0215,
+          "median_ms": 0.0203,
+          "p95_ms": 0.0282,
+          "avg_awake_bodies": 200.0,
+          "avg_contacts": 0.0,
+          "reps": 3,
+          "raw_means": [
+            0.0222,
+            0.0211,
+            0.0211
+          ]
+        },
+        "unity_w1": {
+          "mean_ms": 0.046,
+          "median_ms": 0.0292,
+          "p95_ms": 0.1089,
+          "avg_awake_bodies": 200.0,
+          "multithreaded": false,
+          "job_worker_count": 11,
+          "engine": "unity_6000.3.22f1",
+          "reps": 3,
+          "raw_means": [
+            0.0446,
+            0.0473,
+            0.046
+          ]
+        },
+        "unity_w6": {
+          "mean_ms": 0.0529,
+          "median_ms": 0.0367,
+          "p95_ms": 0.0999,
+          "avg_awake_bodies": 200.0,
+          "multithreaded": true,
+          "job_worker_count": 5,
+          "engine": "unity_6000.3.22f1",
+          "reps": 3,
+          "raw_means": [
+            0.052,
+            0.0536,
+            0.0532
+          ]
+        }
+      },
+      {
+        "n": 500,
+        "platformator_w1": {
+          "mean_ms": 0.1167,
+          "median_ms": 0.1068,
+          "p95_ms": 0.1751,
+          "avg_awake": 0.0,
+          "avg_active_collisions": 0.0,
+          "reps": 5
+        },
+        "platformator_w6": {
+          "mean_ms": 0.0833,
+          "median_ms": 0.0792,
+          "p95_ms": 0.1037,
+          "avg_awake": 0.0,
+          "avg_active_collisions": 0.0,
+          "reps": 5
+        },
+        "godot_node": {
+          "mean_ms": 0.1984,
+          "median_ms": 0.1793,
+          "p95_ms": 0.282,
+          "avg_active_bodies": 500.0,
+          "avg_collision_pairs": 0.0,
+          "reps": 3,
+          "raw_means": [
+            0.1918,
+            0.2047,
+            0.1988
+          ]
+        },
+        "godot_server": {
+          "mean_ms": 0.1105,
+          "median_ms": 0.101,
+          "p95_ms": 0.1643,
+          "avg_active_bodies": 500.0,
+          "avg_collision_pairs": 0.0,
+          "reps": 3,
+          "raw_means": [
+            0.1106,
+            0.1123,
+            0.1086
+          ]
+        },
+        "box2d_v2": {
+          "mean_ms": 0.283,
+          "median_ms": 0.2684,
+          "p95_ms": 0.387,
+          "avg_awake_bodies": 500.0,
+          "avg_contacts": 0.0,
+          "reps": 3,
+          "raw_means": [
+            0.2864,
+            0.2848,
+            0.2779
+          ]
+        },
+        "box2d_v3_w1": {
+          "mean_ms": 0.0521,
+          "median_ms": 0.0483,
+          "p95_ms": 0.0729,
+          "avg_awake_bodies": 500.0,
+          "avg_contacts": 0.0,
+          "reps": 3,
+          "raw_means": [
+            0.0505,
+            0.0507,
+            0.0552
+          ]
+        },
+        "box2d_v3_w6": {
+          "mean_ms": 0.0403,
+          "median_ms": 0.0386,
+          "p95_ms": 0.0523,
+          "avg_awake_bodies": 500.0,
+          "avg_contacts": 0.0,
+          "reps": 3,
+          "raw_means": [
+            0.0391,
+            0.0391,
+            0.0428
+          ]
+        },
+        "unity_w1": {
+          "mean_ms": 0.1183,
+          "median_ms": 0.0671,
+          "p95_ms": 0.2702,
+          "avg_awake_bodies": 500.0,
+          "multithreaded": false,
+          "job_worker_count": 11,
+          "engine": "unity_6000.3.22f1",
+          "reps": 3,
+          "raw_means": [
+            0.1192,
+            0.1167,
+            0.119
+          ]
+        },
+        "unity_w6": {
+          "mean_ms": 0.1284,
+          "median_ms": 0.0879,
+          "p95_ms": 0.2572,
+          "avg_awake_bodies": 500.0,
+          "multithreaded": true,
+          "job_worker_count": 5,
+          "engine": "unity_6000.3.22f1",
+          "reps": 3,
+          "raw_means": [
+            0.1559,
+            0.1133,
+            0.1161
+          ]
+        }
+      },
+      {
+        "n": 1000,
+        "platformator_w1": {
+          "mean_ms": 0.2503,
+          "median_ms": 0.2295,
+          "p95_ms": 0.383,
+          "avg_awake": 0.0,
+          "avg_active_collisions": 0.0,
+          "reps": 5
+        },
+        "platformator_w6": {
+          "mean_ms": 0.1266,
+          "median_ms": 0.1208,
+          "p95_ms": 0.1645,
+          "avg_awake": 0.0,
+          "avg_active_collisions": 0.0,
+          "reps": 5
+        },
+        "godot_node": {
+          "mean_ms": 0.4235,
+          "median_ms": 0.3907,
+          "p95_ms": 0.5927,
+          "avg_active_bodies": 1000.0,
+          "avg_collision_pairs": 0.0,
+          "reps": 3,
+          "raw_means": [
+            0.4143,
+            0.3755,
+            0.4807
+          ]
+        },
+        "godot_server": {
+          "mean_ms": 0.2245,
+          "median_ms": 0.207,
+          "p95_ms": 0.3313,
+          "avg_active_bodies": 1000.0,
+          "avg_collision_pairs": 0.0,
+          "reps": 3,
+          "raw_means": [
+            0.2213,
+            0.2142,
+            0.2381
+          ]
+        },
+        "box2d_v2": {
+          "mean_ms": 0.6018,
+          "median_ms": 0.5776,
+          "p95_ms": 0.7816,
+          "avg_awake_bodies": 1000.0,
+          "avg_contacts": 0.0,
+          "reps": 3,
+          "raw_means": [
+            0.6115,
+            0.5884,
+            0.6055
+          ]
+        },
+        "box2d_v3_w1": {
+          "mean_ms": 0.1131,
+          "median_ms": 0.0994,
+          "p95_ms": 0.1648,
+          "avg_awake_bodies": 1000.0,
+          "avg_contacts": 0.0,
+          "reps": 3,
+          "raw_means": [
+            0.1116,
+            0.1173,
+            0.1105
+          ]
+        },
+        "box2d_v3_w6": {
+          "mean_ms": 0.0615,
+          "median_ms": 0.0563,
+          "p95_ms": 0.0874,
+          "avg_awake_bodies": 1000.0,
+          "avg_contacts": 0.0,
+          "reps": 3,
+          "raw_means": [
+            0.0631,
+            0.0621,
+            0.0593
+          ]
+        },
+        "unity_w1": {
+          "mean_ms": 0.2543,
+          "median_ms": 0.1314,
+          "p95_ms": 0.5643,
+          "avg_awake_bodies": 1000.0,
+          "multithreaded": false,
+          "job_worker_count": 11,
+          "engine": "unity_6000.3.22f1",
+          "reps": 3,
+          "raw_means": [
+            0.2627,
+            0.2554,
+            0.2448
+          ]
+        },
+        "unity_w6": {
+          "mean_ms": 0.2254,
+          "median_ms": 0.1361,
+          "p95_ms": 0.4687,
+          "avg_awake_bodies": 1000.0,
+          "multithreaded": true,
+          "job_worker_count": 5,
+          "engine": "unity_6000.3.22f1",
+          "reps": 3,
+          "raw_means": [
+            0.2273,
+            0.2332,
+            0.2156
+          ]
+        }
+      },
+      {
+        "n": 2000,
+        "platformator_w1": {
+          "mean_ms": 0.6218,
+          "median_ms": 0.5345,
+          "p95_ms": 1.1869,
+          "avg_awake": 0.0,
+          "avg_active_collisions": 0.0,
+          "reps": 5
+        },
+        "platformator_w6": {
+          "mean_ms": 0.2546,
+          "median_ms": 0.2372,
+          "p95_ms": 0.3579,
+          "avg_awake": 0.0,
+          "avg_active_collisions": 0.0,
+          "reps": 5
+        },
+        "godot_node": {
+          "mean_ms": 1.1785,
+          "median_ms": 1.12,
+          "p95_ms": 1.7443,
+          "avg_active_bodies": 2000.0,
+          "avg_collision_pairs": 0.0,
+          "reps": 3,
+          "raw_means": [
+            1.0942,
+            1.2055,
+            1.2357
+          ]
+        },
+        "godot_server": {
+          "mean_ms": 0.4462,
+          "median_ms": 0.416,
+          "p95_ms": 0.6273,
+          "avg_active_bodies": 2000.0,
+          "avg_collision_pairs": 0.0,
+          "reps": 3,
+          "raw_means": [
+            0.4434,
+            0.4597,
+            0.4355
+          ]
+        },
+        "box2d_v2": {
+          "mean_ms": 1.2979,
+          "median_ms": 1.2158,
+          "p95_ms": 1.7449,
+          "avg_awake_bodies": 2000.0,
+          "avg_contacts": 0.0,
+          "reps": 3,
+          "raw_means": [
+            1.2915,
+            1.3035,
+            1.2988
+          ]
+        },
+        "box2d_v3_w1": {
+          "mean_ms": 0.2255,
+          "median_ms": 0.2047,
+          "p95_ms": 0.3309,
+          "avg_awake_bodies": 2000.0,
+          "avg_contacts": 0.0,
+          "reps": 3,
+          "raw_means": [
+            0.2231,
+            0.2329,
+            0.2206
+          ]
+        },
+        "box2d_v3_w6": {
+          "mean_ms": 0.1214,
+          "median_ms": 0.1159,
+          "p95_ms": 0.161,
+          "avg_awake_bodies": 2000.0,
+          "avg_contacts": 0.0,
+          "reps": 3,
+          "raw_means": [
+            0.1315,
+            0.1171,
+            0.1157
+          ]
+        },
+        "unity_w1": {
+          "mean_ms": 0.5149,
+          "median_ms": 0.2674,
+          "p95_ms": 1.0967,
+          "avg_awake_bodies": 2000.0,
+          "multithreaded": false,
+          "job_worker_count": 11,
+          "engine": "unity_6000.3.22f1",
+          "reps": 3,
+          "raw_means": [
+            0.5283,
+            0.5026,
+            0.5139
+          ]
+        },
+        "unity_w6": {
+          "mean_ms": 0.4243,
+          "median_ms": 0.2445,
+          "p95_ms": 0.857,
+          "avg_awake_bodies": 2000.0,
+          "multithreaded": true,
+          "job_worker_count": 5,
+          "engine": "unity_6000.3.22f1",
+          "reps": 3,
+          "raw_means": [
+            0.4239,
+            0.4292,
+            0.4199
+          ]
+        }
+      },
+      {
+        "n": 4000,
+        "platformator_w1": {
+          "mean_ms": 2.5127,
+          "median_ms": 2.5149,
+          "p95_ms": 3.6544,
+          "avg_awake": 0.0,
+          "avg_active_collisions": 0.0,
+          "reps": 5
+        },
+        "platformator_w6": {
+          "mean_ms": 0.5452,
+          "median_ms": 0.4941,
+          "p95_ms": 0.8686,
+          "avg_awake": 0.0,
+          "avg_active_collisions": 0.0,
+          "reps": 5
+        },
+        "godot_node": {
+          "mean_ms": 3.019,
+          "median_ms": 2.9857,
+          "p95_ms": 3.7877,
+          "avg_active_bodies": 4000.0,
+          "avg_collision_pairs": 0.0,
+          "reps": 3,
+          "raw_means": [
+            3.111,
+            3.0336,
+            2.9124
+          ]
+        },
+        "godot_server": {
+          "mean_ms": 0.9649,
+          "median_ms": 0.89,
+          "p95_ms": 1.3867,
+          "avg_active_bodies": 4000.0,
+          "avg_collision_pairs": 0.0,
+          "reps": 3,
+          "raw_means": [
+            0.9504,
+            0.9836,
+            0.9606
+          ]
+        },
+        "box2d_v2": {
+          "mean_ms": 2.6893,
+          "median_ms": 2.6088,
+          "p95_ms": 3.2417,
+          "avg_awake_bodies": 4000.0,
+          "avg_contacts": 0.0,
+          "reps": 3,
+          "raw_means": [
+            2.6388,
+            2.6867,
+            2.7423
+          ]
+        },
+        "box2d_v3_w1": {
+          "mean_ms": 0.4711,
+          "median_ms": 0.4273,
+          "p95_ms": 0.6735,
+          "avg_awake_bodies": 4000.0,
+          "avg_contacts": 0.0,
+          "reps": 3,
+          "raw_means": [
+            0.4697,
+            0.4688,
+            0.4749
+          ]
+        },
+        "box2d_v3_w6": {
+          "mean_ms": 0.2443,
+          "median_ms": 0.2318,
+          "p95_ms": 0.305,
+          "avg_awake_bodies": 4000.0,
+          "avg_contacts": 0.0,
+          "reps": 3,
+          "raw_means": [
+            0.2407,
+            0.2523,
+            0.24
+          ]
+        },
+        "unity_w1": {
+          "mean_ms": 1.1676,
+          "median_ms": 0.6277,
+          "p95_ms": 2.667,
+          "avg_awake_bodies": 4000.0,
+          "multithreaded": false,
+          "job_worker_count": 11,
+          "engine": "unity_6000.3.22f1",
+          "reps": 3,
+          "raw_means": [
+            1.176,
+            1.2182,
+            1.1085
+          ]
+        },
+        "unity_w6": {
+          "mean_ms": 0.8879,
+          "median_ms": 0.488,
+          "p95_ms": 1.8443,
+          "avg_awake_bodies": 4000.0,
+          "multithreaded": true,
+          "job_worker_count": 5,
+          "engine": "unity_6000.3.22f1",
+          "reps": 3,
+          "raw_means": [
+            0.8603,
+            0.9044,
+            0.899
+          ]
+        }
+      }
+    ],
+    "rigid_body_container": [
+      {
+        "n": 50,
+        "platformator_w1": {
+          "mean_ms": 0.0152,
+          "median_ms": 0.0102,
+          "p95_ms": 0.0303,
+          "avg_awake": 49.9,
+          "avg_active_collisions": 17.4,
+          "reps": 5
+        },
+        "platformator_w6": {
+          "mean_ms": 0.0153,
+          "median_ms": 0.0109,
+          "p95_ms": 0.0313,
+          "avg_awake": 49.9,
+          "avg_active_collisions": 17.4,
+          "reps": 5
+        },
+        "godot_node": {
+          "mean_ms": 0.098,
+          "median_ms": 0.093,
+          "p95_ms": 0.1373,
+          "avg_active_bodies": 49.5,
+          "avg_collision_pairs": 53.3,
+          "reps": 3,
+          "raw_means": [
+            0.1029,
+            0.0948,
+            0.0962
+          ]
+        },
+        "godot_server": {
+          "mean_ms": 0.0832,
+          "median_ms": 0.0817,
+          "p95_ms": 0.1123,
+          "avg_active_bodies": 49.5,
+          "avg_collision_pairs": 52.7,
+          "reps": 3,
+          "raw_means": [
+            0.0804,
+            0.0841,
+            0.0851
+          ]
+        },
+        "box2d_v2": {
+          "mean_ms": 0.028,
+          "median_ms": 0.0246,
+          "p95_ms": 0.0458,
+          "avg_awake_bodies": 49.8,
+          "avg_contacts": 37.5,
+          "reps": 3,
+          "raw_means": [
+            0.0268,
+            0.028,
+            0.0291
+          ]
+        },
+        "box2d_v3_w1": {
+          "mean_ms": 0.0137,
+          "median_ms": 0.0127,
+          "p95_ms": 0.0213,
+          "avg_awake_bodies": 49.2,
+          "avg_contacts": 31.0,
+          "reps": 3,
+          "raw_means": [
+            0.0131,
+            0.013,
+            0.0149
+          ]
+        },
+        "box2d_v3_w6": {
+          "mean_ms": 0.0176,
+          "median_ms": 0.0155,
+          "p95_ms": 0.0278,
+          "avg_awake_bodies": 49.2,
+          "avg_contacts": 31.0,
+          "reps": 3,
+          "raw_means": [
+            0.0177,
+            0.0175,
+            0.0177
+          ]
+        },
+        "unity_w1": {
+          "mean_ms": 0.026,
+          "median_ms": 0.0197,
+          "p95_ms": 0.0429,
+          "avg_awake_bodies": 49.5,
+          "multithreaded": false,
+          "job_worker_count": 11,
+          "engine": "unity_6000.3.22f1",
+          "reps": 3,
+          "raw_means": [
+            0.0257,
+            0.0264,
+            0.0259
+          ]
+        },
+        "unity_w6": {
+          "mean_ms": 0.0455,
+          "median_ms": 0.0421,
+          "p95_ms": 0.0653,
+          "avg_awake_bodies": 50.0,
+          "multithreaded": true,
+          "job_worker_count": 5,
+          "engine": "unity_6000.3.22f1",
+          "reps": 3,
+          "raw_means": [
+            0.0443,
+            0.0471,
+            0.0451
+          ]
+        }
+      },
+      {
+        "n": 100,
+        "platformator_w1": {
+          "mean_ms": 0.0377,
+          "median_ms": 0.0223,
+          "p95_ms": 0.0811,
+          "avg_awake": 99.4,
+          "avg_active_collisions": 41.2,
+          "reps": 5
+        },
+        "platformator_w6": {
+          "mean_ms": 0.0381,
+          "median_ms": 0.026,
+          "p95_ms": 0.0732,
+          "avg_awake": 99.4,
+          "avg_active_collisions": 41.2,
+          "reps": 5
+        },
+        "godot_node": {
+          "mean_ms": 0.1533,
+          "median_ms": 0.1483,
+          "p95_ms": 0.2047,
+          "avg_active_bodies": 100.0,
+          "avg_collision_pairs": 155.5,
+          "reps": 3,
+          "raw_means": [
+            0.1642,
+            0.1485,
+            0.1471
+          ]
+        },
+        "godot_server": {
+          "mean_ms": 0.1265,
+          "median_ms": 0.123,
+          "p95_ms": 0.173,
+          "avg_active_bodies": 100.0,
+          "avg_collision_pairs": 153.3,
+          "reps": 3,
+          "raw_means": [
+            0.128,
+            0.1276,
+            0.124
+          ]
+        },
+        "box2d_v2": {
+          "mean_ms": 0.0627,
+          "median_ms": 0.0609,
+          "p95_ms": 0.0934,
+          "avg_awake_bodies": 99.7,
+          "avg_contacts": 119.4,
+          "reps": 3,
+          "raw_means": [
+            0.0634,
+            0.0602,
+            0.0644
+          ]
+        },
+        "box2d_v3_w1": {
+          "mean_ms": 0.0332,
+          "median_ms": 0.0306,
+          "p95_ms": 0.0598,
+          "avg_awake_bodies": 99.5,
+          "avg_contacts": 89.4,
+          "reps": 3,
+          "raw_means": [
+            0.034,
+            0.0335,
+            0.032
+          ]
+        },
+        "box2d_v3_w6": {
+          "mean_ms": 0.037,
+          "median_ms": 0.0331,
+          "p95_ms": 0.0582,
+          "avg_awake_bodies": 99.5,
+          "avg_contacts": 89.4,
+          "reps": 3,
+          "raw_means": [
+            0.0351,
+            0.0351,
+            0.0408
+          ]
+        },
+        "unity_w1": {
+          "mean_ms": 0.067,
+          "median_ms": 0.0575,
+          "p95_ms": 0.1082,
+          "avg_awake_bodies": 99.9,
+          "multithreaded": false,
+          "job_worker_count": 11,
+          "engine": "unity_6000.3.22f1",
+          "reps": 3,
+          "raw_means": [
+            0.0698,
+            0.0643,
+            0.067
+          ]
+        },
+        "unity_w6": {
+          "mean_ms": 0.0814,
+          "median_ms": 0.0782,
+          "p95_ms": 0.1151,
+          "avg_awake_bodies": 100.0,
+          "multithreaded": true,
+          "job_worker_count": 5,
+          "engine": "unity_6000.3.22f1",
+          "reps": 3,
+          "raw_means": [
+            0.0873,
+            0.0774,
+            0.0796
+          ]
+        }
+      },
+      {
+        "n": 200,
+        "platformator_w1": {
+          "mean_ms": 0.0899,
+          "median_ms": 0.0668,
+          "p95_ms": 0.1754,
+          "avg_awake": 199.6,
+          "avg_active_collisions": 96.0,
+          "reps": 5
+        },
+        "platformator_w6": {
+          "mean_ms": 0.081,
+          "median_ms": 0.0598,
+          "p95_ms": 0.1443,
+          "avg_awake": 199.6,
+          "avg_active_collisions": 96.0,
+          "reps": 5
+        },
+        "godot_node": {
+          "mean_ms": 0.2835,
+          "median_ms": 0.2687,
+          "p95_ms": 0.392,
+          "avg_active_bodies": 200.0,
+          "avg_collision_pairs": 398.9,
+          "reps": 3,
+          "raw_means": [
+            0.2868,
+            0.2828,
+            0.2809
+          ]
+        },
+        "godot_server": {
+          "mean_ms": 0.2407,
+          "median_ms": 0.2253,
+          "p95_ms": 0.3423,
+          "avg_active_bodies": 200.0,
+          "avg_collision_pairs": 392.1,
+          "reps": 3,
+          "raw_means": [
+            0.2377,
+            0.2435,
+            0.2408
+          ]
+        },
+        "box2d_v2": {
+          "mean_ms": 0.1433,
+          "median_ms": 0.1357,
+          "p95_ms": 0.2091,
+          "avg_awake_bodies": 200.0,
+          "avg_contacts": 318.1,
+          "reps": 3,
+          "raw_means": [
+            0.1474,
+            0.1451,
+            0.1373
+          ]
+        },
+        "box2d_v3_w1": {
+          "mean_ms": 0.0801,
+          "median_ms": 0.0787,
+          "p95_ms": 0.1367,
+          "avg_awake_bodies": 199.9,
+          "avg_contacts": 257.4,
+          "reps": 3,
+          "raw_means": [
+            0.0809,
+            0.0781,
+            0.0813
+          ]
+        },
+        "box2d_v3_w6": {
+          "mean_ms": 0.0735,
+          "median_ms": 0.0708,
+          "p95_ms": 0.1062,
+          "avg_awake_bodies": 199.9,
+          "avg_contacts": 257.4,
+          "reps": 3,
+          "raw_means": [
+            0.0696,
+            0.0719,
+            0.0789
+          ]
+        },
+        "unity_w1": {
+          "mean_ms": 0.175,
+          "median_ms": 0.1744,
+          "p95_ms": 0.2854,
+          "avg_awake_bodies": 200.0,
+          "multithreaded": false,
+          "job_worker_count": 11,
+          "engine": "unity_6000.3.22f1",
+          "reps": 3,
+          "raw_means": [
+            0.1755,
+            0.174,
+            0.1754
+          ]
+        },
+        "unity_w6": {
+          "mean_ms": 0.1738,
+          "median_ms": 0.1611,
+          "p95_ms": 0.267,
+          "avg_awake_bodies": 200.0,
+          "multithreaded": true,
+          "job_worker_count": 5,
+          "engine": "unity_6000.3.22f1",
+          "reps": 3,
+          "raw_means": [
+            0.17,
+            0.1806,
+            0.1709
+          ]
+        }
+      },
+      {
+        "n": 500,
+        "platformator_w1": {
+          "mean_ms": 0.3354,
+          "median_ms": 0.3656,
+          "p95_ms": 0.6162,
+          "avg_awake": 499.4,
+          "avg_active_collisions": 361.2,
+          "reps": 5
+        },
+        "platformator_w6": {
+          "mean_ms": 0.2648,
+          "median_ms": 0.253,
+          "p95_ms": 0.4654,
+          "avg_awake": 499.4,
+          "avg_active_collisions": 361.2,
+          "reps": 5
+        },
+        "godot_node": {
+          "mean_ms": 0.8301,
+          "median_ms": 0.8183,
+          "p95_ms": 1.1327,
+          "avg_active_bodies": 500.0,
+          "avg_collision_pairs": 1218.4,
+          "reps": 3,
+          "raw_means": [
+            0.8388,
+            0.8637,
+            0.7879
+          ]
+        },
+        "godot_server": {
+          "mean_ms": 0.6827,
+          "median_ms": 0.6917,
+          "p95_ms": 0.9233,
+          "avg_active_bodies": 500.0,
+          "avg_collision_pairs": 1200.6,
+          "reps": 3,
+          "raw_means": [
+            0.6713,
+            0.674,
+            0.7029
+          ]
+        },
+        "box2d_v2": {
+          "mean_ms": 0.4172,
+          "median_ms": 0.4082,
+          "p95_ms": 0.6171,
+          "avg_awake_bodies": 499.2,
+          "avg_contacts": 986.0,
+          "reps": 3,
+          "raw_means": [
+            0.419,
+            0.4249,
+            0.4078
+          ]
+        },
+        "box2d_v3_w1": {
+          "mean_ms": 0.2614,
+          "median_ms": 0.2437,
+          "p95_ms": 0.39,
+          "avg_awake_bodies": 499.7,
+          "avg_contacts": 825.7,
+          "reps": 3,
+          "raw_means": [
+            0.2617,
+            0.2675,
+            0.255
+          ]
+        },
+        "box2d_v3_w6": {
+          "mean_ms": 0.146,
+          "median_ms": 0.1447,
+          "p95_ms": 0.1946,
+          "avg_awake_bodies": 499.7,
+          "avg_contacts": 825.7,
+          "reps": 3,
+          "raw_means": [
+            0.1446,
+            0.1446,
+            0.1487
+          ]
+        },
+        "unity_w1": {
+          "mean_ms": 0.5561,
+          "median_ms": 0.5934,
+          "p95_ms": 0.7505,
+          "avg_awake_bodies": 499.9,
+          "multithreaded": false,
+          "job_worker_count": 11,
+          "engine": "unity_6000.3.22f1",
+          "reps": 3,
+          "raw_means": [
+            0.5811,
+            0.5477,
+            0.5395
+          ]
+        },
+        "unity_w6": {
+          "mean_ms": 0.4663,
+          "median_ms": 0.5489,
+          "p95_ms": 0.6636,
+          "avg_awake_bodies": 500.0,
+          "multithreaded": true,
+          "job_worker_count": 5,
+          "engine": "unity_6000.3.22f1",
+          "reps": 3,
+          "raw_means": [
+            0.4671,
+            0.4606,
+            0.4711
+          ]
+        }
+      },
+      {
+        "n": 1000,
+        "platformator_w1": {
+          "mean_ms": 0.8751,
+          "median_ms": 0.9147,
+          "p95_ms": 1.3604,
+          "avg_awake": 998.0,
+          "avg_active_collisions": 985.3,
+          "reps": 5
+        },
+        "platformator_w6": {
+          "mean_ms": 0.5869,
+          "median_ms": 0.6579,
+          "p95_ms": 0.8001,
+          "avg_awake": 998.0,
+          "avg_active_collisions": 985.3,
+          "reps": 5
+        },
+        "godot_node": {
+          "mean_ms": 2.0239,
+          "median_ms": 2.0057,
+          "p95_ms": 2.6663,
+          "avg_active_bodies": 1000.0,
+          "avg_collision_pairs": 2784.3,
+          "reps": 3,
+          "raw_means": [
+            2.0739,
+            1.9976,
+            2.0002
+          ]
+        },
+        "godot_server": {
+          "mean_ms": 1.5278,
+          "median_ms": 1.5113,
+          "p95_ms": 1.9667,
+          "avg_active_bodies": 1000.0,
+          "avg_collision_pairs": 2757.8,
+          "reps": 3,
+          "raw_means": [
+            1.5489,
+            1.559,
+            1.4755
+          ]
+        },
+        "box2d_v2": {
+          "mean_ms": 0.9917,
+          "median_ms": 0.9769,
+          "p95_ms": 1.3891,
+          "avg_awake_bodies": 999.1,
+          "avg_contacts": 2230.7,
+          "reps": 3,
+          "raw_means": [
+            0.9855,
+            0.999,
+            0.9907
+          ]
+        },
+        "box2d_v3_w1": {
+          "mean_ms": 0.5474,
+          "median_ms": 0.5388,
+          "p95_ms": 0.6974,
+          "avg_awake_bodies": 997.8,
+          "avg_contacts": 2005.4,
+          "reps": 3,
+          "raw_means": [
+            0.5406,
+            0.5346,
+            0.5669
+          ]
+        },
+        "box2d_v3_w6": {
+          "mean_ms": 0.2476,
+          "median_ms": 0.2407,
+          "p95_ms": 0.3191,
+          "avg_awake_bodies": 997.8,
+          "avg_contacts": 2005.4,
+          "reps": 3,
+          "raw_means": [
+            0.2454,
+            0.2492,
+            0.2483
+          ]
+        },
+        "unity_w1": {
+          "mean_ms": 1.2641,
+          "median_ms": 1.282,
+          "p95_ms": 1.6073,
+          "avg_awake_bodies": 998.3,
+          "multithreaded": false,
+          "job_worker_count": 11,
+          "engine": "unity_6000.3.22f1",
+          "reps": 3,
+          "raw_means": [
+            1.2918,
+            1.2649,
+            1.2355
+          ]
+        },
+        "unity_w6": {
+          "mean_ms": 1.1261,
+          "median_ms": 1.1625,
+          "p95_ms": 1.5459,
+          "avg_awake_bodies": 999.4,
+          "multithreaded": true,
+          "job_worker_count": 5,
+          "engine": "unity_6000.3.22f1",
+          "reps": 3,
+          "raw_means": [
+            1.135,
+            1.107,
+            1.1362
+          ]
+        }
+      },
+      {
+        "n": 1500,
+        "platformator_w1": {
+          "mean_ms": 1.3467,
+          "median_ms": 1.4458,
+          "p95_ms": 2.129,
+          "avg_awake": 1498.5,
+          "avg_active_collisions": 1410.2,
+          "reps": 5
+        },
+        "platformator_w6": {
+          "mean_ms": 0.8172,
+          "median_ms": 0.8971,
+          "p95_ms": 1.1975,
+          "avg_awake": 1498.5,
+          "avg_active_collisions": 1410.2,
+          "reps": 5
+        },
+        "godot_node": {
+          "mean_ms": 3.6718,
+          "median_ms": 3.6357,
+          "p95_ms": 4.7593,
+          "avg_active_bodies": 1500.0,
+          "avg_collision_pairs": 4064.4,
+          "reps": 3,
+          "raw_means": [
+            3.6502,
+            3.6704,
+            3.6948
+          ]
+        },
+        "godot_server": {
+          "mean_ms": 2.3264,
+          "median_ms": 2.3057,
+          "p95_ms": 3.0653,
+          "avg_active_bodies": 1500.0,
+          "avg_collision_pairs": 4057.8,
+          "reps": 3,
+          "raw_means": [
+            2.3144,
+            2.3753,
+            2.2894
+          ]
+        },
+        "box2d_v2": {
+          "mean_ms": 1.4698,
+          "median_ms": 1.4517,
+          "p95_ms": 2.0172,
+          "avg_awake_bodies": 1500.0,
+          "avg_contacts": 3271.1,
+          "reps": 3,
+          "raw_means": [
+            1.4832,
+            1.4468,
+            1.4794
+          ]
+        },
+        "box2d_v3_w1": {
+          "mean_ms": 0.9331,
+          "median_ms": 0.8851,
+          "p95_ms": 1.3169,
+          "avg_awake_bodies": 1498.7,
+          "avg_contacts": 2915.7,
+          "reps": 3,
+          "raw_means": [
+            0.9261,
+            0.935,
+            0.9382
+          ]
+        },
+        "box2d_v3_w6": {
+          "mean_ms": 0.3573,
+          "median_ms": 0.3513,
+          "p95_ms": 0.4462,
+          "avg_awake_bodies": 1498.7,
+          "avg_contacts": 2915.7,
+          "reps": 3,
+          "raw_means": [
+            0.353,
+            0.3597,
+            0.3593
+          ]
+        },
+        "unity_w1": {
+          "mean_ms": 2.3026,
+          "median_ms": 2.2617,
+          "p95_ms": 3.2561,
+          "avg_awake_bodies": 1498.9,
+          "multithreaded": false,
+          "job_worker_count": 11,
+          "engine": "unity_6000.3.22f1",
+          "reps": 3,
+          "raw_means": [
+            2.217,
+            2.5379,
+            2.1529
+          ]
+        },
+        "unity_w6": {
+          "mean_ms": 1.9468,
+          "median_ms": 1.9998,
+          "p95_ms": 2.8318,
+          "avg_awake_bodies": 1500.0,
+          "multithreaded": true,
+          "job_worker_count": 5,
+          "engine": "unity_6000.3.22f1",
+          "reps": 3,
+          "raw_means": [
+            1.9902,
+            2.0009,
+            1.8493
+          ]
+        }
+      },
+      {
+        "n": 2000,
+        "platformator_w1": {
+          "mean_ms": 1.8484,
+          "median_ms": 2.0037,
+          "p95_ms": 2.9306,
+          "avg_awake": 1998.7,
+          "avg_active_collisions": 1791.2,
+          "reps": 5
+        },
+        "platformator_w6": {
+          "mean_ms": 0.9647,
+          "median_ms": 1.0978,
+          "p95_ms": 1.4088,
+          "avg_awake": 1998.7,
+          "avg_active_collisions": 1791.2,
+          "reps": 5
+        },
+        "godot_node": {
+          "mean_ms": 5.4598,
+          "median_ms": 5.536,
+          "p95_ms": 7.0233,
+          "avg_active_bodies": 2000.0,
+          "avg_collision_pairs": 5314.7,
+          "reps": 3,
+          "raw_means": [
+            5.4706,
+            5.5513,
+            5.3575
+          ]
+        },
+        "godot_server": {
+          "mean_ms": 3.4413,
+          "median_ms": 3.415,
+          "p95_ms": 4.7123,
+          "avg_active_bodies": 2000.0,
+          "avg_collision_pairs": 5295.7,
+          "reps": 3,
+          "raw_means": [
+            3.4442,
+            3.474,
+            3.4057
+          ]
+        },
+        "box2d_v2": {
+          "mean_ms": 2.1985,
+          "median_ms": 2.1928,
+          "p95_ms": 3.0285,
+          "avg_awake_bodies": 2000.0,
+          "avg_contacts": 4344.6,
+          "reps": 3,
+          "raw_means": [
+            2.0659,
+            2.2361,
+            2.2936
+          ]
+        },
+        "box2d_v3_w1": {
+          "mean_ms": 1.4375,
+          "median_ms": 1.3889,
+          "p95_ms": 1.9461,
+          "avg_awake_bodies": 1997.8,
+          "avg_contacts": 3793.0,
+          "reps": 3,
+          "raw_means": [
+            1.4443,
+            1.4325,
+            1.4356
+          ]
+        },
+        "box2d_v3_w6": {
+          "mean_ms": 0.5174,
+          "median_ms": 0.5062,
+          "p95_ms": 0.6581,
+          "avg_awake_bodies": 1997.8,
+          "avg_contacts": 3793.0,
+          "reps": 3,
+          "raw_means": [
+            0.5113,
+            0.5159,
+            0.5251
+          ]
+        },
+        "unity_w1": {
+          "mean_ms": 2.9846,
+          "median_ms": 3.0511,
+          "p95_ms": 3.9525,
+          "avg_awake_bodies": 1998.6,
+          "multithreaded": false,
+          "job_worker_count": 11,
+          "engine": "unity_6000.3.22f1",
+          "reps": 3,
+          "raw_means": [
+            2.9784,
+            2.9421,
+            3.0333
+          ]
+        },
+        "unity_w6": {
+          "mean_ms": 2.5135,
+          "median_ms": 2.6223,
+          "p95_ms": 3.6591,
+          "avg_awake_bodies": 2000.0,
+          "multithreaded": true,
+          "job_worker_count": 5,
+          "engine": "unity_6000.3.22f1",
+          "reps": 3,
+          "raw_means": [
+            2.4471,
+            2.5825,
+            2.511
+          ]
+        }
+      }
+    ],
+    "ideal_world": [
+      {
+        "n": 200,
+        "platformator_w1": {
+          "mean_ms": 0.123,
+          "median_ms": 0.1251,
+          "p95_ms": 0.2054,
+          "avg_awake": 171.1,
+          "avg_active_collisions": 242.8,
+          "reps": 5
+        },
+        "platformator_w6": {
+          "mean_ms": 0.1129,
+          "median_ms": 0.1198,
+          "p95_ms": 0.1642,
+          "avg_awake": 171.1,
+          "avg_active_collisions": 242.8,
+          "reps": 5
+        },
+        "godot_node": {
+          "mean_ms": 0.236,
+          "median_ms": 0.228,
+          "p95_ms": 0.3073,
+          "avg_active_bodies": 195.1,
+          "avg_collision_pairs": 397.9,
+          "reps": 3,
+          "raw_means": [
+            0.2532,
+            0.2293,
+            0.2254
+          ]
+        },
+        "godot_server": {
+          "mean_ms": 0.1919,
+          "median_ms": 0.187,
+          "p95_ms": 0.243,
+          "avg_active_bodies": 195.1,
+          "avg_collision_pairs": 394.4,
+          "reps": 3,
+          "raw_means": [
+            0.192,
+            0.1901,
+            0.1936
+          ]
+        },
+        "box2d_v2": {
+          "mean_ms": 0.1305,
+          "median_ms": 0.1317,
+          "p95_ms": 0.1785,
+          "avg_awake_bodies": 187.1,
+          "avg_contacts": 347.2,
+          "reps": 3,
+          "raw_means": [
+            0.1387,
+            0.1276,
+            0.1253
+          ]
+        },
+        "box2d_v3_w1": {
+          "mean_ms": 0.0721,
+          "median_ms": 0.0758,
+          "p95_ms": 0.1049,
+          "avg_awake_bodies": 172.8,
+          "avg_contacts": 331.2,
+          "reps": 3,
+          "raw_means": [
+            0.0714,
+            0.0738,
+            0.071
+          ]
+        },
+        "box2d_v3_w6": {
+          "mean_ms": 0.0852,
+          "median_ms": 0.086,
+          "p95_ms": 0.1105,
+          "avg_awake_bodies": 172.8,
+          "avg_contacts": 331.2,
+          "reps": 3,
+          "raw_means": [
+            0.08,
+            0.0823,
+            0.0934
+          ]
+        },
+        "unity_w1": {
+          "mean_ms": 0.1937,
+          "median_ms": 0.1935,
+          "p95_ms": 0.3003,
+          "avg_awake_bodies": 190.1,
+          "multithreaded": false,
+          "job_worker_count": 11,
+          "engine": "unity_6000.3.22f1",
+          "reps": 3,
+          "raw_means": [
+            0.1946,
+            0.1922,
+            0.1942
+          ]
+        },
+        "unity_w6": {
+          "mean_ms": 0.173,
+          "median_ms": 0.1699,
+          "p95_ms": 0.2394,
+          "avg_awake_bodies": 198.5,
+          "multithreaded": true,
+          "job_worker_count": 5,
+          "engine": "unity_6000.3.22f1",
+          "reps": 3,
+          "raw_means": [
+            0.1669,
+            0.176,
+            0.1762
+          ]
+        }
+      },
+      {
+        "n": 500,
+        "platformator_w1": {
+          "mean_ms": 0.3156,
+          "median_ms": 0.3246,
+          "p95_ms": 0.5167,
+          "avg_awake": 413.0,
+          "avg_active_collisions": 603.4,
+          "reps": 5
+        },
+        "platformator_w6": {
+          "mean_ms": 0.1813,
+          "median_ms": 0.1867,
+          "p95_ms": 0.2482,
+          "avg_awake": 413.0,
+          "avg_active_collisions": 603.4,
+          "reps": 5
+        },
+        "godot_node": {
+          "mean_ms": 0.5196,
+          "median_ms": 0.4817,
+          "p95_ms": 0.8213,
+          "avg_active_bodies": 479.6,
+          "avg_collision_pairs": 995.1,
+          "reps": 3,
+          "raw_means": [
+            0.5954,
+            0.4826,
+            0.4809
+          ]
+        },
+        "godot_server": {
+          "mean_ms": 0.3826,
+          "median_ms": 0.3753,
+          "p95_ms": 0.487,
+          "avg_active_bodies": 479.6,
+          "avg_collision_pairs": 987.1,
+          "reps": 3,
+          "raw_means": [
+            0.3853,
+            0.3777,
+            0.3848
+          ]
+        },
+        "box2d_v2": {
+          "mean_ms": 0.3435,
+          "median_ms": 0.3404,
+          "p95_ms": 0.4971,
+          "avg_awake_bodies": 459.8,
+          "avg_contacts": 871.5,
+          "reps": 3,
+          "raw_means": [
+            0.3326,
+            0.3516,
+            0.3463
+          ]
+        },
+        "box2d_v3_w1": {
+          "mean_ms": 0.1873,
+          "median_ms": 0.1963,
+          "p95_ms": 0.272,
+          "avg_awake_bodies": 417.4,
+          "avg_contacts": 824.3,
+          "reps": 3,
+          "raw_means": [
+            0.1893,
+            0.1865,
+            0.1862
+          ]
+        },
+        "box2d_v3_w6": {
+          "mean_ms": 0.1313,
+          "median_ms": 0.1342,
+          "p95_ms": 0.1778,
+          "avg_awake_bodies": 417.2,
+          "avg_contacts": 824.3,
+          "reps": 3,
+          "raw_means": [
+            0.1335,
+            0.1264,
+            0.1339
+          ]
+        },
+        "unity_w1": {
+          "mean_ms": 0.4986,
+          "median_ms": 0.5064,
+          "p95_ms": 0.7506,
+          "avg_awake_bodies": 471.5,
+          "multithreaded": false,
+          "job_worker_count": 11,
+          "engine": "unity_6000.3.22f1",
+          "reps": 3,
+          "raw_means": [
+            0.4969,
+            0.4957,
+            0.5031
+          ]
+        },
+        "unity_w6": {
+          "mean_ms": 0.396,
+          "median_ms": 0.3926,
+          "p95_ms": 0.5502,
+          "avg_awake_bodies": 488.8,
+          "multithreaded": true,
+          "job_worker_count": 5,
+          "engine": "unity_6000.3.22f1",
+          "reps": 3,
+          "raw_means": [
+            0.3965,
+            0.4017,
+            0.3897
+          ]
+        }
+      },
+      {
+        "n": 1000,
+        "platformator_w1": {
+          "mean_ms": 0.7163,
+          "median_ms": 0.7537,
+          "p95_ms": 1.1249,
+          "avg_awake": 855.7,
+          "avg_active_collisions": 1207.1,
+          "reps": 5
+        },
+        "platformator_w6": {
+          "mean_ms": 0.3238,
+          "median_ms": 0.3413,
+          "p95_ms": 0.433,
+          "avg_awake": 855.7,
+          "avg_active_collisions": 1207.1,
+          "reps": 5
+        },
+        "godot_node": {
+          "mean_ms": 1.042,
+          "median_ms": 1.0023,
+          "p95_ms": 1.5377,
+          "avg_active_bodies": 959.7,
+          "avg_collision_pairs": 2010.2,
+          "reps": 3,
+          "raw_means": [
+            1.0433,
+            1.0436,
+            1.039
+          ]
+        },
+        "godot_server": {
+          "mean_ms": 0.7099,
+          "median_ms": 0.7007,
+          "p95_ms": 0.9543,
+          "avg_active_bodies": 959.7,
+          "avg_collision_pairs": 1995.4,
+          "reps": 3,
+          "raw_means": [
+            0.7117,
+            0.7114,
+            0.7066
+          ]
+        },
+        "box2d_v2": {
+          "mean_ms": 0.6904,
+          "median_ms": 0.7049,
+          "p95_ms": 0.9264,
+          "avg_awake_bodies": 906.4,
+          "avg_contacts": 1747.7,
+          "reps": 3,
+          "raw_means": [
+            0.7035,
+            0.6951,
+            0.6725
+          ]
+        },
+        "box2d_v3_w1": {
+          "mean_ms": 0.3949,
+          "median_ms": 0.4263,
+          "p95_ms": 0.5475,
+          "avg_awake_bodies": 856.0,
+          "avg_contacts": 1652.4,
+          "reps": 3,
+          "raw_means": [
+            0.4032,
+            0.3906,
+            0.3909
+          ]
+        },
+        "box2d_v3_w6": {
+          "mean_ms": 0.2165,
+          "median_ms": 0.2219,
+          "p95_ms": 0.2846,
+          "avg_awake_bodies": 856.1,
+          "avg_contacts": 1652.3,
+          "reps": 3,
+          "raw_means": [
+            0.2031,
+            0.226,
+            0.2205
+          ]
+        },
+        "unity_w1": {
+          "mean_ms": 1.1401,
+          "median_ms": 1.1391,
+          "p95_ms": 1.6664,
+          "avg_awake_bodies": 939.2,
+          "multithreaded": false,
+          "job_worker_count": 11,
+          "engine": "unity_6000.3.22f1",
+          "reps": 3,
+          "raw_means": [
+            1.0445,
+            1.1682,
+            1.2075
+          ]
+        },
+        "unity_w6": {
+          "mean_ms": 0.7713,
+          "median_ms": 0.7697,
+          "p95_ms": 1.0819,
+          "avg_awake_bodies": 971.5,
+          "multithreaded": true,
+          "job_worker_count": 5,
+          "engine": "unity_6000.3.22f1",
+          "reps": 3,
+          "raw_means": [
+            0.7667,
+            0.7955,
+            0.7516
+          ]
+        }
+      },
+      {
+        "n": 2000,
+        "platformator_w1": {
+          "mean_ms": 1.7542,
+          "median_ms": 1.7933,
+          "p95_ms": 2.7875,
+          "avg_awake": 1688.9,
+          "avg_active_collisions": 2414.6,
+          "reps": 5
+        },
+        "platformator_w6": {
+          "mean_ms": 0.6298,
+          "median_ms": 0.6675,
+          "p95_ms": 0.8517,
+          "avg_awake": 1688.9,
+          "avg_active_collisions": 2414.6,
+          "reps": 5
+        },
+        "godot_node": {
+          "mean_ms": 3.1806,
+          "median_ms": 3.243,
+          "p95_ms": 4.4553,
+          "avg_active_bodies": 1923.4,
+          "avg_collision_pairs": 4008.2,
+          "reps": 3,
+          "raw_means": [
+            3.3049,
+            3.1022,
+            3.1346
+          ]
+        },
+        "godot_server": {
+          "mean_ms": 1.6069,
+          "median_ms": 1.5707,
+          "p95_ms": 2.3793,
+          "avg_active_bodies": 1923.4,
+          "avg_collision_pairs": 3972.9,
+          "reps": 3,
+          "raw_means": [
+            1.5253,
+            1.5558,
+            1.7396
+          ]
+        },
+        "box2d_v2": {
+          "mean_ms": 1.4307,
+          "median_ms": 1.4655,
+          "p95_ms": 1.8197,
+          "avg_awake_bodies": 1812.5,
+          "avg_contacts": 3489.6,
+          "reps": 3,
+          "raw_means": [
+            1.439,
+            1.4404,
+            1.4128
+          ]
+        },
+        "box2d_v3_w1": {
+          "mean_ms": 0.865,
+          "median_ms": 0.8945,
+          "p95_ms": 1.1215,
+          "avg_awake_bodies": 1785.1,
+          "avg_contacts": 3276.1,
+          "reps": 3,
+          "raw_means": [
+            0.8445,
+            0.8517,
+            0.8987
+          ]
+        },
+        "box2d_v3_w6": {
+          "mean_ms": 0.3373,
+          "median_ms": 0.336,
+          "p95_ms": 0.4388,
+          "avg_awake_bodies": 1792.5,
+          "avg_contacts": 3275.9,
+          "reps": 3,
+          "raw_means": [
+            0.3365,
+            0.3403,
+            0.3352
+          ]
+        },
+        "unity_w1": {
+          "mean_ms": 2.5852,
+          "median_ms": 2.6881,
+          "p95_ms": 3.5894,
+          "avg_awake_bodies": 1886.8,
+          "multithreaded": false,
+          "job_worker_count": 11,
+          "engine": "unity_6000.3.22f1",
+          "reps": 3,
+          "raw_means": [
+            2.5845,
+            2.585,
+            2.5861
+          ]
+        },
+        "unity_w6": {
+          "mean_ms": 2.4559,
+          "median_ms": 2.4219,
+          "p95_ms": 3.9568,
+          "avg_awake_bodies": 1953.0,
+          "multithreaded": true,
+          "job_worker_count": 5,
+          "engine": "unity_6000.3.22f1",
+          "reps": 3,
+          "raw_means": [
+            2.8348,
+            2.4173,
+            2.1156
+          ]
+        }
+      },
+      {
+        "n": 5000,
+        "platformator_w1": {
+          "mean_ms": 6.343,
+          "median_ms": 6.5721,
+          "p95_ms": 9.8181,
+          "avg_awake": 4233.4,
+          "avg_active_collisions": 6047.6,
+          "reps": 5
+        },
+        "platformator_w6": {
+          "mean_ms": 1.6193,
+          "median_ms": 1.7225,
+          "p95_ms": 2.2515,
+          "avg_awake": 4233.4,
+          "avg_active_collisions": 6047.6,
+          "reps": 5
+        },
+        "godot_node": {
+          "mean_ms": 9.9982,
+          "median_ms": 10.29,
+          "p95_ms": 12.5703,
+          "avg_active_bodies": 4746.4,
+          "avg_collision_pairs": 10030.8,
+          "reps": 3,
+          "raw_means": [
+            9.9369,
+            10.0055,
+            10.0521
+          ]
+        },
+        "godot_server": {
+          "mean_ms": 5.7223,
+          "median_ms": 5.8843,
+          "p95_ms": 7.6787,
+          "avg_active_bodies": 4746.4,
+          "avg_collision_pairs": 9943.9,
+          "reps": 3,
+          "raw_means": [
+            5.764,
+            5.857,
+            5.5459
+          ]
+        },
+        "box2d_v2": {
+          "mean_ms": 4.5779,
+          "median_ms": 4.6594,
+          "p95_ms": 6.1455,
+          "avg_awake_bodies": 4585.1,
+          "avg_contacts": 8719.0,
+          "reps": 3,
+          "raw_means": [
+            4.4023,
+            4.4334,
+            4.898
+          ]
+        },
+        "box2d_v3_w1": {
+          "mean_ms": 2.8055,
+          "median_ms": 2.7583,
+          "p95_ms": 3.6758,
+          "avg_awake_bodies": 4838.3,
+          "avg_contacts": 8146.4,
+          "reps": 3,
+          "raw_means": [
+            2.8045,
+            2.8081,
+            2.804
+          ]
+        },
+        "box2d_v3_w6": {
+          "mean_ms": 0.7241,
+          "median_ms": 0.7106,
+          "p95_ms": 0.9055,
+          "avg_awake_bodies": 4832.6,
+          "avg_contacts": 8146.5,
+          "reps": 3,
+          "raw_means": [
+            0.7281,
+            0.695,
+            0.7492
+          ]
+        },
+        "unity_w1": {
+          "mean_ms": 11.0282,
+          "median_ms": 11.7428,
+          "p95_ms": 14.1221,
+          "avg_awake_bodies": 4767.3,
+          "multithreaded": false,
+          "job_worker_count": 11,
+          "engine": "unity_6000.3.22f1",
+          "reps": 3,
+          "raw_means": [
+            10.5574,
+            10.9686,
+            11.5587
+          ]
+        },
+        "unity_w6": {
+          "mean_ms": 7.8114,
+          "median_ms": 8.4442,
+          "p95_ms": 9.8174,
+          "avg_awake_bodies": 4900.3,
+          "multithreaded": true,
+          "job_worker_count": 5,
+          "engine": "unity_6000.3.22f1",
+          "reps": 3,
+          "raw_means": [
+            7.931,
+            7.9199,
+            7.5834
+          ]
+        }
+      },
+      {
+        "n": 10000,
+        "platformator_w1": {
+          "mean_ms": 15.2993,
+          "median_ms": 15.9158,
+          "p95_ms": 21.9592,
+          "avg_awake": 8376.5,
+          "avg_active_collisions": 12110.8,
+          "reps": 5
+        },
+        "platformator_w6": {
+          "mean_ms": 4.5199,
+          "median_ms": 4.7201,
+          "p95_ms": 6.4116,
+          "avg_awake": 8376.5,
+          "avg_active_collisions": 12110.8,
+          "reps": 5
+        },
+        "godot_node": {
+          "mean_ms": 23.6033,
+          "median_ms": 24.286,
+          "p95_ms": 28.5357,
+          "avg_active_bodies": 9552.0,
+          "avg_collision_pairs": 19964.9,
+          "reps": 3,
+          "raw_means": [
+            23.6353,
+            23.3223,
+            23.8524
+          ]
+        },
+        "godot_server": {
+          "mean_ms": 15.6382,
+          "median_ms": 16.242,
+          "p95_ms": 18.977,
+          "avg_active_bodies": 9552.0,
+          "avg_collision_pairs": 19803.3,
+          "reps": 3,
+          "raw_means": [
+            15.5974,
+            15.6215,
+            15.6958
+          ]
+        },
+        "box2d_v2": {
+          "mean_ms": 11.472,
+          "median_ms": 11.7935,
+          "p95_ms": 14.7087,
+          "avg_awake_bodies": 9147.0,
+          "avg_contacts": 17395.8,
+          "reps": 3,
+          "raw_means": [
+            11.4832,
+            11.3462,
+            11.5865
+          ]
+        },
+        "box2d_v3_w1": {
+          "mean_ms": 7.9047,
+          "median_ms": 7.6735,
+          "p95_ms": 10.2855,
+          "avg_awake_bodies": 9804.4,
+          "avg_contacts": 16385.1,
+          "reps": 3,
+          "raw_means": [
+            7.8416,
+            8.1853,
+            7.6873
+          ]
+        },
+        "box2d_v3_w6": {
+          "mean_ms": 1.7044,
+          "median_ms": 1.6696,
+          "p95_ms": 2.2276,
+          "avg_awake_bodies": 9809.6,
+          "avg_contacts": 16385.0,
+          "reps": 3,
+          "raw_means": [
+            1.6343,
+            1.6438,
+            1.835
+          ]
+        },
+        "unity_w1": {
+          "mean_ms": 26.9809,
+          "median_ms": 29.1218,
+          "p95_ms": 34.0014,
+          "avg_awake_bodies": 9502.2,
+          "multithreaded": false,
+          "job_worker_count": 11,
+          "engine": "unity_6000.3.22f1",
+          "reps": 3,
+          "raw_means": [
+            25.9658,
+            27.2289,
+            27.748
+          ]
+        },
+        "unity_w6": null,
+        "unity_w6_note": "total_budget_exceeded"
+      },
+      {
+        "n": 15000,
+        "platformator_w1": {
+          "mean_ms": 24.2265,
+          "median_ms": 24.5586,
+          "p95_ms": 36.455,
+          "avg_awake": 12519.2,
+          "avg_active_collisions": 18183.0,
+          "reps": 5
+        },
+        "platformator_w6": {
+          "mean_ms": 7.9579,
+          "median_ms": 8.1718,
+          "p95_ms": 11.5003,
+          "avg_awake": 12519.2,
+          "avg_active_collisions": 18183.0,
+          "reps": 5
+        },
+        "godot_node": {
+          "mean_ms": 35.4834,
+          "median_ms": 36.5463,
+          "p95_ms": 42.1757,
+          "avg_active_bodies": 14311.2,
+          "avg_collision_pairs": 30066.9,
+          "reps": 3,
+          "raw_means": [
+            35.4416,
+            35.541,
+            35.4677
+          ]
+        },
+        "godot_server": {
+          "mean_ms": 24.1766,
+          "median_ms": 25.347,
+          "p95_ms": 28.4827,
+          "avg_active_bodies": 14311.2,
+          "avg_collision_pairs": 29833.0,
+          "reps": 3,
+          "raw_means": [
+            24.3504,
+            23.8059,
+            24.3734
+          ]
+        },
+        "box2d_v2": {
+          "mean_ms": 21.1493,
+          "median_ms": 21.7266,
+          "p95_ms": 25.5431,
+          "avg_awake_bodies": 13771.4,
+          "avg_contacts": 26002.4,
+          "reps": 3,
+          "raw_means": [
+            21.4089,
+            20.8317,
+            21.2072
+          ]
+        },
+        "box2d_v3_w1": {
+          "mean_ms": 13.6923,
+          "median_ms": 13.8884,
+          "p95_ms": 16.47,
+          "avg_awake_bodies": 14848.6,
+          "avg_contacts": 24643.1,
+          "reps": 3,
+          "raw_means": [
+            13.7566,
+            13.8056,
+            13.5147
+          ]
+        },
+        "box2d_v3_w6": {
+          "mean_ms": 3.2474,
+          "median_ms": 3.2281,
+          "p95_ms": 4.4133,
+          "avg_awake_bodies": 14853.0,
+          "avg_contacts": 24642.9,
+          "reps": 3,
+          "raw_means": [
+            3.2421,
+            3.2656,
+            3.2346
+          ]
+        },
+        "unity_w1": null,
+        "unity_w6": null,
+        "unity_w1_note": "total_budget_exceeded",
+        "unity_w6_note": "skipped_after_timeout"
+      },
+      {
+        "n": 20000,
+        "platformator_w1": {
+          "mean_ms": 39.2744,
+          "median_ms": 39.6395,
+          "p95_ms": 62.7803,
+          "avg_awake": 16655.4,
+          "avg_active_collisions": 24262.6,
+          "reps": 5
+        },
+        "platformator_w6": {
+          "mean_ms": 13.4445,
+          "median_ms": 14.0274,
+          "p95_ms": 19.1323,
+          "avg_awake": 16655.4,
+          "avg_active_collisions": 24262.6,
+          "reps": 5
+        },
+        "godot_node": null,
+        "godot_server": {
+          "mean_ms": 31.8345,
+          "median_ms": 33.3903,
+          "p95_ms": 37.02,
+          "avg_active_bodies": 19160.3,
+          "avg_collision_pairs": 39676.2,
+          "reps": 3,
+          "raw_means": [
+            31.8738,
+            31.8044,
+            31.8253
+          ]
+        },
+        "box2d_v2": {
+          "mean_ms": 29.5966,
+          "median_ms": 30.5813,
+          "p95_ms": 35.8766,
+          "avg_awake_bodies": 18313.5,
+          "avg_contacts": 34648.7,
+          "reps": 3,
+          "raw_means": [
+            29.8282,
+            29.7466,
+            29.2151
+          ]
+        },
+        "box2d_v3_w1": {
+          "mean_ms": 20.0981,
+          "median_ms": 20.7086,
+          "p95_ms": 23.7635,
+          "avg_awake_bodies": 19827.1,
+          "avg_contacts": 32871.1,
+          "reps": 3,
+          "raw_means": [
+            19.9855,
+            20.1902,
+            20.1185
+          ]
+        },
+        "box2d_v3_w6": {
+          "mean_ms": 4.8624,
+          "median_ms": 4.8216,
+          "p95_ms": 6.2166,
+          "avg_awake_bodies": 19823.6,
+          "avg_contacts": 32871.3,
+          "reps": 3,
+          "raw_means": [
+            4.8957,
+            4.968,
+            4.7234
+          ]
+        },
+        "unity_w1": null,
+        "unity_w6": null,
+        "unity_w1_note": "skipped_after_timeout",
+        "unity_w6_note": "skipped_after_timeout"
+      }
+    ]
+  },
+  "elapsed_seconds": 286.7
+}

@@ -9,6 +9,7 @@
 #include "platformator/gridtypes.h"
 
 class Collider;
+class Rigidbody;
 class LocalSortArray;
 class GridCell;
 class SegmentedIntervalList;
@@ -255,6 +256,10 @@ class Collider : public Component
     {
         return colliderType;
     }
+    Rigidbody *getAttachedRigidbody() const noexcept
+    {
+        return attachedRigidbody;
+    }
     virtual Eigen::Vector2f projectOntoAxis(const Eigen::Vector2f &axis) const = 0;
     virtual std::vector<Eigen::Vector2f> getNormals(const Collider *other) const = 0;
 
@@ -438,6 +443,7 @@ class Collider : public Component
     static constexpr uint8_t MAX_CACHED_GRID_CELLS = 4;
     GridCell *cachedCells[MAX_CACHED_GRID_CELLS] = {};
     uint8_t cachedCellCount = 0;
+    Rigidbody *attachedRigidbody = nullptr;
     std::vector<const ColliderPair *> adjacentPairs;
     void prepareSyncFromCache();
 };

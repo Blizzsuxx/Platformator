@@ -26,7 +26,7 @@ inline bool cpuSupportsAVX2() noexcept
             return false;
         }
         __builtin_cpu_init();
-        return __builtin_cpu_supports("avx2") != 0;
+        return __builtin_cpu_supports("avx2") != 0 && __builtin_cpu_supports("fma") != 0;
     }();
     return supported;
 #else
@@ -67,6 +67,10 @@ struct alignas(32) WideConstraint8
     alignas(32) float negM11[8] = {};
 
     alignas(32) float friction[8] = {};
+    alignas(32) float invMA[8] = {};
+    alignas(32) float invIA[8] = {};
+    alignas(32) float invMB[8] = {};
+    alignas(32) float invIB[8] = {};
     alignas(32) float blockMaskF[8] = {};     // all-1s bitmask if blockSolve, else 0.0f
     alignas(32) float seqPt0MaskF[8] = {};    // all-1s bitmask if !blockSolve && pointCount >= 1
     alignas(32) float seqPt1MaskF[8] = {};    // all-1s bitmask if !blockSolve && pointCount == 2
@@ -77,6 +81,8 @@ struct alignas(32) WideConstraint8
     uint8_t pointCount[8] = {0, 0, 0, 0, 0, 0, 0, 0};
     uint8_t blockMask = 0;
     uint8_t twoPointMask = 0;
+    uint8_t writeMaskA = 0;
+    uint8_t writeMaskB = 0;
 };
 
 inline void setLaneMaskFloat(float &dst, bool active) noexcept
@@ -86,7 +92,8 @@ inline void setLaneMaskFloat(float &dst, bool active) noexcept
 }
 
 template <typename ConstraintT>
-inline void packWideLane(WideConstraint8 &out, size_t lane, const ConstraintT *c) noexcept
+inline void packWideLane(WideConstraint8 &out, size_t lane, const ConstraintT *c, float invMA = 0.0f,
+                         float invIA = 0.0f, float invMB = 0.0f, float invIB = 0.0f) noexcept
 {
     if (c == nullptr || c->pointCount == 0)
     {
@@ -121,6 +128,10 @@ inline void packWideLane(WideConstraint8 &out, size_t lane, const ConstraintT *c
         out.negM01[lane] = 0.0f;
         out.negM11[lane] = 0.0f;
         out.friction[lane] = 0.0f;
+        out.invMA[lane] = 0.0f;
+        out.invIA[lane] = 0.0f;
+        out.invMB[lane] = 0.0f;
+        out.invIB[lane] = 0.0f;
         setLaneMaskFloat(out.blockMaskF[lane], false);
         setLaneMaskFloat(out.seqPt0MaskF[lane], false);
         setLaneMaskFloat(out.seqPt1MaskF[lane], false);
@@ -192,6 +203,18 @@ inline void packWideLane(WideConstraint8 &out, size_t lane, const ConstraintT *c
     }
 
     out.friction[lane] = c->solverFriction;
+    out.invMA[lane] = invMA;
+    out.invIA[lane] = invIA;
+    out.invMB[lane] = invMB;
+    out.invIB[lane] = invIB;
+    if (invMA != 0.0f || invIA != 0.0f)
+    {
+        out.writeMaskA |= static_cast<uint8_t>(1u << lane);
+    }
+    if (invMB != 0.0f || invIB != 0.0f)
+    {
+        out.writeMaskB |= static_cast<uint8_t>(1u << lane);
+    }
     setLaneMaskFloat(out.blockMaskF[lane], c->blockSolve);
     setLaneMaskFloat(out.seqPt0MaskF[lane], !c->blockSolve);
     setLaneMaskFloat(out.seqPt1MaskF[lane], !c->blockSolve && c->pointCount == 2);
@@ -219,41 +242,34 @@ inline void storeWideImpulses(const WideConstraint8 &wide) noexcept
 
 #if PLATFORMATOR_HAS_RUNTIME_AVX2
 
-template <typename BodyStateT>
-__attribute__((target("avx2"))) inline void gatherBodies8AVX2(const uint32_t idx[8], const BodyStateT *bodies,
-                                                              __m256 &vx, __m256 &vy, __m256 &w, __m256 &invM,
-                                                              __m256 &invI) noexcept
+template <typename BodyVelT>
+__attribute__((target("avx2,fma"))) inline void gatherBodies8AVX2(const uint32_t idx[8], const BodyVelT *bodies,
+                                                                  __m256 &vx, __m256 &vy, __m256 &w) noexcept
 {
-    const BodyStateT &b0 = bodies[idx[0]];
-    const BodyStateT &b1 = bodies[idx[1]];
-    const BodyStateT &b2 = bodies[idx[2]];
-    const BodyStateT &b3 = bodies[idx[3]];
-    const BodyStateT &b4 = bodies[idx[4]];
-    const BodyStateT &b5 = bodies[idx[5]];
-    const BodyStateT &b6 = bodies[idx[6]];
-    const BodyStateT &b7 = bodies[idx[7]];
+    const __m256 r0 = _mm256_insertf128_ps(_mm256_castps128_ps256(_mm_load_ps(&bodies[idx[0]].vx)),
+                                           _mm_load_ps(&bodies[idx[4]].vx), 1);
+    const __m256 r1 = _mm256_insertf128_ps(_mm256_castps128_ps256(_mm_load_ps(&bodies[idx[1]].vx)),
+                                           _mm_load_ps(&bodies[idx[5]].vx), 1);
+    const __m256 r2 = _mm256_insertf128_ps(_mm256_castps128_ps256(_mm_load_ps(&bodies[idx[2]].vx)),
+                                           _mm_load_ps(&bodies[idx[6]].vx), 1);
+    const __m256 r3 = _mm256_insertf128_ps(_mm256_castps128_ps256(_mm_load_ps(&bodies[idx[3]].vx)),
+                                           _mm_load_ps(&bodies[idx[7]].vx), 1);
 
-    vx = _mm256_setr_ps(b0.velocity.x(), b1.velocity.x(), b2.velocity.x(), b3.velocity.x(), b4.velocity.x(),
-                        b5.velocity.x(), b6.velocity.x(), b7.velocity.x());
-    vy = _mm256_setr_ps(b0.velocity.y(), b1.velocity.y(), b2.velocity.y(), b3.velocity.y(), b4.velocity.y(),
-                        b5.velocity.y(), b6.velocity.y(), b7.velocity.y());
-    w = _mm256_setr_ps(b0.angularVelocity, b1.angularVelocity, b2.angularVelocity, b3.angularVelocity,
-                       b4.angularVelocity, b5.angularVelocity, b6.angularVelocity, b7.angularVelocity);
-    invM = _mm256_setr_ps(b0.inverseMass, b1.inverseMass, b2.inverseMass, b3.inverseMass, b4.inverseMass,
-                          b5.inverseMass, b6.inverseMass, b7.inverseMass);
-    invI = _mm256_setr_ps(b0.inverseMomentOfInertia, b1.inverseMomentOfInertia, b2.inverseMomentOfInertia,
-                          b3.inverseMomentOfInertia, b4.inverseMomentOfInertia, b5.inverseMomentOfInertia,
-                          b6.inverseMomentOfInertia, b7.inverseMomentOfInertia);
+    const __m256 t0 = _mm256_unpacklo_ps(r0, r1);
+    const __m256 t1 = _mm256_unpackhi_ps(r0, r1);
+    const __m256 t2 = _mm256_unpacklo_ps(r2, r3);
+    const __m256 t3 = _mm256_unpackhi_ps(r2, r3);
+
+    vx = _mm256_shuffle_ps(t0, t2, _MM_SHUFFLE(1, 0, 1, 0));
+    vy = _mm256_shuffle_ps(t0, t2, _MM_SHUFFLE(3, 2, 3, 2));
+    w = _mm256_shuffle_ps(t1, t3, _MM_SHUFFLE(1, 0, 1, 0));
 }
 
-template <typename BodyStateT>
-__attribute__((target("avx2"))) inline void scatterBodies8AVX2(const uint32_t idx[8], BodyStateT *bodies, __m256 vx,
-                                                               __m256 vy, __m256 w, __m256 invM, __m256 invI) noexcept
+template <typename BodyVelT>
+__attribute__((target("avx2,fma"))) inline void scatterBodies8AVX2(const uint32_t idx[8], BodyVelT *bodies, __m256 vx,
+                                                                   __m256 vy, __m256 w, uint8_t writeMask) noexcept
 {
-    const __m256 zero = _mm256_setzero_ps();
-    const __m256 writable =
-        _mm256_or_ps(_mm256_cmp_ps(invM, zero, _CMP_NEQ_OQ), _mm256_cmp_ps(invI, zero, _CMP_NEQ_OQ));
-    uint32_t mask = static_cast<uint32_t>(_mm256_movemask_ps(writable));
+    uint32_t mask = writeMask;
     if (mask == 0)
     {
         return;
@@ -270,56 +286,55 @@ __attribute__((target("avx2"))) inline void scatterBodies8AVX2(const uint32_t id
     {
         const unsigned lane = static_cast<unsigned>(__builtin_ctz(mask));
         mask &= mask - 1u;
-        BodyStateT &b = bodies[idx[lane]];
-        b.velocity.x() = svx[lane];
-        b.velocity.y() = svy[lane];
-        b.angularVelocity = sw[lane];
+        BodyVelT &b = bodies[idx[lane]];
+        b.vx = svx[lane];
+        b.vy = svy[lane];
+        b.w = sw[lane];
     }
 }
 
-__attribute__((target("avx2"))) inline void applyImpulsePairAVX2(__m256 &vAx, __m256 &vAy, __m256 &wA, __m256 invMA,
-                                                                 __m256 invIA, __m256 &vBx, __m256 &vBy, __m256 &wB,
-                                                                 __m256 invMB, __m256 invIB, __m256 impX, __m256 impY,
-                                                                 __m256 rAx, __m256 rAy, __m256 rBx,
-                                                                 __m256 rBy) noexcept
+__attribute__((target("avx2,fma"))) inline void applyImpulsePairAVX2(__m256 &vAx, __m256 &vAy, __m256 &wA,
+                                                                     __m256 invMA, __m256 invIA, __m256 &vBx,
+                                                                     __m256 &vBy, __m256 &wB, __m256 invMB,
+                                                                     __m256 invIB, __m256 impX, __m256 impY,
+                                                                     __m256 rAx, __m256 rAy, __m256 rBx,
+                                                                     __m256 rBy) noexcept
 {
-    const __m256 negImpX = _mm256_sub_ps(_mm256_setzero_ps(), impX);
-    const __m256 negImpY = _mm256_sub_ps(_mm256_setzero_ps(), impY);
+    vAx = _mm256_fnmadd_ps(impX, invMA, vAx);
+    vAy = _mm256_fnmadd_ps(impY, invMA, vAy);
+    const __m256 crossA = _mm256_fmsub_ps(rAy, impX, _mm256_mul_ps(rAx, impY));
+    wA = _mm256_fmadd_ps(invIA, crossA, wA);
 
-    vAx = _mm256_add_ps(vAx, _mm256_mul_ps(negImpX, invMA));
-    vAy = _mm256_add_ps(vAy, _mm256_mul_ps(negImpY, invMA));
-    const __m256 crossA = _mm256_sub_ps(_mm256_mul_ps(rAx, negImpY), _mm256_mul_ps(rAy, negImpX));
-    wA = _mm256_add_ps(wA, _mm256_mul_ps(invIA, crossA));
-
-    vBx = _mm256_add_ps(vBx, _mm256_mul_ps(impX, invMB));
-    vBy = _mm256_add_ps(vBy, _mm256_mul_ps(impY, invMB));
-    const __m256 crossB = _mm256_sub_ps(_mm256_mul_ps(rBx, impY), _mm256_mul_ps(rBy, impX));
-    wB = _mm256_add_ps(wB, _mm256_mul_ps(invIB, crossB));
+    vBx = _mm256_fmadd_ps(impX, invMB, vBx);
+    vBy = _mm256_fmadd_ps(impY, invMB, vBy);
+    const __m256 crossB = _mm256_fmsub_ps(rBx, impY, _mm256_mul_ps(rBy, impX));
+    wB = _mm256_fmadd_ps(invIB, crossB, wB);
 }
 
-__attribute__((target("avx2"))) inline void computeRelVelAVX2(__m256 vAx, __m256 vAy, __m256 wA, __m256 vBx, __m256 vBy,
-                                                              __m256 wB, __m256 rAx, __m256 rAy, __m256 rBx, __m256 rBy,
-                                                              __m256 &relX, __m256 &relY) noexcept
+__attribute__((target("avx2,fma"))) inline void computeRelVelAVX2(__m256 vAx, __m256 vAy, __m256 wA, __m256 vBx,
+                                                                  __m256 vBy, __m256 wB, __m256 rAx, __m256 rAy,
+                                                                  __m256 rBx, __m256 rBy, __m256 &relX,
+                                                                  __m256 &relY) noexcept
 {
-    const __m256 zero = _mm256_setzero_ps();
-    const __m256 negWA = _mm256_sub_ps(zero, wA);
-    const __m256 negWB = _mm256_sub_ps(zero, wB);
-    const __m256 pBx = _mm256_add_ps(vBx, _mm256_mul_ps(negWB, rBy));
-    const __m256 pBy = _mm256_add_ps(vBy, _mm256_mul_ps(wB, rBx));
-    const __m256 pAx = _mm256_add_ps(vAx, _mm256_mul_ps(negWA, rAy));
-    const __m256 pAy = _mm256_add_ps(vAy, _mm256_mul_ps(wA, rAx));
+    const __m256 pBx = _mm256_fnmadd_ps(wB, rBy, vBx);
+    const __m256 pBy = _mm256_fmadd_ps(wB, rBx, vBy);
+    const __m256 pAx = _mm256_fnmadd_ps(wA, rAy, vAx);
+    const __m256 pAy = _mm256_fmadd_ps(wA, rAx, vAy);
     relX = _mm256_sub_ps(pBx, pAx);
     relY = _mm256_sub_ps(pBy, pAy);
 }
 
-template <typename BodyStateT>
-__attribute__((target("avx2"))) inline void applyWarmStartWide8AVX2(const WideConstraint8 &c,
-                                                                    BodyStateT *bodies) noexcept
+template <typename BodyVelT>
+__attribute__((target("avx2,fma"))) inline void applyWarmStartWide8AVX2(const WideConstraint8 &c,
+                                                                        BodyVelT *bodies) noexcept
 {
-    __m256 vAx, vAy, wA, invMA, invIA;
-    __m256 vBx, vBy, wB, invMB, invIB;
-    gatherBodies8AVX2(c.bodyIndexA, bodies, vAx, vAy, wA, invMA, invIA);
-    gatherBodies8AVX2(c.bodyIndexB, bodies, vBx, vBy, wB, invMB, invIB);
+    __m256 vAx, vAy, wA, vBx, vBy, wB;
+    gatherBodies8AVX2(c.bodyIndexA, bodies, vAx, vAy, wA);
+    gatherBodies8AVX2(c.bodyIndexB, bodies, vBx, vBy, wB);
+    const __m256 invMA = _mm256_load_ps(c.invMA);
+    const __m256 invIA = _mm256_load_ps(c.invIA);
+    const __m256 invMB = _mm256_load_ps(c.invMB);
+    const __m256 invIB = _mm256_load_ps(c.invIB);
 
     const __m256 nX = _mm256_load_ps(c.normalX);
     const __m256 nY = _mm256_load_ps(c.normalY);
@@ -329,8 +344,8 @@ __attribute__((target("avx2"))) inline void applyWarmStartWide8AVX2(const WideCo
     {
         const __m256 aN0 = _mm256_load_ps(c.accumNormal0);
         const __m256 aT0 = _mm256_load_ps(c.accumTangent0);
-        const __m256 impX = _mm256_add_ps(_mm256_mul_ps(aN0, nX), _mm256_mul_ps(aT0, tX));
-        const __m256 impY = _mm256_add_ps(_mm256_mul_ps(aN0, nY), _mm256_mul_ps(aT0, tY));
+        const __m256 impX = _mm256_fmadd_ps(aN0, nX, _mm256_mul_ps(aT0, tX));
+        const __m256 impY = _mm256_fmadd_ps(aN0, nY, _mm256_mul_ps(aT0, tY));
         applyImpulsePairAVX2(vAx, vAy, wA, invMA, invIA, vBx, vBy, wB, invMB, invIB, impX, impY,
                              _mm256_load_ps(c.rAx0), _mm256_load_ps(c.rAy0), _mm256_load_ps(c.rBx0),
                              _mm256_load_ps(c.rBy0));
@@ -340,29 +355,32 @@ __attribute__((target("avx2"))) inline void applyWarmStartWide8AVX2(const WideCo
     {
         const __m256 aN1 = _mm256_load_ps(c.accumNormal1);
         const __m256 aT1 = _mm256_load_ps(c.accumTangent1);
-        const __m256 impX = _mm256_add_ps(_mm256_mul_ps(aN1, nX), _mm256_mul_ps(aT1, tX));
-        const __m256 impY = _mm256_add_ps(_mm256_mul_ps(aN1, nY), _mm256_mul_ps(aT1, tY));
+        const __m256 impX = _mm256_fmadd_ps(aN1, nX, _mm256_mul_ps(aT1, tX));
+        const __m256 impY = _mm256_fmadd_ps(aN1, nY, _mm256_mul_ps(aT1, tY));
         applyImpulsePairAVX2(vAx, vAy, wA, invMA, invIA, vBx, vBy, wB, invMB, invIB, impX, impY,
                              _mm256_load_ps(c.rAx1), _mm256_load_ps(c.rAy1), _mm256_load_ps(c.rBx1),
                              _mm256_load_ps(c.rBy1));
     }
 
-    scatterBodies8AVX2(c.bodyIndexA, bodies, vAx, vAy, wA, invMA, invIA);
-    scatterBodies8AVX2(c.bodyIndexB, bodies, vBx, vBy, wB, invMB, invIB);
+    scatterBodies8AVX2(c.bodyIndexA, bodies, vAx, vAy, wA, c.writeMaskA);
+    scatterBodies8AVX2(c.bodyIndexB, bodies, vBx, vBy, wB, c.writeMaskB);
 }
 
-template <typename BodyStateT>
-__attribute__((target("avx2"))) inline void resolveWide8AVX2(WideConstraint8 &c, BodyStateT *bodies) noexcept
+template <typename BodyVelT>
+__attribute__((target("avx2,fma"))) inline void resolveWide8AVX2(WideConstraint8 &c, BodyVelT *bodies) noexcept
 {
-    __m256 vAx, vAy, wA, invMA, invIA;
-    __m256 vBx, vBy, wB, invMB, invIB;
-    gatherBodies8AVX2(c.bodyIndexA, bodies, vAx, vAy, wA, invMA, invIA);
-    gatherBodies8AVX2(c.bodyIndexB, bodies, vBx, vBy, wB, invMB, invIB);
+    __m256 vAx, vAy, wA, vBx, vBy, wB;
+    gatherBodies8AVX2(c.bodyIndexA, bodies, vAx, vAy, wA);
+    gatherBodies8AVX2(c.bodyIndexB, bodies, vBx, vBy, wB);
+    const __m256 invMA = _mm256_load_ps(c.invMA);
+    const __m256 invIA = _mm256_load_ps(c.invIA);
+    const __m256 invMB = _mm256_load_ps(c.invMB);
+    const __m256 invIB = _mm256_load_ps(c.invIB);
 
     const __m256 zero = _mm256_setzero_ps();
     const __m256 nX = _mm256_load_ps(c.normalX);
     const __m256 nY = _mm256_load_ps(c.normalY);
-    const __m256 tX = _mm256_sub_ps(_mm256_setzero_ps(), nY);
+    const __m256 tX = _mm256_sub_ps(zero, nY);
     const __m256 tY = nX;
     const __m256 rAx0 = _mm256_load_ps(c.rAx0);
     const __m256 rAy0 = _mm256_load_ps(c.rAy0);
@@ -387,24 +405,22 @@ __attribute__((target("avx2"))) inline void resolveWide8AVX2(WideConstraint8 &c,
         computeRelVelAVX2(vAx, vAy, wA, vBx, vBy, wB, rAx0, rAy0, rBx0, rBy0, relX0, relY0);
         computeRelVelAVX2(vAx, vAy, wA, vBx, vBy, wB, rAx1, rAy1, rBx1, rBy1, relX1, relY1);
 
-        const __m256 vn0 = _mm256_add_ps(_mm256_mul_ps(relX0, nX), _mm256_mul_ps(relY0, nY));
-        const __m256 vn1 = _mm256_add_ps(_mm256_mul_ps(relX1, nX), _mm256_mul_ps(relY1, nY));
+        const __m256 vn0 = _mm256_fmadd_ps(relX0, nX, _mm256_mul_ps(relY0, nY));
+        const __m256 vn1 = _mm256_fmadd_ps(relX1, nX, _mm256_mul_ps(relY1, nY));
 
         const __m256 k00 = _mm256_load_ps(c.k00);
         const __m256 k01 = _mm256_load_ps(c.k01);
         const __m256 k11 = _mm256_load_ps(c.k11);
 
-        __m256 rhs0 = _mm256_sub_ps(vn0, _mm256_load_ps(c.bias0));
-        __m256 rhs1 = _mm256_sub_ps(vn1, _mm256_load_ps(c.bias1));
-        rhs0 = _mm256_sub_ps(rhs0, _mm256_add_ps(_mm256_mul_ps(k00, aN0), _mm256_mul_ps(k01, aN1)));
-        rhs1 = _mm256_sub_ps(rhs1, _mm256_add_ps(_mm256_mul_ps(k01, aN0), _mm256_mul_ps(k11, aN1)));
+        __m256 rhs0 = _mm256_fnmadd_ps(k01, aN1, _mm256_fnmadd_ps(k00, aN0, _mm256_sub_ps(vn0, _mm256_load_ps(c.bias0))));
+        __m256 rhs1 = _mm256_fnmadd_ps(k01, aN0, _mm256_fnmadd_ps(k11, aN1, _mm256_sub_ps(vn1, _mm256_load_ps(c.bias1))));
 
         // Branch 0: unconstrained solution next = -normalMass * rhs
         const __m256 negM00 = _mm256_load_ps(c.negM00);
         const __m256 negM01 = _mm256_load_ps(c.negM01);
         const __m256 negM11 = _mm256_load_ps(c.negM11);
-        __m256 next0 = _mm256_add_ps(_mm256_mul_ps(negM00, rhs0), _mm256_mul_ps(negM01, rhs1));
-        __m256 next1 = _mm256_add_ps(_mm256_mul_ps(negM01, rhs0), _mm256_mul_ps(negM11, rhs1));
+        __m256 next0 = _mm256_fmadd_ps(negM00, rhs0, _mm256_mul_ps(negM01, rhs1));
+        __m256 next1 = _mm256_fmadd_ps(negM01, rhs0, _mm256_mul_ps(negM11, rhs1));
         __m256 acc =
             _mm256_and_ps(_mm256_cmp_ps(next0, zero, _CMP_GE_OQ), _mm256_cmp_ps(next1, zero, _CMP_GE_OQ));
 
@@ -412,7 +428,7 @@ __attribute__((target("avx2"))) inline void resolveWide8AVX2(WideConstraint8 &c,
         const __m256 cand1_0 = _mm256_div_ps(_mm256_sub_ps(zero, rhs0), k00);
         const __m256 ok1 = _mm256_and_ps(
             _mm256_cmp_ps(cand1_0, zero, _CMP_GE_OQ),
-            _mm256_cmp_ps(_mm256_add_ps(_mm256_mul_ps(k01, cand1_0), rhs1), zero, _CMP_GE_OQ));
+            _mm256_cmp_ps(_mm256_fmadd_ps(k01, cand1_0, rhs1), zero, _CMP_GE_OQ));
         const __m256 take1 = _mm256_andnot_ps(acc, ok1);
         next0 = _mm256_blendv_ps(next0, cand1_0, take1);
         next1 = _mm256_blendv_ps(next1, zero, take1);
@@ -422,7 +438,7 @@ __attribute__((target("avx2"))) inline void resolveWide8AVX2(WideConstraint8 &c,
         const __m256 cand2_1 = _mm256_div_ps(_mm256_sub_ps(zero, rhs1), k11);
         const __m256 ok2 = _mm256_and_ps(
             _mm256_cmp_ps(cand2_1, zero, _CMP_GE_OQ),
-            _mm256_cmp_ps(_mm256_add_ps(_mm256_mul_ps(k01, cand2_1), rhs0), zero, _CMP_GE_OQ));
+            _mm256_cmp_ps(_mm256_fmadd_ps(k01, cand2_1, rhs0), zero, _CMP_GE_OQ));
         const __m256 take2 = _mm256_andnot_ps(acc, ok2);
         next0 = _mm256_blendv_ps(next0, zero, take2);
         next1 = _mm256_blendv_ps(next1, cand2_1, take2);
@@ -455,9 +471,8 @@ __attribute__((target("avx2"))) inline void resolveWide8AVX2(WideConstraint8 &c,
     {
         __m256 relX0, relY0;
         computeRelVelAVX2(vAx, vAy, wA, vBx, vBy, wB, rAx0, rAy0, rBx0, rBy0, relX0, relY0);
-        const __m256 vn0 = _mm256_add_ps(_mm256_mul_ps(relX0, nX), _mm256_mul_ps(relY0, nY));
-        const __m256 deltaN = _mm256_mul_ps(_mm256_load_ps(c.massNormal0),
-                                            _mm256_add_ps(_mm256_sub_ps(zero, vn0), _mm256_load_ps(c.bias0)));
+        const __m256 vn0 = _mm256_fmadd_ps(relX0, nX, _mm256_mul_ps(relY0, nY));
+        const __m256 deltaN = _mm256_mul_ps(_mm256_load_ps(c.massNormal0), _mm256_sub_ps(_mm256_load_ps(c.bias0), vn0));
         const __m256 newN = _mm256_max_ps(_mm256_add_ps(aN0, deltaN), zero);
         const __m256 seqMask = _mm256_load_ps(c.seqPt0MaskF);
         const __m256 appliedN = _mm256_and_ps(seqMask, _mm256_sub_ps(newN, aN0));
@@ -470,7 +485,7 @@ __attribute__((target("avx2"))) inline void resolveWide8AVX2(WideConstraint8 &c,
     {
         __m256 relX0, relY0;
         computeRelVelAVX2(vAx, vAy, wA, vBx, vBy, wB, rAx0, rAy0, rBx0, rBy0, relX0, relY0);
-        const __m256 vt0 = _mm256_add_ps(_mm256_mul_ps(relX0, tX), _mm256_mul_ps(relY0, tY));
+        const __m256 vt0 = _mm256_fmadd_ps(relX0, tX, _mm256_mul_ps(relY0, tY));
         const __m256 rawT = _mm256_mul_ps(_mm256_load_ps(c.massTangent0), _mm256_sub_ps(zero, vt0));
         const __m256 maxT = _mm256_mul_ps(fric, aN0);
         const __m256 negMaxT = _mm256_sub_ps(zero, maxT);
@@ -494,9 +509,9 @@ __attribute__((target("avx2"))) inline void resolveWide8AVX2(WideConstraint8 &c,
         {
             __m256 relX1, relY1;
             computeRelVelAVX2(vAx, vAy, wA, vBx, vBy, wB, rAx1, rAy1, rBx1, rBy1, relX1, relY1);
-            const __m256 vn1 = _mm256_add_ps(_mm256_mul_ps(relX1, nX), _mm256_mul_ps(relY1, nY));
-            const __m256 deltaN = _mm256_mul_ps(_mm256_load_ps(c.massNormal1),
-                                                _mm256_add_ps(_mm256_sub_ps(zero, vn1), _mm256_load_ps(c.bias1)));
+            const __m256 vn1 = _mm256_fmadd_ps(relX1, nX, _mm256_mul_ps(relY1, nY));
+            const __m256 deltaN =
+                _mm256_mul_ps(_mm256_load_ps(c.massNormal1), _mm256_sub_ps(_mm256_load_ps(c.bias1), vn1));
             const __m256 newN = _mm256_max_ps(_mm256_add_ps(aN1, deltaN), zero);
             const __m256 seqMask = _mm256_load_ps(c.seqPt1MaskF);
             const __m256 appliedN = _mm256_and_ps(seqMask, _mm256_sub_ps(newN, aN1));
@@ -509,7 +524,7 @@ __attribute__((target("avx2"))) inline void resolveWide8AVX2(WideConstraint8 &c,
         // Point 1 tangent: 1-point lanes have massTangent1 == 0 and aT1 == 0, so appliedT == 0 automatically.
         __m256 relX1, relY1;
         computeRelVelAVX2(vAx, vAy, wA, vBx, vBy, wB, rAx1, rAy1, rBx1, rBy1, relX1, relY1);
-        const __m256 vt1 = _mm256_add_ps(_mm256_mul_ps(relX1, tX), _mm256_mul_ps(relY1, tY));
+        const __m256 vt1 = _mm256_fmadd_ps(relX1, tX, _mm256_mul_ps(relY1, tY));
         const __m256 rawT = _mm256_mul_ps(_mm256_load_ps(c.massTangent1), _mm256_sub_ps(zero, vt1));
         const __m256 maxT = _mm256_mul_ps(fric, aN1);
         const __m256 negMaxT = _mm256_sub_ps(zero, maxT);
@@ -526,8 +541,8 @@ __attribute__((target("avx2"))) inline void resolveWide8AVX2(WideConstraint8 &c,
     _mm256_store_ps(c.accumTangent0, aT0);
     _mm256_store_ps(c.accumTangent1, aT1);
 
-    scatterBodies8AVX2(c.bodyIndexA, bodies, vAx, vAy, wA, invMA, invIA);
-    scatterBodies8AVX2(c.bodyIndexB, bodies, vBx, vBy, wB, invMB, invIB);
+    scatterBodies8AVX2(c.bodyIndexA, bodies, vAx, vAy, wA, c.writeMaskA);
+    scatterBodies8AVX2(c.bodyIndexB, bodies, vBx, vBy, wB, c.writeMaskB);
 }
 
 #endif // PLATFORMATOR_HAS_RUNTIME_AVX2

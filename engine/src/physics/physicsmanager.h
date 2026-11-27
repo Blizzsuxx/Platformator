@@ -6,7 +6,9 @@
 #include "platformator/collider.h"
 #include "platformator/rigidbody.h"
 #include <algorithm>
+#include <array>
 #include <cstdint>
+#include <memory>
 #include <oneapi/tbb/enumerable_thread_specific.h>
 #include <optional>
 #include <utility>
@@ -129,6 +131,21 @@ private:
         float inverseMomentOfInertia = 0.0f;
     };
 
+    struct alignas(16) WideBodyVel
+    {
+        float vx = 0.0f;
+        float vy = 0.0f;
+        float w = 0.0f;
+        float pad = 0.0f;
+    };
+
+    struct IslandWorkUnit
+    {
+        uint32_t begin = 0;
+        uint8_t count = 0;
+        uint32_t contactWeight = 0;
+    };
+
     struct SolverConstraint
     {
         Rigidbody *rbA = nullptr;
@@ -156,7 +173,17 @@ private:
     {
         std::vector<SolverConstraint> constraints;
         std::vector<SolverBodyState> bodies;
+        std::vector<WideBodyVel> wideBodies;
         std::vector<std::pair<size_t, Rigidbody *>> writableBodies;
+    };
+
+    struct IslandColorGraph
+    {
+        static constexpr uint8_t MAX_PARALLEL_COLORS = 16;
+        static constexpr uint8_t OVERFLOW_COLOR = 16;
+        static constexpr uint8_t TOTAL_BUCKETS = 17;
+
+        std::array<std::vector<const ColliderPair *>, TOTAL_BUCKETS> buckets;
     };
 
     struct PersistentIsland
@@ -165,6 +192,7 @@ private:
         size_t activeListIndex = SIZE_MAX;
         std::vector<Rigidbody *> bodies;
         std::vector<const ColliderPair *> contacts;
+        std::unique_ptr<IslandColorGraph> colorGraph;
         bool maySplit = false;
         bool splitQueued = false;
         bool hasSleepingEndpoint = false;
@@ -190,6 +218,11 @@ private:
     void splitPersistentIsland(int32_t islandId);
     void splitDirtyIslands();
     void wakePersistentIslandEndpoints();
+    static void clearIslandColorGraph(PersistentIsland &island);
+    static void insertContactIntoColorGraph(IslandColorGraph &graph, const ColliderPair *pair);
+    static void removeContactFromColorGraph(IslandColorGraph &graph, const ColliderPair *pair);
+    static void ensureIslandColorGraph(PersistentIsland &island);
+    bool solveColoredIsland(PersistentIsland &island, float inverseTimeDelta, bool allowParallel);
 
     void prepareSolverConstraint(const SolverPreStepJob &job, float inverseTimeDelta,
                                  SolverConstraint &outConstraint) const;
@@ -200,8 +233,9 @@ private:
                                IslandSolverScratch &scratch);
     bool solvePersistentIslandGroup8(const int32_t *islandIds, size_t groupSize, float inverseTimeDelta,
                                      IslandSolverScratch &scratch);
-    void solveIslandRange(const int32_t *islandIds, size_t begin, size_t end, float inverseTimeDelta,
-                          IslandSolverScratch &scratch);
+    void buildIslandWorkUnits();
+    void executeIslandWorkUnits(size_t beginUnit, size_t endUnit, float inverseTimeDelta,
+                                IslandSolverScratch &scratch);
     void solveConstraintIterations(float inverseTimeDelta);
     void solveConstraintsSerial(float inverseTimeDelta);
     void solveIslands(float inverseTimeDelta, size_t totalContacts);
@@ -232,7 +266,12 @@ private:
     std::vector<SolverConstraint> solverConstraints;
     std::vector<uint32_t> solverBodyLocalIndices;
     std::vector<SolverBodyState> solverBodyStates;
+    std::vector<WideBodyVel> solverWideBodyVels;
     std::vector<std::pair<size_t, Rigidbody *>> solverTouchedWritableBodies;
+    std::vector<int32_t> bucketedIslandIds;
+    std::vector<IslandWorkUnit> islandWorkUnits;
+    std::vector<std::vector<const ColliderPair *>> narrowTransitionChunks;
+    std::vector<uint64_t> narrowGeometryCounts;
     IslandSolverScratch serialSolverScratch;
     tbb::enumerable_thread_specific<IslandSolverScratch> solverIslandScratch;
     tbb::enumerable_thread_specific<std::vector<Rigidbody *>> parallelBodiesToSleep;

@@ -32,8 +32,8 @@ void PhysicsManager::queueSupportDelta(Rigidbody *body, int delta)
 void PhysicsManager::reconcilePairSupport(const ColliderPair *pair)
 {
     auto *collision = pair->getCollision();
-    auto *a = pair->getObjectA()->getGameObject()->getComponent<Rigidbody>();
-    auto *b = pair->getObjectB()->getGameObject()->getComponent<Rigidbody>();
+    auto *a = pair->getObjectA()->getAttachedRigidbody();
+    auto *b = pair->getObjectB()->getAttachedRigidbody();
     const bool referenceIsA = collision && collision->getReferenceObject() == pair->getObjectA();
     const bool supportsA = collision && (collision->supportState &
                                          (referenceIsA ? Collision::SUPPORTS_REFERENCE : Collision::SUPPORTS_INCIDENT));
@@ -86,8 +86,8 @@ void PhysicsManager::refreshContactParticipation(const ColliderPair *pair)
 void PhysicsManager::refreshSolverParticipation(const ColliderPair *pair, bool live)
 {
     const auto response = live ? pair->getCollision()->getResolutionType() : Collision::NONE_COLLISIONS;
-    auto *rbA = live ? pair->getObjectA()->getGameObject()->getComponent<Rigidbody>() : nullptr;
-    auto *rbB = live ? pair->getObjectB()->getGameObject()->getComponent<Rigidbody>() : nullptr;
+    auto *rbA = live ? pair->getObjectA()->getAttachedRigidbody() : nullptr;
+    auto *rbB = live ? pair->getObjectB()->getAttachedRigidbody() : nullptr;
     const bool solve =
         live && (response == Collision::DYNAMIC || response == Collision::KINEMATIC) && (movingBody(rbA) || movingBody(rbB));
 

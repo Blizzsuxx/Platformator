@@ -20,7 +20,8 @@
 Collider::Collider(GameObject *gameObject, ComponentType type, ColliderType colliderType)
     : Component(gameObject, type), collisionGroup(1), collisionMask(1), colliderType(colliderType), stateVersion(0),
       offset(Eigen::Vector2f::Zero()), xProjections(this, 0.0f, 0.0f), yProjections(this, 0.0f, 0.0f),
-      physicsManagerIndex(SIZE_MAX), gridCellRange(), flags(static_cast<ColliderFlags>(0)), gridCellRangeCache()
+      physicsManagerIndex(SIZE_MAX), gridCellRange(), flags(static_cast<ColliderFlags>(0)), gridCellRangeCache(),
+      attachedRigidbody(gameObject ? gameObject->getComponent<Rigidbody>() : nullptr)
 {
 }
 
@@ -122,7 +123,7 @@ void Collider::prepareSyncFromCache()
     float newMaxX = tightMaxX;
     float newMinY = tightMinY;
     float newMaxY = tightMaxY;
-    if (const auto *rb = object->getComponent<Rigidbody>(); rb != nullptr && rb->getBodyType() != BodyType::STATIC)
+    if (const auto *rb = attachedRigidbody; rb != nullptr && rb->getBodyType() != BodyType::STATIC)
     {
         newMinX -= FAT_AABB_MARGIN;
         newMaxX += FAT_AABB_MARGIN;

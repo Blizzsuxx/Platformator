@@ -79,6 +79,10 @@ void Grid::addColliderInternal(Collider *collider, bool geometryPrepared)
     });
 
     collider->setIsRegisteredInGrid(true);
+    if (!activeCellBoundsDirty)
+    {
+        expandActiveCellBounds(cachedRange);
+    }
 }
 
 void Grid::removeColliderInternal(Collider *collider)
@@ -417,6 +421,10 @@ void Grid::syncColliderInternal(Collider *collider, bool geometryPrepared)
     const auto oldRange = collider->getGridCellRange();
     const auto newRange = collider->getGridCellRangeCache();
     collider->updateGridCellRange();
+    if (!activeCellBoundsDirty)
+    {
+        expandActiveCellBounds(newRange);
+    }
 
     if (!filter && oldRange == newRange)
     {
@@ -550,6 +558,7 @@ void Grid::flushPendingWork()
         tbb::parallel_for(size_t(0), pendingColliderOperations.size(),
                           [&](size_t i) { prepareColliderGeometry(pendingColliderOperations[i]); });
     }
+    responseDirtyColliders.clear();
     for (auto *collider : pendingColliderOperations)
     {
         if (!collider->desiredInGrid)
@@ -558,9 +567,18 @@ void Grid::flushPendingWork()
                 removeColliderInternal(collider);
         }
         else if (!collider->getIsRegisteredInGrid())
+        {
             addColliderInternal(collider, true);
-        else if (collider->dirty)
-            syncColliderInternal(collider, true);
+            if (owner && (collider->dirty & Collider::Response))
+                responseDirtyColliders.push_back(collider);
+        }
+        else
+        {
+            if (collider->broadPhaseSyncNeeded || (collider->dirty & Collider::Filter))
+                syncColliderInternal(collider, true);
+            if (owner && (collider->dirty & Collider::Response))
+                responseDirtyColliders.push_back(collider);
+        }
     }
     if (!cellsWithOperations.empty())
     {
@@ -595,23 +613,42 @@ void Grid::flushPendingWork()
         }
     }
     potentiallyEmptyCells.clear();
-    size_t totalAdjacentPairs = 0;
-    for (auto *collider : pendingColliderOperations)
+
+    if (owner && !responseDirtyColliders.empty())
     {
-        if (collider->desiredInGrid)
+        for (auto *collider : responseDirtyColliders)
         {
-            totalAdjacentPairs += collider->adjacentPairs.size();
-            if (!activeCellBoundsDirty && collider->getIsRegisteredInGrid())
-                expandActiveCellBounds(collider->getGridCellRange());
-        }
-        if (owner && (collider->dirty & Collider::Response))
             owner->refreshResponse(collider);
+        }
+        responseDirtyColliders.clear();
     }
 
-    const bool runPairQueueParallel =
-        totalAdjacentPairs >= GRID_PAIR_QUEUE_PARALLEL_THRESHOLD &&
+    const size_t opCount = pendingColliderOperations.size();
+    const bool hasWorkers =
         tbb::global_control::active_value(tbb::global_control::max_allowed_parallelism) > 1 &&
         tbb::this_task_arena::max_concurrency() > 1;
+    bool runPairQueueParallel = false;
+    bool useUniformChunks = false;
+    size_t totalAdjacentPairs = 0;
+    if (hasWorkers)
+    {
+        if (opCount >= 1024)
+        {
+            runPairQueueParallel = true;
+            useUniformChunks = true;
+        }
+        else
+        {
+            for (auto *collider : pendingColliderOperations)
+            {
+                if (collider->desiredInGrid)
+                {
+                    totalAdjacentPairs += collider->adjacentPairs.size();
+                }
+            }
+            runPairQueueParallel = totalAdjacentPairs >= GRID_PAIR_QUEUE_PARALLEL_THRESHOLD;
+        }
+    }
     if (!runPairQueueParallel)
     {
         for (auto *collider : pendingColliderOperations)
@@ -626,28 +663,43 @@ void Grid::flushPendingWork()
     }
     else
     {
-        const size_t opCount = pendingColliderOperations.size();
-        const size_t targetPerChunk = std::max<size_t>(2048, (totalAdjacentPairs + 31) / 32);
         pairQueueChunkRanges.clear();
-        size_t chunkStart = 0;
-        size_t chunkWeight = 0;
-        for (size_t idx = 0; idx < opCount; ++idx)
+        if (useUniformChunks)
         {
-            Collider *collider = pendingColliderOperations[idx];
-            if (collider->desiredInGrid)
+            const size_t chunkCount = std::min<size_t>(32, (opCount + 127) / 128);
+            const size_t base = opCount / chunkCount;
+            const size_t rem = opCount % chunkCount;
+            size_t cursor = 0;
+            for (size_t c = 0; c < chunkCount; ++c)
             {
-                chunkWeight += collider->adjacentPairs.size();
-            }
-            if (chunkWeight >= targetPerChunk && pairQueueChunkRanges.size() < 63)
-            {
-                pairQueueChunkRanges.emplace_back(chunkStart, idx + 1);
-                chunkStart = idx + 1;
-                chunkWeight = 0;
+                const size_t len = base + (c < rem ? 1 : 0);
+                pairQueueChunkRanges.emplace_back(cursor, cursor + len);
+                cursor += len;
             }
         }
-        if (chunkStart < opCount)
+        else
         {
-            pairQueueChunkRanges.emplace_back(chunkStart, opCount);
+            const size_t targetPerChunk = std::max<size_t>(2048, (totalAdjacentPairs + 31) / 32);
+            size_t chunkStart = 0;
+            size_t chunkWeight = 0;
+            for (size_t idx = 0; idx < opCount; ++idx)
+            {
+                Collider *collider = pendingColliderOperations[idx];
+                if (collider->desiredInGrid)
+                {
+                    chunkWeight += collider->adjacentPairs.size();
+                }
+                if (chunkWeight >= targetPerChunk && pairQueueChunkRanges.size() < 63)
+                {
+                    pairQueueChunkRanges.emplace_back(chunkStart, idx + 1);
+                    chunkStart = idx + 1;
+                    chunkWeight = 0;
+                }
+            }
+            if (chunkStart < opCount)
+            {
+                pairQueueChunkRanges.emplace_back(chunkStart, opCount);
+            }
         }
 
         const size_t chunkCount = pairQueueChunkRanges.size();
@@ -665,7 +717,7 @@ void Grid::flushPendingWork()
             for (size_t idx = start; idx < end; ++idx)
             {
                 Collider *collider = pendingColliderOperations[idx];
-                if (!collider->desiredInGrid)
+                if (!collider->desiredInGrid || collider->adjacentPairs.empty())
                 {
                     continue;
                 }
@@ -692,10 +744,15 @@ void Grid::flushPendingWork()
             pairQueueChunkOffsets[chunkIdx] = writeOffset;
             writeOffset += pairQueueChunkScratch[chunkIdx].size();
         }
-        if (writeOffset > pendingNarrowPhasePairs.size())
+        const bool hasWrites = writeOffset > pendingNarrowPhasePairs.size();
+        if (hasWrites)
         {
             pendingNarrowPhasePairs.resize(writeOffset);
-            tbb::parallel_for(size_t(0), chunkCount, [&](size_t chunkIdx) {
+        }
+        // Pass 2: scatter narrow-phase pairs AND reset gridQueueIndex/dirty in parallel (gridQueueIndex no longer read).
+        tbb::parallel_for(size_t(0), chunkCount, [&](size_t chunkIdx) {
+            if (hasWrites)
+            {
                 const auto &local = pairQueueChunkScratch[chunkIdx];
                 size_t outIdx = pairQueueChunkOffsets[chunkIdx];
                 for (const ColliderPair *pair : local)
@@ -704,14 +761,15 @@ void Grid::flushPendingWork()
                     pendingNarrowPhasePairs[outIdx] = pair;
                     ++outIdx;
                 }
-            });
-        }
-
-        for (auto *collider : pendingColliderOperations)
-        {
-            collider->gridQueueIndex = SIZE_MAX;
-            collider->dirty = 0;
-        }
+            }
+            const auto [start, end] = pairQueueChunkRanges[chunkIdx];
+            for (size_t idx = start; idx < end; ++idx)
+            {
+                Collider *collider = pendingColliderOperations[idx];
+                collider->gridQueueIndex = SIZE_MAX;
+                collider->dirty = 0;
+            }
+        });
     }
     pendingColliderOperations.clear();
 }
@@ -743,6 +801,7 @@ void Grid::clearAll()
     potentiallyEmptyCells.clear();
     cellsWithOperations.clear();
     pendingColliderOperations.clear();
+    responseDirtyColliders.clear();
     pairDeltaScratch.clear();
     pairQueueChunkRanges.clear();
     pairQueueChunkOffsets.clear();

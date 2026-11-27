@@ -213,6 +213,7 @@ class Rigidbody : public Component
     double islandTimer = 0;
     int32_t solverIslandId = -1;
     size_t solverIslandBodyIndex = SIZE_MAX;
+    uint32_t solverColorMask = 0;
 
     void initialize();
     uint8_t integrateLocal(double timeDelta);

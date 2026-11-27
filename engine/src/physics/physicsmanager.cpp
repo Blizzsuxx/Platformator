@@ -325,6 +325,7 @@ void PhysicsManager::clearAll()
         body->supportDelta = 0;
         body->solverIslandId = -1;
         body->solverIslandBodyIndex = SIZE_MAX;
+        body->solverColorMask = 0;
     }
     for (Rigidbody *body : pendingBodyChanges)
     {
@@ -336,6 +337,7 @@ void PhysicsManager::clearAll()
         body->supportDelta = 0;
         body->solverIslandId = -1;
         body->solverIslandBodyIndex = SIZE_MAX;
+        body->solverColorMask = 0;
     }
     for (Collider *collider : colliderComponents)
     {
@@ -386,43 +388,26 @@ void PhysicsManager::narrowPhase()
     PLATFORMATOR_BENCH_SCOPE(NarrowPhase);
 
     const auto &pendingPairs = *grid.getPendingNarrowPhasePairs();
-    if (pendingPairs.size() < NARROW_PHASE_PARALLEL_THRESHOLD)
-    {
-        for (auto *pair : pendingPairs)
-        {
-            processNarrowPhasePair(pair);
-        }
-    }
-    else
-    {
-        tbb::parallel_for(size_t(0), pendingPairs.size(), [&](size_t i)
-                          { processNarrowPhasePair(pendingPairs[i]); });
-    }
-
     const bool noPendingBodyChanges = pendingBodyChanges.empty();
-    for (auto *pair : pendingPairs)
-    {
-        PLATFORMATOR_WORK_ADD(geometryPairs, pair->resultTestedGeometry ? 1 : 0);
-        PLATFORMATOR_WORK_ADD(contactTransitionChecks, 1);
+
+    const auto needsSerialTransition = [&](const ColliderPair *pair) noexcept -> bool {
         auto *collision = pair->getCollision();
         const bool hasContact = collision != nullptr;
         if (pair->resultHadContact != hasContact)
         {
-            const auto type = hasContact ? PhysicsEvent::COLLISION_ENTER : PhysicsEvent::COLLISION_EXIT;
-            addPendingPhysicsEvent(makePhysicsEvent(type, pair, collision));
+            return true;
         }
-        else if (!hasContact && pair->solverIndex == SIZE_MAX && !pair->contributedSupportBodyA &&
-                 !pair->contributedSupportBodyB && pair->contactIndex == SIZE_MAX)
+        if (!hasContact && pair->solverIndex == SIZE_MAX && !pair->contributedSupportBodyA &&
+            !pair->contributedSupportBodyB && pair->contactIndex == SIZE_MAX)
         {
-            continue;
+            return false;
         }
-        else if (hasContact && pair->contactIndex != SIZE_MAX)
+        if (hasContact && pair->contactIndex != SIZE_MAX)
         {
             if (pair->solverIndex == SIZE_MAX && !pair->contributedSupportBodyA && !pair->contributedSupportBodyB &&
                 (pair->getObjectA()->getIsTrigger() || pair->getObjectB()->getIsTrigger()))
             {
-                // A surviving trigger is already live after the geometry pass and can neither support nor solve.
-                continue;
+                return false;
             }
             if (noPendingBodyChanges && pair->solverIndex != SIZE_MAX)
             {
@@ -436,13 +421,100 @@ void PhysicsManager::narrowPhase()
                 if ((pair->contributedSupportBodyA != nullptr) == supportsA &&
                     (pair->contributedSupportBodyB != nullptr) == supportsB)
                 {
-                    continue;
+                    return false;
                 }
             }
         }
+        return true;
+    };
 
+    const auto applySerialTransition = [&](const ColliderPair *pair) {
+        auto *collision = pair->getCollision();
+        const bool hasContact = collision != nullptr;
+        if (pair->resultHadContact != hasContact)
+        {
+            const auto type = hasContact ? PhysicsEvent::COLLISION_ENTER : PhysicsEvent::COLLISION_EXIT;
+            addPendingPhysicsEvent(makePhysicsEvent(type, pair, collision));
+        }
         reconcilePairSupport(pair);
         refreshContactParticipation(pair);
+    };
+
+    if (pendingPairs.size() < NARROW_PHASE_PARALLEL_THRESHOLD)
+    {
+        for (auto *pair : pendingPairs)
+        {
+            processNarrowPhasePair(pair);
+        }
+        for (auto *pair : pendingPairs)
+        {
+            PLATFORMATOR_WORK_ADD(geometryPairs, pair->resultTestedGeometry ? 1 : 0);
+            PLATFORMATOR_WORK_ADD(contactTransitionChecks, 1);
+            if (needsSerialTransition(pair))
+            {
+                applySerialTransition(pair);
+            }
+        }
+    }
+    else
+    {
+        const size_t pairCount = pendingPairs.size();
+        const size_t chunkCount = std::min<size_t>(32, (pairCount + 63) / 64);
+        if (narrowTransitionChunks.size() < chunkCount)
+        {
+            narrowTransitionChunks.resize(chunkCount);
+        }
+#if PLATFORMATOR_ENABLE_WORK_PROBES
+        narrowGeometryCounts.assign(chunkCount, 0);
+#endif
+        const size_t base = pairCount / chunkCount;
+        const size_t rem = pairCount % chunkCount;
+
+        tbb::parallel_for(size_t(0), chunkCount, [&](size_t chunkIdx) {
+            auto &transitions = narrowTransitionChunks[chunkIdx];
+            transitions.clear();
+            const size_t start = chunkIdx * base + std::min(chunkIdx, rem);
+            const size_t end = start + base + (chunkIdx < rem ? 1 : 0);
+#if PLATFORMATOR_ENABLE_WORK_PROBES
+            uint64_t tested = 0;
+#endif
+            for (size_t i = start; i < end; ++i)
+            {
+                const ColliderPair *pair = pendingPairs[i];
+                processNarrowPhasePair(pair);
+#if PLATFORMATOR_ENABLE_WORK_PROBES
+                if (pair->resultTestedGeometry)
+                {
+                    ++tested;
+                }
+#endif
+                if (needsSerialTransition(pair))
+                {
+                    transitions.push_back(pair);
+                }
+            }
+#if PLATFORMATOR_ENABLE_WORK_PROBES
+            narrowGeometryCounts[chunkIdx] = tested;
+#endif
+        });
+
+#if PLATFORMATOR_ENABLE_WORK_PROBES
+        uint64_t totalTested = 0;
+        for (size_t c = 0; c < chunkCount; ++c)
+        {
+            totalTested += narrowGeometryCounts[c];
+        }
+        PLATFORMATOR_WORK_ADD(geometryPairs, totalTested);
+        PLATFORMATOR_WORK_ADD(contactTransitionChecks, pairCount);
+#endif
+
+        for (size_t c = 0; c < chunkCount; ++c)
+        {
+            for (const ColliderPair *pair : narrowTransitionChunks[c])
+            {
+                applySerialTransition(pair);
+            }
+        }
     }
     flushSupportDeltas();
 

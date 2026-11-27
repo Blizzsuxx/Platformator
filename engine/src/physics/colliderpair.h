@@ -113,6 +113,8 @@ class ColliderPair
     mutable int32_t solverIslandId = -1;
     mutable size_t solverIslandContactIndex = SIZE_MAX;
     mutable size_t kinematicSolverIndex = SIZE_MAX;
+    mutable uint32_t solverColorSlot = UINT32_MAX;
+    mutable uint8_t solverColor = 0xFFu;
     mutable bool hasCollision = false;
     mutable bool resultHadContact = false;
 #if PLATFORMATOR_ENABLE_WORK_PROBES

@@ -273,6 +273,10 @@ void GameObject::addComponentInternal(Component *component)
     if (type == ComponentType::COLLIDER || type == ComponentType::RIGID_BODY)
     {
         Rigidbody *rigidbodyComponent = getComponent<Rigidbody>();
+        if (auto *collider = static_cast<Collider *>(components[ComponentType::COLLIDER]))
+        {
+            collider->attachedRigidbody = rigidbodyComponent;
+        }
         if (rigidbodyComponent != nullptr)
         {
             rigidbodyComponent->refreshMomentOfInertiaCache();
@@ -304,7 +308,10 @@ bool GameObject::removeComponent(const ComponentType &componentType)
             body->refreshMomentOfInertiaCache();
     if (componentType == RIGID_BODY)
         if (auto *collider = getComponent<Collider>())
+        {
+            collider->attachedRigidbody = nullptr;
             collider->invalidateResponse();
+        }
     if (getIsRegisteredInGameManager())
         platformator_detail::RuntimeAccess::gameManager().flushIfIdle();
     return true;

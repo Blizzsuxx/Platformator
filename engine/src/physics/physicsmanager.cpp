@@ -3,6 +3,7 @@
 
 #include "benchmark/benchmark.h"
 #include "core/constants.h"
+#include "core/membership.h"
 #include "rendering/debugdraw.h"
 #include "core/gamemanager.h"
 #include "oneapi/tbb.h"
@@ -261,18 +262,9 @@ void PhysicsManager::removeRigidBodyComponent(Rigidbody *rigidBodyComponent)
         return;
     }
 
-    size_t removeIndex = rigidBodyComponent->getPhysicsManagerIndex();
-    size_t lastIndex = registeredBodies.size() - 1;
-
-    if (removeIndex != lastIndex)
-    {
-        Rigidbody *movedRigidBody = registeredBodies[lastIndex];
-        registeredBodies[removeIndex] = movedRigidBody;
-        movedRigidBody->setPhysicsManagerIndex(removeIndex);
-    }
-
-    registeredBodies.pop_back();
-    rigidBodyComponent->setPhysicsManagerIndex(SIZE_MAX);
+    swapRemoveIndexed(
+        registeredBodies, rigidBodyComponent, [](const Rigidbody *rb) { return rb->getPhysicsManagerIndex(); },
+        [](Rigidbody *rb, size_t idx) { rb->setPhysicsManagerIndex(idx); });
     rigidBodyComponent->setIsRegisteredInPhysicsManager(false);
     cancelBodyParticipationChange(rigidBodyComponent);
     reconcileBodyParticipation(rigidBodyComponent);
@@ -285,18 +277,9 @@ void PhysicsManager::removeColliderComponent(Collider *colliderComponent)
         return;
     }
 
-    size_t removeIndex = colliderComponent->getPhysicsManagerIndex();
-    size_t lastIndex = colliderComponents.size() - 1;
-
-    if (removeIndex != lastIndex)
-    {
-        Collider *movedCollider = colliderComponents[lastIndex];
-        colliderComponents[removeIndex] = movedCollider;
-        movedCollider->setPhysicsManagerIndex(removeIndex);
-    }
-
-    colliderComponents.pop_back();
-    colliderComponent->setPhysicsManagerIndex(SIZE_MAX);
+    swapRemoveIndexed(
+        colliderComponents, colliderComponent, [](const Collider *c) { return c->getPhysicsManagerIndex(); },
+        [](Collider *c, size_t idx) { c->setPhysicsManagerIndex(idx); });
     colliderComponent->setIsRegisteredInPhysicsManager(false);
 
     grid.queueRemoveCollider(colliderComponent);
@@ -365,7 +348,6 @@ void PhysicsManager::clearAll()
     solverPreStepJobs.clear();
     solverConstraints.clear();
     contactPairs.clear();
-    solverPairs.clear();
     supportDeltaBodies.clear();
     pendingPhysicsEvents.clear();
     movedBodyChanges.clear();
@@ -397,19 +379,19 @@ void PhysicsManager::narrowPhase()
         {
             return true;
         }
-        if (!hasContact && pair->solverIndex == SIZE_MAX && !pair->contributedSupportBodyA &&
+        if (!hasContact && !pair->isInSolver() && !pair->contributedSupportBodyA &&
             !pair->contributedSupportBodyB && pair->contactIndex == SIZE_MAX)
         {
             return false;
         }
         if (hasContact && pair->contactIndex != SIZE_MAX)
         {
-            if (pair->solverIndex == SIZE_MAX && !pair->contributedSupportBodyA && !pair->contributedSupportBodyB &&
+            if (!pair->isInSolver() && !pair->contributedSupportBodyA && !pair->contributedSupportBodyB &&
                 (pair->getObjectA()->getIsTrigger() || pair->getObjectB()->getIsTrigger()))
             {
                 return false;
             }
-            if (noPendingBodyChanges && pair->solverIndex != SIZE_MAX)
+            if (noPendingBodyChanges && pair->isInSolver())
             {
                 const bool referenceIsA = collision->getReferenceObject() == pair->getObjectA();
                 const bool supportsA =
@@ -519,10 +501,22 @@ void PhysicsManager::narrowPhase()
     flushSupportDeltas();
 
 #if PLATFORMATOR_ENABLE_DEBUG_TOOLS
-    for (auto *pair : solverPairs)
+    for (int32_t islandId : activeIslandIds)
     {
-        auto *collision = pair->getCollision();
-        DebugDraw::getInstance().addCollisionDebugObject(*collision);
+        for (const ColliderPair *pair : persistentIslands[static_cast<size_t>(islandId)].contacts)
+        {
+            if (auto *collision = pair->getCollision())
+            {
+                DebugDraw::getInstance().addCollisionDebugObject(*collision);
+            }
+        }
+    }
+    for (const ColliderPair *pair : kinematicSolverPairs)
+    {
+        if (auto *collision = pair->getCollision())
+        {
+            DebugDraw::getInstance().addCollisionDebugObject(*collision);
+        }
     }
 #endif
 

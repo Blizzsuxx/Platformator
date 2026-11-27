@@ -117,7 +117,6 @@ ScriptInspectionLimits bounded_script_inspection_limits(ScriptInspectionLimits l
 const char *script_field_kind_name(ScriptFieldKind kind) noexcept;
 nlohmann::json script_field_descriptor_json(const ScriptFieldDescriptor &field);
 nlohmann::json script_descriptor_json(const ScriptDescriptor &descriptor);
-nlohmann::json export_registered_behavior_catalog();
 
 namespace metadata_detail
 {
@@ -219,42 +218,33 @@ template <> struct ScriptFieldTraits<SDL_FRect>
     }
 };
 
-template <typename T, typename Allocator> struct ScriptFieldTraits<std::vector<T, Allocator>>
+template <typename T> struct IsBoundedSequence : std::false_type
 {
-    static ScriptFieldDescriptor describe(std::string_view name)
-    {
-        ScriptFieldDescriptor descriptor{std::string(name), ScriptFieldKind::Array};
-        descriptor.element = std::make_shared<ScriptFieldDescriptor>(ScriptFieldTraits<T>::describe("element"));
-        return descriptor;
-    }
+};
+template <typename T, typename Allocator>
+struct IsBoundedSequence<std::vector<T, Allocator>> : std::true_type
+{
+};
+template <typename T, typename Allocator>
+struct IsBoundedSequence<std::deque<T, Allocator>> : std::true_type
+{
+};
+template <typename T, typename Allocator>
+struct IsBoundedSequence<std::list<T, Allocator>> : std::true_type
+{
+};
+template <typename T, std::size_t Size>
+struct IsBoundedSequence<std::array<T, Size>> : std::true_type
+{
 };
 
-template <typename T, typename Allocator> struct ScriptFieldTraits<std::deque<T, Allocator>>
+template <typename T> struct ScriptFieldTraits<T, std::enable_if_t<IsBoundedSequence<T>::value>>
 {
     static ScriptFieldDescriptor describe(std::string_view name)
     {
         ScriptFieldDescriptor descriptor{std::string(name), ScriptFieldKind::Array};
-        descriptor.element = std::make_shared<ScriptFieldDescriptor>(ScriptFieldTraits<T>::describe("element"));
-        return descriptor;
-    }
-};
-
-template <typename T, typename Allocator> struct ScriptFieldTraits<std::list<T, Allocator>>
-{
-    static ScriptFieldDescriptor describe(std::string_view name)
-    {
-        ScriptFieldDescriptor descriptor{std::string(name), ScriptFieldKind::Array};
-        descriptor.element = std::make_shared<ScriptFieldDescriptor>(ScriptFieldTraits<T>::describe("element"));
-        return descriptor;
-    }
-};
-
-template <typename T, std::size_t Size> struct ScriptFieldTraits<std::array<T, Size>>
-{
-    static ScriptFieldDescriptor describe(std::string_view name)
-    {
-        ScriptFieldDescriptor descriptor{std::string(name), ScriptFieldKind::Array};
-        descriptor.element = std::make_shared<ScriptFieldDescriptor>(ScriptFieldTraits<T>::describe("element"));
+        descriptor.element =
+            std::make_shared<ScriptFieldDescriptor>(ScriptFieldTraits<typename T::value_type>::describe("element"));
         return descriptor;
     }
 };
@@ -356,11 +346,6 @@ template <typename T> struct ScriptFieldTraits<AssetReference<T>>
     }
 };
 
-template <typename T> ScriptFieldDescriptor describe_script_field(std::string_view name, T *)
-{
-    return ScriptFieldTraits<std::remove_cv_t<T>>::describe(name);
-}
-
 template <typename Owner, typename T> ScriptFieldDescriptor describe_script_field(std::string_view name,
                                                                                     T Owner::*)
 {
@@ -397,26 +382,6 @@ template <typename T> struct IsAssetReference : std::false_type
 template <typename T> struct IsAssetReference<::AssetReference<T>> : std::true_type
 {
     using Target = T;
-};
-
-template <typename T> struct IsBoundedSequence : std::false_type
-{
-};
-template <typename T, typename Allocator>
-struct IsBoundedSequence<std::vector<T, Allocator>> : std::true_type
-{
-};
-template <typename T, typename Allocator>
-struct IsBoundedSequence<std::deque<T, Allocator>> : std::true_type
-{
-};
-template <typename T, typename Allocator>
-struct IsBoundedSequence<std::list<T, Allocator>> : std::true_type
-{
-};
-template <typename T, std::size_t Size>
-struct IsBoundedSequence<std::array<T, Size>> : std::true_type
-{
 };
 
 inline std::string bounded_utf8_prefix(std::string_view text, std::size_t byteLimit, bool &truncated)

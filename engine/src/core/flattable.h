@@ -92,88 +92,24 @@ class FlatHashTable
     template <typename MakeSlot, typename OnExisting>
     void insertOrAssign(const Key &key, MakeSlot &&makeSlot, OnExisting &&onExisting)
     {
-        if (!slots.empty())
+        auto [slot, inserted] = probeOrInsert(key, std::forward<MakeSlot>(makeSlot));
+        if (!inserted)
         {
-            const size_t idx = findSlot(key);
-            if (!Traits::isEmpty(slots[idx]))
-            {
-                onExisting(slots[idx]);
-                return;
-            }
-            if (!exceedsLoadFactor(count + 1))
-            {
-                Slot slot = makeSlot();
-                assert(!Traits::isEmpty(slot));
-                slots[idx] = std::move(slot);
-                ++count;
-                return;
-            }
+            onExisting(*slot);
         }
-
-        rehash(slots.empty() ? InitialCapacity : slots.size() * 2);
-        const size_t idx = findEmptySlot(slots, key);
-        Slot slot = makeSlot();
-        assert(!Traits::isEmpty(slot));
-        slots[idx] = std::move(slot);
-        ++count;
     }
 
     template <typename MakeSlot>
     Slot *emplaceIfAbsent(const Key &key, MakeSlot &&makeSlot)
     {
-        if (!slots.empty())
-        {
-            const size_t idx = findSlot(key);
-            if (!Traits::isEmpty(slots[idx]))
-            {
-                return nullptr;
-            }
-            if (!exceedsLoadFactor(count + 1))
-            {
-                Slot slot = makeSlot();
-                assert(!Traits::isEmpty(slot));
-                slots[idx] = std::move(slot);
-                ++count;
-                return &slots[idx];
-            }
-        }
-
-        rehash(slots.empty() ? InitialCapacity : slots.size() * 2);
-        const size_t idx = findEmptySlot(slots, key);
-        Slot slot = makeSlot();
-        assert(!Traits::isEmpty(slot));
-        slots[idx] = std::move(slot);
-        ++count;
-        return &slots[idx];
+        auto [slot, inserted] = probeOrInsert(key, std::forward<MakeSlot>(makeSlot));
+        return inserted ? slot : nullptr;
     }
 
     template <typename MakeSlot>
     Slot &findOrEmplace(const Key &key, MakeSlot &&makeSlot)
     {
-        if (!slots.empty())
-        {
-            const size_t idx = findSlot(key);
-            if (!Traits::isEmpty(slots[idx]))
-            {
-                return slots[idx];
-            }
-            if (!exceedsLoadFactor(count + 1))
-            {
-                Slot slot = makeSlot();
-                assert(!Traits::isEmpty(slot));
-                slots[idx] = std::move(slot);
-                ++count;
-                return slots[idx];
-            }
-        }
-
-        rehash(slots.empty() ? InitialCapacity : slots.size() * 2);
-        const size_t idx = findEmptySlot(slots, key);
-        Slot slot = makeSlot();
-        assert(!Traits::isEmpty(slot));
-        slots[idx] = std::move(slot);
-        ++count;
-        return slots[idx];
+        return *probeOrInsert(key, std::forward<MakeSlot>(makeSlot)).first;
     }
 
     bool erase(const Key &key) noexcept
@@ -269,6 +205,35 @@ class FlatHashTable
     }
 
   private:
+    template <typename MakeSlot>
+    std::pair<Slot *, bool> probeOrInsert(const Key &key, MakeSlot &&makeSlot)
+    {
+        if (!slots.empty())
+        {
+            const size_t idx = findSlot(key);
+            if (!Traits::isEmpty(slots[idx]))
+            {
+                return {&slots[idx], false};
+            }
+            if (!exceedsLoadFactor(count + 1))
+            {
+                Slot slot = makeSlot();
+                assert(!Traits::isEmpty(slot));
+                slots[idx] = std::move(slot);
+                ++count;
+                return {&slots[idx], true};
+            }
+        }
+
+        rehash(slots.empty() ? InitialCapacity : slots.size() * 2);
+        const size_t idx = findEmptySlot(slots, key);
+        Slot slot = makeSlot();
+        assert(!Traits::isEmpty(slot));
+        slots[idx] = std::move(slot);
+        ++count;
+        return {&slots[idx], true};
+    }
+
     static constexpr size_t LOAD_FACTOR_NUM = 7;
     static constexpr size_t LOAD_FACTOR_DEN = 10;
 

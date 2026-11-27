@@ -80,4 +80,15 @@ template <typename T> constexpr ObjectKind objectKind()
     else
         static_assert(std::is_same_v<T, void>, "Unsupported persistent reference kind");
 }
+
+constexpr bool objectKindMatches(ObjectKind actual, ObjectKind expected) noexcept
+{
+    if (expected == ObjectKind::BaseObject || expected == actual)
+        return true;
+    if (expected == ObjectKind::Component)
+        return actual != ObjectKind::GameObject && actual != ObjectKind::BaseObject;
+    if (expected == ObjectKind::Collider)
+        return actual == ObjectKind::BoxCollider || actual == ObjectKind::CircleCollider;
+    return false;
+}
 } // namespace platformator_detail

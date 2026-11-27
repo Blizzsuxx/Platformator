@@ -158,19 +158,15 @@ void DebugDraw::renderFpsOverlay(SDL_Renderer *renderer)
     SDL_SetRenderDrawColor(renderer, prevR, prevG, prevB, prevA);
 }
 
-void DebugDraw::addDebugObject(const std::vector<Eigen::Vector2f> &vertices, std::string name)
+void DebugDraw::addDebugObject(const std::vector<Eigen::Vector2f> &vertices, Uint8 r, Uint8 g, Uint8 b, Uint8 a,
+                               bool closed)
 {
-    debugObjectsBuffer.push_back(DebugObject(vertices));
+    debugObjectsBuffer.emplace_back(vertices, r, g, b, a, closed);
 }
 
-void DebugDraw::addDebugObject(const std::vector<Eigen::Vector2f> &vertices, Uint8 r, Uint8 g, Uint8 b, Uint8 a, bool closed, std::string name)
+void DebugDraw::addDebugObject(std::vector<Eigen::Vector2f> &&vertices, Uint8 r, Uint8 g, Uint8 b, Uint8 a, bool closed)
 {
-    debugObjectsBuffer.push_back(DebugObject(vertices, r, g, b, a, closed, name));
-}
-
-void DebugDraw::addDebugObject(std::vector<Eigen::Vector2f> &&vertices, Uint8 r, Uint8 g, Uint8 b, Uint8 a, bool closed, std::string name)
-{
-    debugObjectsBuffer.emplace_back(std::move(vertices), r, g, b, a, closed, name);
+    debugObjectsBuffer.emplace_back(std::move(vertices), r, g, b, a, closed);
 }
 
 void DebugDraw::addBoxColliderDebugObject(const BoxCollider &collider)
@@ -182,7 +178,7 @@ void DebugDraw::addBoxColliderDebugObject(const BoxCollider &collider)
 
     const auto &v = collider.getVertices();
     std::vector<Eigen::Vector2f> ordered = {v[0], v[1], v[2], v[3]};
-    addDebugObject(std::move(ordered), 0x00, 0xFF, 0x00, 0xCC, true, collider.getGameObject()->getName());
+    addDebugObject(std::move(ordered), 0x00, 0xFF, 0x00, 0xCC, true);
 }
 
 void DebugDraw::addCircleColliderDebugObject(const CircleCollider &collider)
@@ -202,12 +198,12 @@ void DebugDraw::addCircleColliderDebugObject(const CircleCollider &collider)
         float angle = static_cast<float>(i) / numSegments * 2.0f * std::numbers::pi_v<float>;
         vertices.emplace_back(center.x() + radius * std::cos(angle), center.y() + radius * std::sin(angle));
     }
-    addDebugObject(std::move(vertices), 0x00, 0xFF, 0x00, 0xCC, true, collider.getGameObject()->getName());
+    addDebugObject(std::move(vertices), 0x00, 0xFF, 0x00, 0xCC, true);
 
     // Rotation indicator line from center to edge
     float rot = collider.getGameObject()->getRotation();
     Eigen::Vector2f edge(center.x() + radius * std::cos(rot), center.y() + radius * std::sin(rot));
-    addDebugObject({center, edge}, 0x00, 0xCC, 0x00, 0xCC, false, collider.getGameObject()->getName() + " rotation");
+    addDebugObject({center, edge}, 0x00, 0xCC, 0x00, 0xCC, false);
 }
 
 void DebugDraw::addGridCellDebugObject(const GridCellKey &cellKey)
@@ -228,7 +224,7 @@ void DebugDraw::addGridCellDebugObject(const GridCellKey &cellKey)
         Eigen::Vector2f(maxX, maxY),
         Eigen::Vector2f(minX, maxY)};
 
-    addDebugObject(std::move(vertices), 0x30, 0x90, 0xFF, 0x55, true, "Grid Cell");
+    addDebugObject(std::move(vertices), 0x30, 0x90, 0xFF, 0x55, true);
 }
 
 void DebugDraw::addCollisionDebugObject(const Collision &collision)
@@ -286,9 +282,8 @@ void DebugDraw::addCollisionDebugObject(const Collision &collision)
                                          tip, arrowBase - perp * arrowSize * 0.5f},
             0xFF, 0xFF, 0x00, 0xFF, false);
 
-        Eigen::Vector2f penTip = contactPoint + normal * 20.0f;
-        Eigen::Vector2f barLeft = penTip + perp * 4.0f;
-        Eigen::Vector2f barRight = penTip - perp * 4.0f;
+        Eigen::Vector2f barLeft = tip + perp * 4.0f;
+        Eigen::Vector2f barRight = tip - perp * 4.0f;
         addDebugObject(std::vector<Eigen::Vector2f>{barLeft, barRight}, 0xFF, 0xAA, 0x00, 0xFF, false);
     }
 }
@@ -329,34 +324,8 @@ void DebugDraw::toggleShowFps()
     }
 }
 
-void DebugDraw::addPointDebugObject(const Eigen::Vector2f &point, Uint8 r, Uint8 g, Uint8 b, Uint8 a, bool showLabel, std::string name)
-{
-    float size = 4.0f;
-    addDebugObject(
-        std::vector<Eigen::Vector2f>{point + Eigen::Vector2f(-size, -size), point + Eigen::Vector2f(size, size),
-                                     point + Eigen::Vector2f(-size, size), point + Eigen::Vector2f(size, -size)},
-        r, g, b, a, false, name);
-
-    if (showLabel && !name.empty())
-    {
-        // Optionally add a label (not implemented here since it requires text rendering)
-        // This is a placeholder for where you would integrate with a text rendering system
-    }
-}
-
-void DebugDraw::addEdgeDebugObject(const Eigen::Vector2f &start, const Eigen::Vector2f &end, Uint8 r, Uint8 g, Uint8 b, Uint8 a, std::string name)
-{
-    addDebugObject(std::vector<Eigen::Vector2f>{start, end}, r, g, b, a, false, name);
-}
-
-////////////
-
-DebugObject::DebugObject(std::vector<Eigen::Vector2f> vertices, bool closed, std::string name)
-    : vertices(std::move(vertices)), r(0x00), g(0xFF), b(0x00), a(0xFF), closed(closed), name(std::move(name))
-{
-}
-DebugObject::DebugObject(std::vector<Eigen::Vector2f> vertices, Uint8 r, Uint8 g, Uint8 b, Uint8 a, bool closed, std::string name)
-    : vertices(std::move(vertices)), r(r), g(g), b(b), a(a), closed(closed), name(std::move(name))
+DebugObject::DebugObject(std::vector<Eigen::Vector2f> vertices, Uint8 r, Uint8 g, Uint8 b, Uint8 a, bool closed)
+    : vertices(std::move(vertices)), r(r), g(g), b(b), a(a), closed(closed)
 {
 }
 

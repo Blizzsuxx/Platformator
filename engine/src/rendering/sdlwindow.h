@@ -1,7 +1,6 @@
 #pragma once
 
 #include <SDL3/SDL.h>
-#include <SDL3_image/SDL_image.h>
 
 #include <array>
 #include <cstdint>
@@ -120,7 +119,6 @@ class SDLWindow
     void releaseRenderingStorage() noexcept;
     void clearSceneComponents() noexcept;
 
-    void addSdlListener(const std::function<void(SDL_Event, double)> &listener);
     bool shouldSimulateFrame() const;
     bool shouldUseFixedStepDelta() const;
     void clearAdvanceFrameRequest();

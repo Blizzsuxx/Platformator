@@ -27,18 +27,9 @@ namespace
 using Json = nlohmann::json;
 using Kind = platformator_detail::ObjectKind;
 using platformator_detail::positive;
-template <typename T> T *retainAcquisition(std::vector<T *> &ledger, T *asset)
+template <typename T> T *retainAcquisition(std::vector<Asset::Reference<T>> &ledger, T *asset)
 {
-    asset->addReference();
-    try
-    {
-        ledger.push_back(asset);
-    }
-    catch (...)
-    {
-        asset->removeReferenceAndFreeIfNoReferences();
-        throw;
-    }
+    ledger.push_back(Asset::retain(asset));
     return asset;
 }
 } // namespace
@@ -185,14 +176,6 @@ SceneBuildContext::~SceneBuildContext()
             manager.registry.erase(*object);
         delete object;
     }
-    for (auto *clip : clips)
-        clip->removeReferenceAndFreeIfNoReferences();
-    for (auto *asset : audio)
-        asset->removeReferenceAndFreeIfNoReferences();
-    for (auto *texture : textures)
-        texture->removeReferenceAndFreeIfNoReferences();
-    for (auto *tpl : templates)
-        tpl->removeReferenceAndFreeIfNoReferences();
 }
 
 void SceneBuildContext::addIdentity(BaseObject &object, Kind kind)

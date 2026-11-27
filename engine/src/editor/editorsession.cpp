@@ -52,51 +52,7 @@ constexpr std::size_t MaximumInspectedBehaviors = 8;
 
 std::string bounded_utf8(std::string_view text, std::size_t byteLimit, bool &truncated)
 {
-    std::string result;
-    result.reserve(std::min(text.size(), byteLimit));
-    constexpr std::string_view replacement = "\xef\xbf\xbd";
-    std::size_t offset = 0;
-    while (offset < text.size())
-    {
-        const auto first = static_cast<unsigned char>(text[offset]);
-        std::size_t width = 1;
-        if (first >= 0xc2 && first <= 0xdf)
-            width = 2;
-        else if (first >= 0xe0 && first <= 0xef)
-            width = 3;
-        else if (first >= 0xf0 && first <= 0xf4)
-            width = 4;
-        bool valid = first <= 0x7f || (first >= 0xc2 && first <= 0xf4);
-        valid = valid && offset + width <= text.size();
-        for (std::size_t index = 1; valid && index < width; ++index)
-        {
-            const auto continuation = static_cast<unsigned char>(text[offset + index]);
-            valid = continuation >= 0x80 && continuation <= 0xbf;
-        }
-        if (valid && width == 3)
-        {
-            const auto second = static_cast<unsigned char>(text[offset + 1]);
-            valid = !((first == 0xe0 && second < 0xa0) || (first == 0xed && second >= 0xa0));
-        }
-        if (valid && width == 4)
-        {
-            const auto second = static_cast<unsigned char>(text[offset + 1]);
-            valid = !((first == 0xf0 && second < 0x90) || (first == 0xf4 && second >= 0x90));
-        }
-        const auto appendWidth = valid ? width : replacement.size();
-        if (appendWidth > byteLimit - result.size())
-        {
-            truncated = true;
-            break;
-        }
-        if (valid)
-            result.append(text.substr(offset, width));
-        else
-            result.append(replacement);
-        offset += valid ? width : 1;
-    }
-    truncated = truncated || offset < text.size();
-    return result;
+    return metadata_detail::bounded_utf8_prefix(text, byteLimit, truncated);
 }
 
 const char *object_kind_name(platformator_detail::ObjectKind kind) noexcept

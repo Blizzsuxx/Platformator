@@ -4,25 +4,7 @@
 #include "platformator/rigidbody.h"
 #include "core/inputvalidation.h"
 
-void *CircleCollider::operator new(size_t size)
-{
-    return platformator_detail::allocatePooledObject(platformator_detail::PooledObjectKind::CircleCollider, size);
-}
-
-void CircleCollider::operator delete(void *ptr, size_t size) noexcept
-{
-    platformator_detail::deallocatePooledObject(platformator_detail::PooledObjectKind::CircleCollider, ptr, size);
-}
-
-void *CircleCollider::operator new(size_t size, const std::nothrow_t &) noexcept
-{
-    return platformator_detail::allocatePooledObjectNothrow(platformator_detail::PooledObjectKind::CircleCollider, size);
-}
-
-void CircleCollider::operator delete(void *ptr, const std::nothrow_t &) noexcept
-{
-    platformator_detail::deallocatePooledObject(platformator_detail::PooledObjectKind::CircleCollider, ptr);
-}
+PLATFORMATOR_DEFINE_POOLED_ALLOCATORS(CircleCollider, CircleCollider)
 
 CircleCollider::CircleCollider()
     : Collider(ComponentType::COLLIDER, ColliderType::CircleCollider), radius(1.0f), publishedRadius(1.0f)

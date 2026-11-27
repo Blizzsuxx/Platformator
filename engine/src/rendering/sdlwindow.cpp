@@ -5,7 +5,6 @@
 #include <cassert>
 #include <chrono>
 #include <cstdlib>
-#include <iostream>
 #include <limits>
 #include <memory>
 #include <stdexcept>
@@ -15,8 +14,6 @@
 
 #include <SDL3/SDL_properties.h>
 
-#include "platformator/audiowrapper.h"
-#include "platformator/audio.h"
 #include "core/gamemanager.h"
 #include "core/runtimeaccess.h"
 #include "platformator/sprite.h"
@@ -1084,11 +1081,6 @@ void SDLWindow::clearSceneComponents() noexcept
 void SDLWindow::setMainCamera(Camera *mainCamera)
 {
     this->mainCamera = mainCamera;
-}
-
-void SDLWindow::addSdlListener(const std::function<void(SDL_Event, double)> &listener)
-{
-    listeners.push_back(listener);
 }
 
 Camera *SDLWindow::getMainCamera() const

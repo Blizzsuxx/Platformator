@@ -4,9 +4,6 @@
 
 #include "platformator/collisiontypes.h"
 
-#include "platformator/scriptcomponent.h"
-#include "platformator/gameobject.h"
-
 inline float cross2D(const Eigen::Vector2f &a, const Eigen::Vector2f &b)
 {
     return a.x() * b.y() - a.y() * b.x();

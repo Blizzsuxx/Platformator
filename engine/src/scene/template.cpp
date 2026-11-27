@@ -16,15 +16,6 @@
 
 namespace
 {
-bool matchesExpectedObjectKind(platformator_detail::ObjectKind actual, platformator_detail::ObjectKind expected)
-{
-    using platformator_detail::ObjectKind;
-    return expected == ObjectKind::BaseObject || expected == actual ||
-           (expected == ObjectKind::Component && actual != ObjectKind::GameObject) ||
-           (expected == ObjectKind::Collider &&
-            (actual == ObjectKind::BoxCollider || actual == ObjectKind::CircleCollider));
-}
-
 class TemplateBuildResolver final : public platformator::ReferenceResolver
 {
   public:
@@ -58,7 +49,7 @@ class TemplateBuildResolver final : public platformator::ReferenceResolver
     BaseObject *findObject(int id, platformator_detail::ObjectKind expected) override
     {
         const auto it = protoKinds.find(id);
-        if (it != protoKinds.end() && !matchesExpectedObjectKind(it->second, expected) &&
+        if (it != protoKinds.end() && !platformator_detail::objectKindMatches(it->second, expected) &&
             !invalidInternalReferenceError.has_value())
         {
             invalidInternalReferenceError = "Missing reference target or wrong kind for ID " + std::to_string(id);

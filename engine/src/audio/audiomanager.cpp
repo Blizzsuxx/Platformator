@@ -81,6 +81,30 @@ bool AudioManager::setPaused(bool paused) noexcept
     return paused ? SDL_PauseAudioDevice(device) : SDL_ResumeAudioDevice(device);
 }
 
+bool AudioManager::playTrackWithLoops(MIX_Track *track, int loopCount) noexcept
+{
+    SDL_PropertiesID options = 0;
+    if (loopCount != 0)
+    {
+        options = SDL_CreateProperties();
+        if (options == 0 || !SDL_SetNumberProperty(options, MIX_PROP_PLAY_LOOPS_NUMBER, loopCount))
+        {
+            if (options != 0)
+            {
+                SDL_DestroyProperties(options);
+            }
+            return false;
+        }
+    }
+
+    const bool played = MIX_PlayTrack(track, options);
+    if (options != 0)
+    {
+        SDL_DestroyProperties(options);
+    }
+    return played;
+}
+
 bool AudioManager::playAndForget(AudioWrapper *audioWrapper, float gain, int loopCount)
 {
     if (audioWrapper == nullptr || mixer == nullptr)
@@ -96,27 +120,7 @@ bool AudioManager::playAndForget(AudioWrapper *audioWrapper, float gain, int loo
 
     MIX_SetTrackGain(track.get(), std::max(0.0f, gain));
 
-    SDL_PropertiesID options = 0;
-    if (loopCount != 0)
-    {
-        options = SDL_CreateProperties();
-        if (options == 0 || !SDL_SetNumberProperty(options, MIX_PROP_PLAY_LOOPS_NUMBER, loopCount))
-        {
-            if (options != 0)
-            {
-                SDL_DestroyProperties(options);
-            }
-            return false;
-        }
-    }
-
-    const bool played = MIX_PlayTrack(track.get(), options);
-    if (options != 0)
-    {
-        SDL_DestroyProperties(options);
-    }
-
-    if (!played)
+    if (!playTrackWithLoops(track.get(), loopCount))
     {
         return false;
     }

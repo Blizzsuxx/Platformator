@@ -1,6 +1,6 @@
 #include "physics/physicsmanager.h"
 
-#include "physics/physicsmembership.h"
+#include "core/membership.h"
 #include "benchmark/workprobe.h"
 
 void PhysicsManager::queueBodyParticipationChange(Rigidbody *body)

@@ -2,7 +2,7 @@
 
 #include <cstdint>
 #include "platformator/collider.h"
-#include "physics/collision.h"
+#include "platformator/collision.h"
 
 class ColliderPair
 {
@@ -72,6 +72,11 @@ class ColliderPair
         return objectB;
     }
 
+    bool isInSolver() const noexcept
+    {
+        return solverIslandId != -1 || kinematicSolverIndex != SIZE_MAX;
+    }
+
     int getWitnessCount() const
     {
         return witnessCount;
@@ -109,7 +114,6 @@ class ColliderPair
     mutable size_t adjacencyIndexB;
     mutable int witnessCount;
     mutable size_t contactIndex = SIZE_MAX;
-    mutable size_t solverIndex = SIZE_MAX;
     mutable int32_t solverIslandId = -1;
     mutable size_t solverIslandContactIndex = SIZE_MAX;
     mutable size_t kinematicSolverIndex = SIZE_MAX;

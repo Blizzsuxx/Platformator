@@ -69,6 +69,12 @@ class AssetStore
         void clear();
     };
 
+    template <typename Resource, typename BuildFn>
+    Resource *loadCached(Cache<Resource> &cache, const std::string &filePath, const std::string &resolveRequest,
+                         bool required, const char *emptyMessage, BuildFn &&build);
+    template <typename Resource, typename BuildFn>
+    Resource *reloadCached(Cache<Resource> &cache, const std::string &filePath, BuildFn &&build);
+
     GameManager &owner;
     Cache<TextureWrapper> textures;
     Cache<AudioWrapper> audio;

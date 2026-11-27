@@ -34,10 +34,9 @@ class RuntimeAccess
     static AudioManager *audioManager();
     static TextureWrapper *loadTexture(const std::string &filePath);
     static TextureWrapper *findTexture(const std::string &filePath);
-    static std::uint64_t textureCacheBytes() noexcept;
+    static std::uint64_t textureCacheBytes();
     static TextureWrapper *reloadTexture(const std::string &filePath, SDL_Surface *preparedSurface);
     static AudioWrapper *loadAudio(const std::string &filePath);
-    static AnimationClip *loadAnimationClip(const std::string &filePath);
     static AnimationClip *findAnimationClip(const std::string &filePath);
     static AnimationClip *reloadAnimationClip(const std::string &filePath,
                                                const nlohmann::json &preparedDocument);

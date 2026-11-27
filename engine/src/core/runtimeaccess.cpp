@@ -55,7 +55,7 @@ TextureWrapper *RuntimeAccess::findTexture(const std::string &filePath)
     return gameManager().assetStore().findTexture(filePath);
 }
 
-std::uint64_t RuntimeAccess::textureCacheBytes() noexcept
+std::uint64_t RuntimeAccess::textureCacheBytes()
 {
     return gameManager().assetStore().textureCacheBytes();
 }
@@ -68,11 +68,6 @@ TextureWrapper *RuntimeAccess::reloadTexture(const std::string &filePath, SDL_Su
 AudioWrapper *RuntimeAccess::loadAudio(const std::string &filePath)
 {
     return runtime().loadAudio(filePath);
-}
-
-AnimationClip *RuntimeAccess::loadAnimationClip(const std::string &filePath)
-{
-    return runtime().loadAnimationClip(filePath);
 }
 
 AnimationClip *RuntimeAccess::findAnimationClip(const std::string &filePath)

@@ -78,7 +78,7 @@ class ObjectRegistry
         const bool staged = staging && slot.object->lifecycle == ObjectLifecycle::Staged;
         if (!live && !staged)
             return nullptr;
-        return kindMatches(slot.kind, expected) ? slot.object : nullptr;
+        return objectKindMatches(slot.kind, expected) ? slot.object : nullptr;
     }
 
     uint64_t serial() const noexcept
@@ -88,17 +88,6 @@ class ObjectRegistry
 
   private:
     static constexpr uint32_t INVALID_SLOT = std::numeric_limits<uint32_t>::max();
-
-    static constexpr bool kindMatches(ObjectKind actual, ObjectKind expected) noexcept
-    {
-        if (expected == ObjectKind::BaseObject || expected == actual)
-            return true;
-        if (expected == ObjectKind::Component)
-            return actual != ObjectKind::GameObject && actual != ObjectKind::BaseObject;
-        if (expected == ObjectKind::Collider)
-            return actual == ObjectKind::BoxCollider || actual == ObjectKind::CircleCollider;
-        return false;
-    }
 
     struct Slot
     {

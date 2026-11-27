@@ -11,6 +11,7 @@
 
 #include "benchmark/benchmark.h"
 #include "core/constants.h"
+#include "core/membership.h"
 #include "physics/physicstaskcontext.h"
 #include "platformator/animator.h"
 #include "platformator/audio.h"
@@ -27,20 +28,21 @@ namespace
 {
 template <typename T> void swapRemoveIndexed(std::vector<T *> &list, T *item)
 {
-    const size_t removeIndex = item->getGameManagerIndex();
-    if (removeIndex == SIZE_MAX)
+    ::swapRemoveIndexed(
+        list, item, [](const T *entry) { return entry->getGameManagerIndex(); },
+        [](T *entry, size_t index) { entry->setGameManagerIndex(index); });
+}
+
+template <typename MemberFn>
+void dispatchScriptUpdate(const std::vector<ScriptComponent *> &scripts, MemberFn fn, double timeDelta)
+{
+    for (ScriptComponent *scriptComponent : scripts)
     {
-        return;
+        if (scriptComponent->canDispatch())
+        {
+            (scriptComponent->*fn)(timeDelta);
+        }
     }
-    const size_t lastIndex = list.size() - 1;
-    if (removeIndex != lastIndex)
-    {
-        T *moved = list.back();
-        list[removeIndex] = moved;
-        moved->setGameManagerIndex(removeIndex);
-    }
-    list.pop_back();
-    item->setGameManagerIndex(SIZE_MAX);
 }
 } // namespace
 
@@ -237,18 +239,9 @@ void GameManager::removeGameObject(GameObject *gameObject)
         gameObject->detachFromParent();
     }
 
-    const size_t lastIndex = gameObjects.size() - 1;
-    const size_t removeIndex = gameObject->gameManagerIteratorIndex;
-    if (removeIndex != lastIndex)
-    {
-        GameObject *movedGameObject = gameObjects.back();
-        gameObjects[removeIndex] = movedGameObject;
-        movedGameObject->setGameManagerIteratorIndex(removeIndex);
-    }
-    gameObjects.pop_back();
+    membership(gameObjects, gameObject, &GameObject::gameManagerIteratorIndex, false);
     cancelTransform(gameObject);
     idToObjectMap.erase(gameObject->getId());
-    gameObject->setGameManagerIteratorIndex(SIZE_MAX);
 
     startDeletingGameObject(gameObject);
 }
@@ -652,93 +645,33 @@ void GameManager::unregisterComponentFromSystems(Component *component)
 
 void GameManager::syncScriptUpdateLists(ScriptComponent *script)
 {
-    auto syncPhase = [script](std::vector<ScriptComponent *> &list, size_t &indexField,
-                              size_t ScriptComponent::*member, bool want) {
-        if (want)
-        {
-            if (indexField == SIZE_MAX)
-            {
-                indexField = list.size();
-                list.push_back(script);
-            }
-        }
-        else if (indexField != SIZE_MAX)
-        {
-            const size_t removeIndex = indexField;
-            const size_t lastIndex = list.size() - 1;
-            if (removeIndex != lastIndex)
-            {
-                ScriptComponent *moved = list[lastIndex];
-                list[removeIndex] = moved;
-                moved->*member = removeIndex;
-            }
-            list.pop_back();
-            indexField = SIZE_MAX;
-        }
-    };
-
     const uint8_t mask = script->activeUpdateMask;
-    syncPhase(fixedUpdateScripts, script->fixedUpdateListIndex, &ScriptComponent::fixedUpdateListIndex,
-              (mask & BEHAVIOR_UPDATE_FIXED) != 0);
-    syncPhase(updateScripts, script->updateListIndex, &ScriptComponent::updateListIndex,
-              (mask & BEHAVIOR_UPDATE_FRAME) != 0);
-    syncPhase(lateUpdateScripts, script->lateUpdateListIndex, &ScriptComponent::lateUpdateListIndex,
-              (mask & BEHAVIOR_UPDATE_LATE) != 0);
+    membership(fixedUpdateScripts, script, &ScriptComponent::fixedUpdateListIndex,
+               (mask & BEHAVIOR_UPDATE_FIXED) != 0);
+    membership(updateScripts, script, &ScriptComponent::updateListIndex, (mask & BEHAVIOR_UPDATE_FRAME) != 0);
+    membership(lateUpdateScripts, script, &ScriptComponent::lateUpdateListIndex, (mask & BEHAVIOR_UPDATE_LATE) != 0);
 }
 
 void GameManager::removeScriptFromUpdateLists(ScriptComponent *script)
 {
-    auto removePhase = [](std::vector<ScriptComponent *> &list, size_t &indexField, size_t ScriptComponent::*member) {
-        if (indexField == SIZE_MAX)
-            return;
-        const size_t removeIndex = indexField;
-        const size_t lastIndex = list.size() - 1;
-        if (removeIndex != lastIndex)
-        {
-            ScriptComponent *moved = list[lastIndex];
-            list[removeIndex] = moved;
-            moved->*member = removeIndex;
-        }
-        list.pop_back();
-        indexField = SIZE_MAX;
-    };
-
-    removePhase(fixedUpdateScripts, script->fixedUpdateListIndex, &ScriptComponent::fixedUpdateListIndex);
-    removePhase(updateScripts, script->updateListIndex, &ScriptComponent::updateListIndex);
-    removePhase(lateUpdateScripts, script->lateUpdateListIndex, &ScriptComponent::lateUpdateListIndex);
+    membership(fixedUpdateScripts, script, &ScriptComponent::fixedUpdateListIndex, false);
+    membership(updateScripts, script, &ScriptComponent::updateListIndex, false);
+    membership(lateUpdateScripts, script, &ScriptComponent::lateUpdateListIndex, false);
 }
 
 void GameManager::fixedUpdateScriptComponents(double timeDelta)
 {
-    for (ScriptComponent *scriptComponent : fixedUpdateScripts)
-    {
-        if (scriptComponent->canDispatch())
-        {
-            scriptComponent->fixedUpdate(timeDelta);
-        }
-    }
+    dispatchScriptUpdate(fixedUpdateScripts, &ScriptComponent::fixedUpdate, timeDelta);
 }
 
 void GameManager::updateScriptComponents(double timeDelta)
 {
-    for (ScriptComponent *scriptComponent : updateScripts)
-    {
-        if (scriptComponent->canDispatch())
-        {
-            scriptComponent->update(timeDelta);
-        }
-    }
+    dispatchScriptUpdate(updateScripts, &ScriptComponent::update, timeDelta);
 }
 
 void GameManager::lateUpdateScriptComponents(double timeDelta)
 {
-    for (ScriptComponent *scriptComponent : lateUpdateScripts)
-    {
-        if (scriptComponent->canDispatch())
-        {
-            scriptComponent->lateUpdate(timeDelta);
-        }
-    }
+    dispatchScriptUpdate(lateUpdateScripts, &ScriptComponent::lateUpdate, timeDelta);
 }
 
 void GameManager::updateAnimatorComponents(double timeDelta)
@@ -811,26 +744,12 @@ void GameManager::queueTransform(GameObject *object, bool refreshImmediate)
     {
         object->refreshImmediatePositions();
     }
-    if (object->transformQueueIndex != SIZE_MAX)
-    {
-        return;
-    }
-    object->transformQueueIndex = dirtyTransforms.size();
-    dirtyTransforms.push_back(object);
+    membership(dirtyTransforms, object, &GameObject::transformQueueIndex, true);
 }
 
 void GameManager::cancelTransform(GameObject *object)
 {
-    if (object->transformQueueIndex == SIZE_MAX)
-    {
-        return;
-    }
-    const auto index = object->transformQueueIndex;
-    auto *moved = dirtyTransforms.back();
-    dirtyTransforms[index] = moved;
-    moved->transformQueueIndex = index;
-    dirtyTransforms.pop_back();
-    object->transformQueueIndex = SIZE_MAX;
+    membership(dirtyTransforms, object, &GameObject::transformQueueIndex, false);
 }
 
 void GameManager::synchronizeSubtree(GameObject *object)

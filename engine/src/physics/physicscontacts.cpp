@@ -1,6 +1,6 @@
 #include "physics/physicsmanager.h"
 #include "benchmark/workprobe.h"
-#include "physics/physicsmembership.h"
+#include "core/membership.h"
 #include <cassert>
 
 namespace
@@ -91,7 +91,6 @@ void PhysicsManager::refreshSolverParticipation(const ColliderPair *pair, bool l
     const bool solve =
         live && (response == Collision::DYNAMIC || response == Collision::KINEMATIC) && (movingBody(rbA) || movingBody(rbB));
 
-    membership(solverPairs, pair, &ColliderPair::solverIndex, solve);
     updatePersistentIslandContact(pair, solve, response, rbA, rbB);
 }
 
@@ -127,6 +126,5 @@ void PhysicsManager::removePair(const ColliderPair *pair)
     reconcileSupportContribution(pair->contributedSupportBodyA, nullptr);
     reconcileSupportContribution(pair->contributedSupportBodyB, nullptr);
     membership(contactPairs, pair, &ColliderPair::contactIndex, false);
-    membership(solverPairs, pair, &ColliderPair::solverIndex, false);
     updatePersistentIslandContact(pair, false, Collision::NONE_COLLISIONS, nullptr, nullptr);
 }

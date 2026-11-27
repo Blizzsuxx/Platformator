@@ -5,6 +5,7 @@
 #include <numbers>
 #include <stdexcept>
 
+#include "core/membership.h"
 #include "core/objectpool.h"
 #include "platformator/collider.h"
 #include "core/gamemanager.h"
@@ -14,25 +15,7 @@
 #include "core/inputvalidation.h"
 #include "benchmark/workprobe.h"
 
-void *GameObject::operator new(size_t size)
-{
-    return platformator_detail::allocatePooledObject(platformator_detail::PooledObjectKind::GameObject, size);
-}
-
-void GameObject::operator delete(void *ptr, size_t size) noexcept
-{
-    platformator_detail::deallocatePooledObject(platformator_detail::PooledObjectKind::GameObject, ptr, size);
-}
-
-void *GameObject::operator new(size_t size, const std::nothrow_t &) noexcept
-{
-    return platformator_detail::allocatePooledObjectNothrow(platformator_detail::PooledObjectKind::GameObject, size);
-}
-
-void GameObject::operator delete(void *ptr, const std::nothrow_t &) noexcept
-{
-    platformator_detail::deallocatePooledObject(platformator_detail::PooledObjectKind::GameObject, ptr);
-}
+PLATFORMATOR_DEFINE_POOLED_ALLOCATORS(GameObject, GameObject)
 
 GameObject::GameObject()
     : rotation(0.0f), sinRotation(0.0f), cosRotation(1.0f), parent(nullptr), position(Eigen::Vector2f::Zero()),
@@ -382,11 +365,7 @@ void GameObject::detachFromParent()
     if (!parent)
         return;
     const auto world = getPosition().eval();
-    auto *moved = parent->children.back();
-    parent->children[parentIndex] = moved;
-    moved->parentIndex = parentIndex;
-    parent->children.pop_back();
+    membership(parent->children, this, &GameObject::parentIndex, false);
     parent = nullptr;
-    parentIndex = SIZE_MAX;
     position = world;
 }

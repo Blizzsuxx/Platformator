@@ -112,28 +112,7 @@ bool Audio::play()
         return false;
     }
     ensureTrack();
-
-    SDL_PropertiesID options = 0;
-    if (loopCount != 0)
-    {
-        options = SDL_CreateProperties();
-        if (options == 0 || !SDL_SetNumberProperty(options, MIX_PROP_PLAY_LOOPS_NUMBER, loopCount))
-        {
-            if (options != 0)
-            {
-                SDL_DestroyProperties(options);
-            }
-            return false;
-        }
-    }
-
-    bool played = MIX_PlayTrack(track.get(), options);
-    if (options != 0)
-    {
-        SDL_DestroyProperties(options);
-    }
-
-    return played;
+    return AudioManager::playTrackWithLoops(track.get(), loopCount);
 }
 
 bool Audio::play(AudioWrapper *audioWrapper)

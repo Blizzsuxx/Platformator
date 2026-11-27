@@ -6,7 +6,11 @@
 #include <vector>
 #include <json.hpp>
 #include "core/flatidmap.h"
+#include "platformator/animationclip.h"
+#include "platformator/audiowrapper.h"
 #include "platformator/referenceresolver.h"
+#include "platformator/template.h"
+#include "platformator/texturewrapper.h"
 
 class GameManager;
 class Scene;
@@ -55,8 +59,8 @@ class SceneBuildContext : public platformator::ReferenceResolver
     size_t componentCount = 0;
     size_t scriptCount = 0;
     size_t animatorCount = 0;
-    std::vector<TextureWrapper *> textures;
-    std::vector<AudioWrapper *> audio;
-    std::vector<AnimationClip *> clips;
-    std::vector<Template *> templates;
+    std::vector<Asset::Reference<TextureWrapper>> textures;
+    std::vector<Asset::Reference<AudioWrapper>> audio;
+    std::vector<Asset::Reference<AnimationClip>> clips;
+    std::vector<Asset::Reference<Template>> templates;
 };

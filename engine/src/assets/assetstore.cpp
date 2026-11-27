@@ -134,39 +134,69 @@ AssetStore::AssetStore(GameManager &owner) : owner(owner)
 {
 }
 
-TextureWrapper *AssetStore::loadTexture(const std::string &filePath, bool required)
+template <typename Resource, typename BuildFn>
+Resource *AssetStore::loadCached(Cache<Resource> &cache, const std::string &filePath, const std::string &resolveRequest,
+                                 bool required, const char *emptyMessage, BuildFn &&build)
 {
     if (filePath.empty())
     {
         if (required)
         {
-            throw std::invalid_argument("Required texture path is empty");
+            throw std::invalid_argument(emptyMessage);
         }
         return nullptr;
     }
-    if (auto *cached = textures.lookupAlias(filePath))
+    if (auto *cached = cache.lookupAlias(filePath))
     {
         return cached;
+    }
+    const auto resolved = PathManager::getInstance().resolveAssetPath(resolveRequest);
+    if (auto *cached = cache.lookupCanonical(filePath, resolved.canonicalPath))
+    {
+        return cached;
+    }
+    std::unique_ptr<Resource> resource = build(resolved);
+    if (!resource)
+    {
+        return nullptr;
+    }
+    owner.tagAssetRuntime(*resource);
+    return cache.publish(filePath, resolved.canonicalPath, std::move(resource));
+}
+
+template <typename Resource, typename BuildFn>
+Resource *AssetStore::reloadCached(Cache<Resource> &cache, const std::string &filePath, BuildFn &&build)
+{
+    owner.assertCanMutate();
+    if (!owner.isIdle())
+    {
+        throw std::logic_error("asset reload requires an idle Runtime owner boundary");
     }
     const auto resolved = PathManager::getInstance().resolveAssetPath(filePath);
-    if (auto *cached = textures.lookupCanonical(filePath, resolved.canonicalPath))
-    {
-        return cached;
-    }
-    if (!owner.getWindow()->getRenderer())
-    {
-        throw std::runtime_error("Textures require a video renderer: " + filePath);
-    }
-    std::unique_ptr<SDL_Texture, decltype(&SDL_DestroyTexture)> texture(
-        IMG_LoadTexture(owner.getWindow()->getRenderer(), resolved.absolutePath.c_str()), SDL_DestroyTexture);
-    if (!texture)
-    {
-        throw std::runtime_error("Texture '" + filePath + "': " + SDL_GetError());
-    }
-    auto wrapper = std::make_unique<TextureWrapper>(texture.get(), resolved.canonicalPath);
-    texture.release();
-    owner.tagAssetRuntime(*wrapper);
-    return textures.publish(filePath, resolved.canonicalPath, std::move(wrapper));
+    std::unique_ptr<Resource> replacement = build(resolved);
+    owner.tagAssetRuntime(*replacement);
+    return cache.replace(filePath, resolved.canonicalPath, std::move(replacement));
+}
+
+TextureWrapper *AssetStore::loadTexture(const std::string &filePath, bool required)
+{
+    return loadCached(textures, filePath, filePath, required, "Required texture path is empty",
+                      [&](const auto &resolved) {
+                          if (!owner.getWindow()->getRenderer())
+                          {
+                              throw std::runtime_error("Textures require a video renderer: " + filePath);
+                          }
+                          std::unique_ptr<SDL_Texture, decltype(&SDL_DestroyTexture)> texture(
+                              IMG_LoadTexture(owner.getWindow()->getRenderer(), resolved.absolutePath.c_str()),
+                              SDL_DestroyTexture);
+                          if (!texture)
+                          {
+                              throw std::runtime_error("Texture '" + filePath + "': " + SDL_GetError());
+                          }
+                          auto wrapper = std::make_unique<TextureWrapper>(texture.get(), resolved.canonicalPath);
+                          texture.release();
+                          return wrapper;
+                      });
 }
 
 TextureWrapper *AssetStore::findTexture(const std::string &filePath)
@@ -216,31 +246,31 @@ std::uint64_t AssetStore::textureCacheBytes() const noexcept
 
 TextureWrapper *AssetStore::reloadTexture(const std::string &filePath, SDL_Surface *preparedSurface)
 {
-    owner.assertCanMutate();
-    if (!owner.isIdle())
-    {
-        throw std::logic_error("asset reload requires an idle Runtime owner boundary");
-    }
     if (filePath.empty() || preparedSurface == nullptr)
     {
+        owner.assertCanMutate();
+        if (!owner.isIdle())
+        {
+            throw std::logic_error("asset reload requires an idle Runtime owner boundary");
+        }
         throw std::invalid_argument("Prepared texture reload requires a path and decoded surface");
     }
-    const auto resolved = PathManager::getInstance().resolveAssetPath(filePath);
-    SDL_Renderer *renderer = owner.getWindow()->getRenderer();
-    if (!renderer)
-    {
-        throw std::runtime_error("Textures require a video renderer: " + filePath);
-    }
-    std::unique_ptr<SDL_Texture, decltype(&SDL_DestroyTexture)> texture(
-        SDL_CreateTextureFromSurface(renderer, preparedSurface), SDL_DestroyTexture);
-    if (!texture)
-    {
-        throw std::runtime_error("Texture '" + filePath + "': " + SDL_GetError());
-    }
-    auto replacement = std::make_unique<TextureWrapper>(texture.get(), resolved.canonicalPath);
-    texture.release();
-    owner.tagAssetRuntime(*replacement);
-    return textures.replace(filePath, resolved.canonicalPath, std::move(replacement));
+    return reloadCached(textures, filePath, [&](const auto &resolved) {
+        SDL_Renderer *renderer = owner.getWindow()->getRenderer();
+        if (!renderer)
+        {
+            throw std::runtime_error("Textures require a video renderer: " + filePath);
+        }
+        std::unique_ptr<SDL_Texture, decltype(&SDL_DestroyTexture)> texture(
+            SDL_CreateTextureFromSurface(renderer, preparedSurface), SDL_DestroyTexture);
+        if (!texture)
+        {
+            throw std::runtime_error("Texture '" + filePath + "': " + SDL_GetError());
+        }
+        auto replacement = std::make_unique<TextureWrapper>(texture.get(), resolved.canonicalPath);
+        texture.release();
+        return replacement;
+    });
 }
 
 void AssetStore::freeTexture(TextureWrapper *textureWrapper)
@@ -255,37 +285,21 @@ void AssetStore::freeTexture(TextureWrapper *textureWrapper)
 
 AudioWrapper *AssetStore::loadAudio(const std::string &filePath, bool required)
 {
-    if (filePath.empty())
-    {
-        if (required)
+    return loadCached(audio, filePath, filePath, required, "Required audio path is empty", [&](const auto &resolved) {
+        if (!owner.getAudioManager()->getMixer())
         {
-            throw std::invalid_argument("Required audio path is empty");
+            throw std::runtime_error("Audio assets require an audio backend: " + filePath);
         }
-        return nullptr;
-    }
-    if (auto *cached = audio.lookupAlias(filePath))
-    {
-        return cached;
-    }
-    const auto resolved = PathManager::getInstance().resolveAssetPath(filePath);
-    if (auto *cached = audio.lookupCanonical(filePath, resolved.canonicalPath))
-    {
-        return cached;
-    }
-    if (!owner.getAudioManager()->getMixer())
-    {
-        throw std::runtime_error("Audio assets require an audio backend: " + filePath);
-    }
-    std::unique_ptr<MIX_Audio, decltype(&MIX_DestroyAudio)> loaded(
-        MIX_LoadAudio(owner.getAudioManager()->getMixer(), resolved.absolutePath.c_str(), true), MIX_DestroyAudio);
-    if (!loaded)
-    {
-        throw std::runtime_error("Audio '" + filePath + "': " + SDL_GetError());
-    }
-    auto wrapper = std::make_unique<AudioWrapper>(loaded.get(), resolved.canonicalPath);
-    loaded.release();
-    owner.tagAssetRuntime(*wrapper);
-    return audio.publish(filePath, resolved.canonicalPath, std::move(wrapper));
+        std::unique_ptr<MIX_Audio, decltype(&MIX_DestroyAudio)> loaded(
+            MIX_LoadAudio(owner.getAudioManager()->getMixer(), resolved.absolutePath.c_str(), true), MIX_DestroyAudio);
+        if (!loaded)
+        {
+            throw std::runtime_error("Audio '" + filePath + "': " + SDL_GetError());
+        }
+        auto wrapper = std::make_unique<AudioWrapper>(loaded.get(), resolved.canonicalPath);
+        loaded.release();
+        return wrapper;
+    });
 }
 
 void AssetStore::freeAudio(AudioWrapper *audioWrapper)
@@ -307,40 +321,25 @@ AnimationClip *AssetStore::loadAnimationClip(const std::string &filePath)
 AnimationClip *AssetStore::loadAnimationClip(const std::string &filePath, platformator::ReferenceResolver &resolver,
                                              bool required)
 {
-    if (filePath.empty())
-    {
-        if (required)
-        {
-            throw std::invalid_argument("Required animation path is empty");
-        }
-        return nullptr;
-    }
-    if (auto *cached = animations.lookupAlias(filePath))
-    {
-        return cached;
-    }
-    const auto resolved = PathManager::getInstance().resolveAssetPath(filePath);
-    if (auto *cached = animations.lookupCanonical(filePath, resolved.canonicalPath))
-    {
-        return cached;
-    }
-    std::ifstream file(resolved.absolutePath);
-    if (!file)
-    {
-        throw std::runtime_error("Cannot open animation: " + filePath);
-    }
-    auto clip = std::make_unique<AnimationClip>();
-    try
-    {
-        deserialize(nlohmann::json::parse(file), *clip, resolver);
-    }
-    catch (const std::exception &error)
-    {
-        throw std::runtime_error("Animation '" + filePath + "': " + error.what());
-    }
-    clip->setFilePath(resolved.canonicalPath);
-    owner.tagAssetRuntime(*clip);
-    return animations.publish(filePath, resolved.canonicalPath, std::move(clip));
+    return loadCached(animations, filePath, filePath, required, "Required animation path is empty",
+                      [&](const auto &resolved) {
+                          std::ifstream file(resolved.absolutePath);
+                          if (!file)
+                          {
+                              throw std::runtime_error("Cannot open animation: " + filePath);
+                          }
+                          auto clip = std::make_unique<AnimationClip>();
+                          try
+                          {
+                              deserialize(nlohmann::json::parse(file), *clip, resolver);
+                          }
+                          catch (const std::exception &error)
+                          {
+                              throw std::runtime_error("Animation '" + filePath + "': " + error.what());
+                          }
+                          clip->setFilePath(resolved.canonicalPath);
+                          return clip;
+                      });
 }
 
 AnimationClip *AssetStore::findAnimationClip(const std::string &filePath)
@@ -350,62 +349,63 @@ AnimationClip *AssetStore::findAnimationClip(const std::string &filePath)
 
 AnimationClip *AssetStore::reloadAnimationClip(const std::string &filePath, const nlohmann::json &preparedDocument)
 {
-    owner.assertCanMutate();
-    if (!owner.isIdle())
-    {
-        throw std::logic_error("asset reload requires an idle Runtime owner boundary");
-    }
     if (filePath.empty())
     {
+        owner.assertCanMutate();
+        if (!owner.isIdle())
+        {
+            throw std::logic_error("asset reload requires an idle Runtime owner boundary");
+        }
         throw std::invalid_argument("Animation path is empty");
     }
-    const auto resolved = PathManager::getInstance().resolveAssetPath(filePath);
-    auto replacement = std::make_unique<AnimationClip>();
-    ActiveReferenceResolver resolver(platformator::Runtime::current());
-    try
-    {
-        deserialize(preparedDocument, *replacement, resolver);
-    }
-    catch (const std::exception &error)
-    {
-        throw std::runtime_error("Animation '" + filePath + "': " + error.what());
-    }
-
-    // Deserialization can resolve a frame through a cached logical request
-    // alias that still points at the prior symlink target. The editor has
-    // already prepared current frame textures before this owner-thread commit;
-    // bind those current wrappers into the replacement clip and rebind each
-    // serialized request so future Runtime loads observe the adopted target.
-    const auto preparedFrames = preparedDocument.find("frames");
-    if (preparedFrames != preparedDocument.end() && preparedFrames->is_array())
-    {
-        const auto frameCount = std::min(preparedFrames->size(), replacement->frames.size());
-        for (std::size_t index = 0; index < frameCount; ++index)
+    return reloadCached(animations, filePath, [&](const auto &resolved) {
+        auto replacement = std::make_unique<AnimationClip>();
+        ActiveReferenceResolver resolver(platformator::Runtime::current());
+        try
         {
-            const auto &frame = (*preparedFrames)[index];
-            if (!frame.is_object())
-            {
-                continue;
-            }
-            const auto texturePath = frame.find("textureWrapperFilePath");
-            if (texturePath == frame.end() || !texturePath->is_string() || texturePath->get<std::string>().empty())
-            {
-                continue;
-            }
-            const auto request = texturePath->get<std::string>();
-            const auto resolvedTexture = PathManager::getInstance().resolveAssetPath(request);
-            const auto cachedTexture = textures.entries.find(resolvedTexture.canonicalPath);
-            if (cachedTexture == textures.entries.end())
-            {
-                continue;
-            }
-            replacement->frames[index].setTextureWrapper(cachedTexture->second.get());
-            textures.aliases.rebind(request, resolvedTexture.canonicalPath);
+            deserialize(preparedDocument, *replacement, resolver);
         }
-    }
-    replacement->setFilePath(resolved.canonicalPath);
-    owner.tagAssetRuntime(*replacement);
-    return animations.replace(filePath, resolved.canonicalPath, std::move(replacement));
+        catch (const std::exception &error)
+        {
+            throw std::runtime_error("Animation '" + filePath + "': " + error.what());
+        }
+
+        // Deserialization can resolve a frame through a cached logical request
+        // alias that still points at the prior symlink target. The editor has
+        // already prepared current frame textures before this owner-thread commit;
+        // bind those current wrappers into the replacement clip and rebind each
+        // serialized request so future Runtime loads observe the adopted target.
+        const auto preparedFrames = preparedDocument.find("frames");
+        if (preparedFrames != preparedDocument.end() && preparedFrames->is_array())
+        {
+            const auto frameCount = std::min(preparedFrames->size(), replacement->frames.size());
+            for (std::size_t index = 0; index < frameCount; ++index)
+            {
+                const auto &frame = (*preparedFrames)[index];
+                if (!frame.is_object())
+                {
+                    continue;
+                }
+                const auto texturePath = frame.find("textureWrapperFilePath");
+                if (texturePath == frame.end() || !texturePath->is_string() ||
+                    texturePath->get<std::string>().empty())
+                {
+                    continue;
+                }
+                const auto request = texturePath->get<std::string>();
+                const auto resolvedTexture = PathManager::getInstance().resolveAssetPath(request);
+                const auto cachedTexture = textures.entries.find(resolvedTexture.canonicalPath);
+                if (cachedTexture == textures.entries.end())
+                {
+                    continue;
+                }
+                replacement->frames[index].setTextureWrapper(cachedTexture->second.get());
+                textures.aliases.rebind(request, resolvedTexture.canonicalPath);
+            }
+        }
+        replacement->setFilePath(resolved.canonicalPath);
+        return replacement;
+    });
 }
 
 void AssetStore::freeAnimationClip(AnimationClip *animationClip)
@@ -420,63 +420,48 @@ void AssetStore::freeAnimationClip(AnimationClip *animationClip)
 
 Template *AssetStore::loadTemplate(const std::string &filePath, bool required, bool *deferredCyclic)
 {
-    if (filePath.empty())
-    {
-        if (required)
-        {
-            throw std::invalid_argument("Required template path is empty");
-        }
-        return nullptr;
-    }
     const std::string normalizedRequest =
         (filePath.starts_with("templates/") || filePath.starts_with("templates\\")) ? "assets/" + filePath : filePath;
-    if (auto *cached = templates.lookupAlias(filePath))
-    {
-        return cached;
-    }
-    const auto resolved = PathManager::getInstance().resolveAssetPath(normalizedRequest);
-    if (auto *cached = templates.lookupCanonical(filePath, resolved.canonicalPath))
-    {
-        return cached;
-    }
-    if (activeTemplateLoads.contains(resolved.canonicalPath))
-    {
-        if (deferredCyclic != nullptr)
-        {
-            *deferredCyclic = true;
-            return nullptr;
-        }
-        throw std::runtime_error("Cyclic template dependency: " + filePath);
-    }
-    std::ifstream file(resolved.absolutePath);
-    if (!file)
-    {
-        throw std::runtime_error("Cannot open template: " + filePath);
-    }
-    struct ActiveLoadGuard
-    {
-        std::unordered_set<std::string> &active;
-        std::string key;
-        ~ActiveLoadGuard()
-        {
-            active.erase(key);
-        }
-    };
-    activeTemplateLoads.insert(resolved.canonicalPath);
-    ActiveLoadGuard activeGuard{activeTemplateLoads, resolved.canonicalPath};
+    return loadCached(templates, filePath, normalizedRequest, required, "Required template path is empty",
+                      [&](const auto &resolved) -> std::unique_ptr<Template> {
+                          if (activeTemplateLoads.contains(resolved.canonicalPath))
+                          {
+                              if (deferredCyclic != nullptr)
+                              {
+                                  *deferredCyclic = true;
+                                  return nullptr;
+                              }
+                              throw std::runtime_error("Cyclic template dependency: " + filePath);
+                          }
+                          std::ifstream file(resolved.absolutePath);
+                          if (!file)
+                          {
+                              throw std::runtime_error("Cannot open template: " + filePath);
+                          }
+                          struct ActiveLoadGuard
+                          {
+                              std::unordered_set<std::string> &active;
+                              std::string key;
+                              ~ActiveLoadGuard()
+                              {
+                                  active.erase(key);
+                              }
+                          };
+                          activeTemplateLoads.insert(resolved.canonicalPath);
+                          ActiveLoadGuard activeGuard{activeTemplateLoads, resolved.canonicalPath};
 
-    auto tpl = std::make_unique<Template>();
-    try
-    {
-        owner.loadTemplateDocument(*tpl, nlohmann::json::parse(file));
-    }
-    catch (const std::exception &error)
-    {
-        throw std::runtime_error("Template '" + filePath + "': " + error.what());
-    }
-    tpl->setFilePath(resolved.canonicalPath);
-    owner.tagAssetRuntime(*tpl);
-    return templates.publish(filePath, resolved.canonicalPath, std::move(tpl));
+                          auto tpl = std::make_unique<Template>();
+                          try
+                          {
+                              owner.loadTemplateDocument(*tpl, nlohmann::json::parse(file));
+                          }
+                          catch (const std::exception &error)
+                          {
+                              throw std::runtime_error("Template '" + filePath + "': " + error.what());
+                          }
+                          tpl->setFilePath(resolved.canonicalPath);
+                          return tpl;
+                      });
 }
 
 void AssetStore::freeTemplate(Template *tpl)

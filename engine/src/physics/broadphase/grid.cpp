@@ -2,6 +2,7 @@
 #include "benchmark/benchmark.h"
 #include <algorithm>
 #include "core/constants.h"
+#include "core/membership.h"
 #include <cstdio>
 #include <oneapi/tbb/parallel_sort.h>
 #include "physics/physicsmanager.h"
@@ -152,18 +153,9 @@ void Grid::dequeuePairFromNarrowPhase(const ColliderPair *pair)
         return;
     }
 
-    size_t removeIndex = pair->getNarrowPhaseQueueIndex();
-    size_t lastIndex = pendingNarrowPhasePairs.size() - 1;
-
-    if (removeIndex != lastIndex)
-    {
-        const ColliderPair *movedPair = pendingNarrowPhasePairs[lastIndex];
-        pendingNarrowPhasePairs[removeIndex] = movedPair;
-        movedPair->setNarrowPhaseQueueIndex(removeIndex);
-    }
-
-    pendingNarrowPhasePairs.pop_back();
-    pair->setNarrowPhaseQueueIndex(SIZE_MAX);
+    swapRemoveIndexed(
+        pendingNarrowPhasePairs, pair, [](const ColliderPair *p) { return p->getNarrowPhaseQueueIndex(); },
+        [](const ColliderPair *p, size_t idx) { p->setNarrowPhaseQueueIndex(idx); });
 }
 
 namespace

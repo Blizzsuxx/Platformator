@@ -22,6 +22,7 @@ class AudioManager
     bool setPaused(bool paused) noexcept;
 
     bool playAndForget(AudioWrapper *audioWrapper, float gain = 1.0f, int loopCount = 0);
+    static bool playTrackWithLoops(MIX_Track *track, int loopCount) noexcept;
     void update(bool fixedStepDelta);
     void clearTransientAudio();
     void scheduleReplay(Audio *audio);

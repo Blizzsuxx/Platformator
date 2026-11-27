@@ -1,6 +1,6 @@
 #pragma once
 
-#include "physics/collision.h"
+#include "platformator/collision.h"
 #include "physics/broadphase/grid.h"
 #include "core/helpers.h"
 #include "platformator/collider.h"
@@ -239,8 +239,6 @@ private:
     void solveConstraintIterations(float inverseTimeDelta);
     void solveConstraintsSerial(float inverseTimeDelta);
     void solveIslands(float inverseTimeDelta, size_t totalContacts);
-    bool prepareOrderedSolverBatches();
-    void solveOrderedBatches(float inverseTimeDelta);
     void resolveKinematicCollision(const Collision *collision, Rigidbody *rbA, Rigidbody *rbB);
     void resolveKinematicBodyAgainstNormal(Rigidbody *rigidBody, const Eigen::Vector2f &approachNormal,
                                            float correctionDistance);
@@ -276,26 +274,10 @@ private:
     tbb::enumerable_thread_specific<IslandSolverScratch> solverIslandScratch;
     tbb::enumerable_thread_specific<std::vector<Rigidbody *>> parallelBodiesToSleep;
 
-    struct SolverBodyNode
-    {
-        size_t parent = SIZE_MAX;
-        size_t rank = 0;
-        size_t island = SIZE_MAX;
-    };
-    std::vector<SolverBodyNode> solverBodyNodes;
     std::vector<std::pair<size_t, size_t>> solverEndpoints;
-    std::vector<std::vector<size_t>> solverIslands;
     std::vector<size_t> solverIslandJobEnds;
-    size_t solverIslandCount = 0;
-    size_t largestSolverIsland = 0;
-    bool sparseSolverBodies = false;
-    std::vector<size_t> solverBodyNextBatch;
-    std::vector<std::vector<size_t>> solverBatches;
-    size_t solverBatchCount = 0;
 
     std::vector<const ColliderPair *> contactPairs;
-    // Append/swap-remove order; physical solving does not require canonical pair order.
-    std::vector<const ColliderPair *> solverPairs;
     std::vector<Rigidbody *> supportDeltaBodies;
     std::vector<PhysicsEvent> pendingPhysicsEvents;
 

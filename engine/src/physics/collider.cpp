@@ -14,7 +14,7 @@
 #include "physics/broadphase/segmentedintervallist.h"
 #include "platformator/rigidbody.h"
 #include "platformator/scriptcomponent.h"
-#include "physics/collision.h"
+#include "platformator/collision.h"
 #include "benchmark/workprobe.h"
 
 Collider::Collider(GameObject *gameObject, ComponentType type, ColliderType colliderType)

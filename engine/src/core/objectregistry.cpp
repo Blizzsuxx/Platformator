@@ -1,7 +1,6 @@
 #include "core/objectregistry.h"
 
 #include <atomic>
-#include <cassert>
 #include <limits>
 #include <stdexcept>
 

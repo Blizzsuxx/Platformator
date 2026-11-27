@@ -11,7 +11,6 @@
 
 #include "benchmark/benchmark.h"
 #include "core/constants.h"
-#include "core/objectpool.h"
 #include "physics/physicstaskcontext.h"
 #include "platformator/animator.h"
 #include "platformator/audio.h"
@@ -93,10 +92,19 @@ GameObject *GameManager::createGameObject()
     auto cleanup = [](GameObject *object) { delete object; };
     std::unique_ptr<GameObject, decltype(cleanup)> gameObject(new GameObject(), cleanup);
     assignFileId(*gameObject);
+    gameObjects.reserve(gameObjects.size() + 1);
+    registry.add(*gameObject, platformator_detail::ObjectKind::GameObject);
+    try
+    {
+        idToObjectMap.insertOrAssign(gameObject->getId(), gameObject.get());
+    }
+    catch (...)
+    {
+        registry.erase(*gameObject);
+        throw;
+    }
     gameObject->setGameManagerIteratorIndex(gameObjects.size());
     gameObjects.push_back(gameObject.get());
-    registry.add(*gameObject, platformator_detail::ObjectKind::GameObject);
-    idToObjectMap.insertOrAssign(gameObject->getId(), gameObject.get());
     return gameObject.release();
 }
 
@@ -122,25 +130,93 @@ void GameManager::registerGameObjectSubtree(GameObject *gameObject)
         return;
     }
 
-    assignFileId(*gameObject);
-    for (auto *component : gameObject->components)
+    const size_t initialGameObjectCount = gameObjects.size();
+    const size_t initialReconciliationCount = reconciliations.size();
+    const int64_t initialNextFileId = nextFileId;
+    try
     {
-        if (component)
+        std::vector<GameObject *> subtree;
+        subtree.push_back(gameObject);
+        for (size_t i = 0; i < subtree.size(); ++i)
         {
-            assignFileId(*component);
+            for (GameObject *child : subtree[i]->getChildren())
+            {
+                if (child != nullptr && !child->getIsRegisteredInGameManager())
+                {
+                    subtree.push_back(child);
+                }
+            }
+        }
+
+        size_t totalComponents = 0;
+        for (GameObject *obj : subtree)
+        {
+            for (Component *component : obj->components)
+            {
+                if (component != nullptr)
+                {
+                    ++totalComponents;
+                }
+            }
+        }
+
+        gameObjects.reserve(gameObjects.size() + subtree.size());
+        reconciliations.reserve(reconciliations.size() + totalComponents);
+        idToObjectMap.reserve(idToObjectMap.size() + subtree.size() + totalComponents);
+
+        for (GameObject *obj : subtree)
+        {
+            assignFileId(*obj);
+            for (Component *component : obj->components)
+            {
+                if (component != nullptr)
+                {
+                    assignFileId(*component);
+                }
+            }
+            obj->setGameManagerIteratorIndex(gameObjects.size());
+            gameObjects.push_back(obj);
+            registry.add(*obj, platformator_detail::ObjectKind::GameObject);
+            idToObjectMap.insertOrAssign(obj->getId(), obj);
+            obj->addComponentsToGameManager();
         }
     }
-    gameObject->setGameManagerIteratorIndex(gameObjects.size());
-    gameObjects.push_back(gameObject);
-
-    registry.add(*gameObject, platformator_detail::ObjectKind::GameObject);
-    idToObjectMap.insertOrAssign(gameObject->getId(), gameObject);
-
-    gameObject->addComponentsToGameManager();
-
-    for (GameObject *child : gameObject->getChildren())
+    catch (...)
     {
-        registerGameObjectSubtree(child);
+        while (reconciliations.size() > initialReconciliationCount)
+        {
+            reconciliations.back()->reconcileQueued = false;
+            reconciliations.pop_back();
+        }
+        while (gameObjects.size() > initialGameObjectCount)
+        {
+            GameObject *obj = gameObjects.back();
+            gameObjects.pop_back();
+            obj->setGameManagerIteratorIndex(SIZE_MAX);
+            for (Component *component : obj->components)
+            {
+                if (component != nullptr && component->getHandle())
+                {
+                    if (idToObjectMap.find(component->getId()) == component)
+                    {
+                        idToObjectMap.erase(component->getId());
+                    }
+                    registry.erase(*component);
+                    component->lifecycle = ObjectLifecycle::Staged;
+                }
+            }
+            if (obj->getHandle())
+            {
+                if (idToObjectMap.find(obj->getId()) == obj)
+                {
+                    idToObjectMap.erase(obj->getId());
+                }
+                registry.erase(*obj);
+                obj->lifecycle = ObjectLifecycle::Staged;
+            }
+        }
+        nextFileId = initialNextFileId;
+        throw;
     }
 }
 
@@ -479,8 +555,17 @@ void GameManager::notifyComponentAdded(Component *component)
                        ? BoxCollider
                        : CircleCollider;
         }
+        reconciliations.reserve(reconciliations.size() + 1);
         registry.add(*component, kind);
-        idToObjectMap.insertOrAssign(component->getId(), component);
+        try
+        {
+            idToObjectMap.insertOrAssign(component->getId(), component);
+        }
+        catch (...)
+        {
+            registry.erase(*component);
+            throw;
+        }
     }
     queueReconciliation(component);
 }

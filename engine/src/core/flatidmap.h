@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <bit>
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
@@ -34,21 +35,11 @@ class FlatIdMap
 
     BaseObject *find(int key) const noexcept
     {
-        if (entries.empty())
+        if (count == 0)
         {
             return nullptr;
         }
-        const size_t mask = entries.size() - 1;
-        size_t idx = hashKey(key) & mask;
-        while (entries[idx].value != nullptr)
-        {
-            if (entries[idx].key == key)
-            {
-                return entries[idx].value;
-            }
-            idx = (idx + 1) & mask;
-        }
-        return nullptr;
+        return entries[findSlot(key)].value;
     }
 
     void insertOrAssign(int key, BaseObject *value)
@@ -59,84 +50,51 @@ class FlatIdMap
             erase(key);
             return;
         }
+
         if (!entries.empty())
         {
-            const size_t mask = entries.size() - 1;
-            size_t idx = hashKey(key) & mask;
-            while (entries[idx].value != nullptr)
+            const size_t idx = findSlot(key);
+            if (entries[idx].value != nullptr)
             {
-                if (entries[idx].key == key)
-                {
-                    entries[idx].value = value;
-                    return;
-                }
-                idx = (idx + 1) & mask;
+                entries[idx].value = value;
+                return;
             }
-            if ((count + 1) * 10 < entries.size() * 7)
+            if (!exceedsLoadFactor(count + 1))
             {
                 entries[idx] = Entry{key, value};
                 ++count;
                 return;
             }
         }
-        rehash(entries.empty() ? 16 : entries.size() * 2);
-        const size_t mask = entries.size() - 1;
-        size_t idx = hashKey(key) & mask;
-        while (entries[idx].value != nullptr)
-        {
-            idx = (idx + 1) & mask;
-        }
-        entries[idx] = Entry{key, value};
+
+        rehash(entries.empty() ? INITIAL_CAPACITY : entries.size() * 2);
+        entries[findEmptySlot(entries, key)] = Entry{key, value};
         ++count;
     }
 
     void erase(int key) noexcept
     {
-        if (entries.empty())
-        {
-            return;
-        }
-        const size_t mask = entries.size() - 1;
-        size_t hole = hashKey(key) & mask;
-        while (entries[hole].value != nullptr)
-        {
-            if (entries[hole].key == key)
-            {
-                break;
-            }
-            hole = (hole + 1) & mask;
-        }
-        if (entries[hole].value == nullptr)
+        if (count == 0)
         {
             return;
         }
 
-        --count;
-        size_t curr = (hole + 1) & mask;
-        while (entries[curr].value != nullptr)
+        const size_t idx = findSlot(key);
+        if (entries[idx].value == nullptr)
         {
-            const size_t ideal = hashKey(entries[curr].key) & mask;
-            if (((curr - ideal) & mask) >= ((curr - hole) & mask))
-            {
-                entries[hole] = entries[curr];
-                hole = curr;
-            }
-            curr = (curr + 1) & mask;
+            return;
         }
-        entries[hole] = Entry{};
+
+        eraseAt(idx);
     }
 
     void reserve(size_t expected)
     {
-        const size_t needed = (expected * 10) / 7 + 2;
-        size_t cap = 16;
-        while (cap < needed)
+        const size_t minSlots = (expected * LOAD_FACTOR_DEN) / LOAD_FACTOR_NUM + 2;
+        const size_t capacity = std::max(INITIAL_CAPACITY, std::bit_ceil(minSlots));
+        if (capacity > entries.size())
         {
-            cap *= 2;
-        }
-        if (cap > entries.size())
-        {
-            rehash(cap);
+            rehash(capacity);
         }
     }
 
@@ -166,6 +124,10 @@ class FlatIdMap
     }
 
   private:
+    static constexpr size_t INITIAL_CAPACITY = 16;
+    static constexpr size_t LOAD_FACTOR_NUM = 7;
+    static constexpr size_t LOAD_FACTOR_DEN = 10;
+
     struct Entry
     {
         int key = 0;
@@ -174,6 +136,7 @@ class FlatIdMap
 
     static size_t hashKey(int key) noexcept
     {
+        // Low-bias 32-bit integer finalizer.
         uint32_t x = static_cast<uint32_t>(key);
         x ^= x >> 16;
         x *= 0x7feb352du;
@@ -183,22 +146,69 @@ class FlatIdMap
         return static_cast<size_t>(x);
     }
 
+    static size_t probeDistance(size_t from, size_t to, size_t mask) noexcept
+    {
+        return (to - from) & mask;
+    }
+
+    static size_t findEmptySlot(const std::vector<Entry> &table, int key) noexcept
+    {
+        const size_t mask = table.size() - 1;
+        size_t idx = hashKey(key) & mask;
+        while (table[idx].value != nullptr)
+        {
+            idx = (idx + 1) & mask;
+        }
+        return idx;
+    }
+
+    bool exceedsLoadFactor(size_t nextCount) const noexcept
+    {
+        return nextCount * LOAD_FACTOR_DEN >= entries.size() * LOAD_FACTOR_NUM;
+    }
+
+    size_t findSlot(int key) const noexcept
+    {
+        assert(!entries.empty());
+        const size_t mask = entries.size() - 1;
+        size_t idx = hashKey(key) & mask;
+        while (entries[idx].value != nullptr && entries[idx].key != key)
+        {
+            idx = (idx + 1) & mask;
+        }
+        return idx;
+    }
+
+    void eraseAt(size_t hole) noexcept
+    {
+        --count;
+        const size_t mask = entries.size() - 1;
+        size_t curr = (hole + 1) & mask;
+
+        // Backward-shift any following entry whose probe chain crosses the hole.
+        while (entries[curr].value != nullptr)
+        {
+            const size_t ideal = hashKey(entries[curr].key) & mask;
+            if (probeDistance(ideal, curr, mask) >= probeDistance(hole, curr, mask))
+            {
+                entries[hole] = entries[curr];
+                hole = curr;
+            }
+            curr = (curr + 1) & mask;
+        }
+
+        entries[hole] = Entry{};
+    }
+
     void rehash(size_t newCapacity)
     {
         std::vector<Entry> next(newCapacity);
-        const size_t mask = newCapacity - 1;
         for (const Entry &entry : entries)
         {
-            if (entry.value == nullptr)
+            if (entry.value != nullptr)
             {
-                continue;
+                next[findEmptySlot(next, entry.key)] = entry;
             }
-            size_t idx = hashKey(entry.key) & mask;
-            while (next[idx].value != nullptr)
-            {
-                idx = (idx + 1) & mask;
-            }
-            next[idx] = entry;
         }
         entries.swap(next);
     }

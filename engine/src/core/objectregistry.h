@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cassert>
+#include <cstdint>
 #include <limits>
 #include <stdexcept>
 #include <vector>
@@ -16,18 +17,19 @@ class ObjectRegistry
     platformator::ObjectHandle add(BaseObject &object, ObjectKind kind, bool published = true)
     {
         assert(!object.handle);
-        uint32_t index;
-        if (freeSlots.empty())
+        uint32_t index = INVALID_SLOT;
+        if (freeHead == INVALID_SLOT)
         {
-            if (slots.size() == std::numeric_limits<uint32_t>::max())
+            if (slots.size() == INVALID_SLOT)
                 throw std::overflow_error("Object handle slots exhausted");
             index = static_cast<uint32_t>(slots.size());
             slots.emplace_back();
         }
         else
         {
-            index = freeSlots.back();
-            freeSlots.pop_back();
+            index = freeHead;
+            freeHead = slots[index].nextFree;
+            slots[index].nextFree = INVALID_SLOT;
         }
         auto &slot = slots[index];
         slot.object = &object;
@@ -37,29 +39,35 @@ class ObjectRegistry
         return object.handle;
     }
 
-    void publish(BaseObject &object)
+    void publish(BaseObject &object) noexcept
     {
         object.lifecycle = ObjectLifecycle::Live;
     }
 
-    void retire(BaseObject &object)
+    void retire(BaseObject &object) noexcept
     {
         object.lifecycle = ObjectLifecycle::PendingRetire;
     }
 
-    void erase(BaseObject &object)
+    void erase(BaseObject &object) noexcept
     {
-        auto &slot = slots[object.handle.slot];
+        assert(object.handle);
+        assert(object.handle.runtimeSerial == runtimeSerial);
+        assert(object.handle.slot < slots.size());
+        const uint32_t index = object.handle.slot;
+        auto &slot = slots[index];
+        assert(slot.object == &object);
         slot.object = nullptr;
         if (slot.generation != std::numeric_limits<uint64_t>::max())
         {
             ++slot.generation;
-            freeSlots.push_back(object.handle.slot);
+            slot.nextFree = freeHead;
+            freeHead = index;
         }
         object.handle = {};
     }
 
-    BaseObject *get(platformator::ObjectHandle handle, ObjectKind expected, bool staging = false) const
+    BaseObject *get(platformator::ObjectHandle handle, ObjectKind expected, bool staging = false) const noexcept
     {
         if (handle.runtimeSerial != runtimeSerial || handle.slot >= slots.size())
             return nullptr;
@@ -70,27 +78,39 @@ class ObjectRegistry
         const bool staged = staging && slot.object->lifecycle == ObjectLifecycle::Staged;
         if (!live && !staged)
             return nullptr;
-        const bool matches = expected == ObjectKind::BaseObject || expected == slot.kind ||
-                             (expected == ObjectKind::Component && slot.kind != ObjectKind::GameObject) ||
-                             (expected == ObjectKind::Collider &&
-                              (slot.kind == ObjectKind::BoxCollider || slot.kind == ObjectKind::CircleCollider));
-        return matches ? slot.object : nullptr;
+        return kindMatches(slot.kind, expected) ? slot.object : nullptr;
     }
 
-    uint64_t serial() const
+    uint64_t serial() const noexcept
     {
         return runtimeSerial;
     }
 
   private:
+    static constexpr uint32_t INVALID_SLOT = std::numeric_limits<uint32_t>::max();
+
+    static constexpr bool kindMatches(ObjectKind actual, ObjectKind expected) noexcept
+    {
+        if (expected == ObjectKind::BaseObject || expected == actual)
+            return true;
+        if (expected == ObjectKind::Component)
+            return actual != ObjectKind::GameObject && actual != ObjectKind::BaseObject;
+        if (expected == ObjectKind::Collider)
+            return actual == ObjectKind::BoxCollider || actual == ObjectKind::CircleCollider;
+        return false;
+    }
+
     struct Slot
     {
         BaseObject *object = nullptr;
         uint64_t generation = 1;
         ObjectKind kind = ObjectKind::BaseObject;
+        uint32_t nextFree = INVALID_SLOT;
     };
+
     uint64_t runtimeSerial;
+    uint32_t freeHead = INVALID_SLOT;
+    // Monotonic slot table: entries are never removed so retired generations reject stale handles.
     std::vector<Slot> slots;
-    std::vector<uint32_t> freeSlots;
 };
 } // namespace platformator_detail

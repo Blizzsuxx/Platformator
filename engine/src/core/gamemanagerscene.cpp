@@ -187,6 +187,7 @@ void GameManager::commitSceneTransition(SceneRequest selected)
         // Preparation failed: preserve the current scene, but still drain ordinary mutations/retirements.
         reconcilePending(error);
         drainRetirements(error);
+        platformator_detail::releaseEmptyObjectPools();
         if (error)
         {
             std::rethrow_exception(error);

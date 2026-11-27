@@ -5,13 +5,14 @@
 #include <atomic>
 #include <cassert>
 #include <cstddef>
-#include <cstdlib>
 #include <cstdint>
+#include <cstdlib>
 #include <iterator>
 #include <map>
 #include <memory>
 #include <mutex>
 #include <new>
+#include <utility>
 
 #include <oneapi/tbb/spin_mutex.h>
 
@@ -55,50 +56,76 @@ void releaseEmptyObjectPools() noexcept
 
 namespace
 {
-constexpr size_t SLOT_ALIGNMENT = std::max<size_t>(alignof(std::max_align_t), __STDCPP_DEFAULT_NEW_ALIGNMENT__);
+constexpr size_t SLOT_ALIGNMENT = __STDCPP_DEFAULT_NEW_ALIGNMENT__;
 constexpr size_t INITIAL_SLAB_SLOTS = 64;
 constexpr size_t MAX_SLAB_SLOTS = 256;
 
+static_assert((SLOT_ALIGNMENT & (SLOT_ALIGNMENT - 1)) == 0);
+static_assert(alignof(std::max_align_t) <= SLOT_ALIGNMENT);
 static_assert(alignof(GameObject) <= SLOT_ALIGNMENT);
 static_assert(alignof(BoxCollider) <= SLOT_ALIGNMENT);
 static_assert(alignof(CircleCollider) <= SLOT_ALIGNMENT);
 static_assert(alignof(Rigidbody) <= SLOT_ALIGNMENT);
 static_assert(alignof(Sprite) <= SLOT_ALIGNMENT);
 
+constexpr size_t alignUp(size_t size, size_t alignment) noexcept
+{
+    return (size + alignment - 1) & ~(alignment - 1);
+}
+
 struct FreeNode
 {
     FreeNode *next;
 };
 
-struct alignas(SLOT_ALIGNMENT) Slab
+struct Slab
 {
+    std::unique_ptr<std::byte[]> storage;
+    size_t byteSize = 0;
     FreeNode *freeHead = nullptr;
     size_t liveSlots = 0;
-    std::uintptr_t endAddress = 0;
     bool reclaimWhenEmpty = false;
 
-    // Only slabs with free slots are on this list.
+    // Only slabs with free slots are on the intrusive available list.
     Slab *next = nullptr;
     Slab **previousLink = nullptr;
-};
 
-struct SlabDeleter
-{
-    void operator()(Slab *slab) const noexcept
+    Slab(size_t slotCount, size_t slotSize)
+        : storage(std::make_unique_for_overwrite<std::byte[]>(slotCount * slotSize)),
+          byteSize(slotCount * slotSize)
     {
-        std::destroy_at(slab);
-        ::operator delete(slab, std::align_val_t{SLOT_ALIGNMENT});
+        assert(firstAddress() % SLOT_ALIGNMENT == 0);
+        for (size_t i = slotCount; i > 0; --i)
+        {
+            auto *slot = reinterpret_cast<FreeNode *>(storage.get() + (i - 1) * slotSize);
+            freeHead = std::construct_at(slot, FreeNode{freeHead});
+        }
+    }
+
+    std::uintptr_t firstAddress() const noexcept
+    {
+        return reinterpret_cast<std::uintptr_t>(storage.get());
+    }
+
+    std::uintptr_t endAddress() const noexcept
+    {
+        return firstAddress() + byteSize;
+    }
+
+    bool contains(std::uintptr_t address) const noexcept
+    {
+        return address >= firstAddress() && address < endAddress();
     }
 };
 
-using SlabMap = std::map<std::uintptr_t, std::unique_ptr<Slab, SlabDeleter>>;
+using SlabMap = std::map<std::uintptr_t, Slab>;
 
 class SlabPool
 {
   public:
     explicit SlabPool(size_t objectSize) noexcept
         : objectSize(objectSize),
-          slotSize((std::max(objectSize, sizeof(FreeNode)) + SLOT_ALIGNMENT - 1) & ~(SLOT_ALIGNMENT - 1))
+          slotSize(alignUp(std::max(objectSize, sizeof(FreeNode)), SLOT_ALIGNMENT))
     {
     }
 
@@ -107,7 +134,7 @@ class SlabPool
         if (size != objectSize)
             return ::operator new(size);
 
-        // Declare the node first so any unused backing storage is freed after unlocking.
+        // Declare before the lock so any unused slab is freed after unlocking.
         SlabMap::node_type candidate;
         std::unique_lock lock(mutex);
         if (!available)
@@ -120,6 +147,7 @@ class SlabPool
             }
             catch (const std::bad_alloc &)
             {
+                // Another thread may have freed a slot or published a slab while unlocked.
                 lock.lock();
                 if (!available)
                     throw;
@@ -128,9 +156,10 @@ class SlabPool
             lock.lock();
             if (!available)
             {
-                Slab *slab = candidate.mapped().get();
+                const auto result = slabs.insert(std::move(candidate));
+                assert(result.inserted);
+                Slab *slab = &result.position->second;
                 slab->reclaimWhenEmpty = exiting;
-                slabs.insert(std::move(candidate));
                 link(slab);
                 nextSlabSlots = std::min(count * 2, MAX_SLAB_SLOTS);
             }
@@ -158,7 +187,7 @@ class SlabPool
         {
             unlink(slab);
             lastFreed = nullptr;
-            retired = slabs.extract(firstAddress(slab));
+            retired = slabs.extract(slab->firstAddress());
         }
         return true;
     }
@@ -171,15 +200,15 @@ class SlabPool
         lastFreed = nullptr;
         for (auto it = slabs.begin(); it != slabs.end();)
         {
-            Slab *slab = it->second.get();
-            if (slab->liveSlots == 0)
+            Slab &slab = it->second;
+            if (slab.liveSlots == 0)
             {
-                unlink(slab);
+                unlink(&slab);
                 retired.insert(retired.end(), slabs.extract(it++));
             }
             else
             {
-                slab->reclaimWhenEmpty = true;
+                slab.reclaimWhenEmpty = true;
                 ++it;
             }
         }
@@ -187,26 +216,21 @@ class SlabPool
     }
 
   private:
-    static std::uintptr_t firstAddress(const Slab *slab) noexcept
-    {
-        return reinterpret_cast<std::uintptr_t>(slab + 1);
-    }
-
     Slab *findSlab(std::uintptr_t address) noexcept
     {
         // Consecutive deletes commonly come from the same slab.
         Slab *slab = lastFreed;
-        if (!slab || address < firstAddress(slab) || address >= slab->endAddress)
+        if (!slab || !slab->contains(address))
         {
-            auto next = slabs.upper_bound(address);
+            const auto next = slabs.upper_bound(address);
             if (next == slabs.begin())
                 return nullptr;
-            slab = std::prev(next)->second.get();
-            if (address >= slab->endAddress)
+            slab = &std::prev(next)->second;
+            if (!slab->contains(address))
                 return nullptr;
             lastFreed = slab;
         }
-        assert((address - firstAddress(slab)) % slotSize == 0);
+        assert((address - slab->firstAddress()) % slotSize == 0);
         return slab;
     }
 
@@ -223,25 +247,17 @@ class SlabPool
 
     SlabMap::node_type makeSlab(size_t count) const
     {
-        auto *storage = static_cast<std::byte *>(
-            ::operator new(sizeof(Slab) + count * slotSize, std::align_val_t{SLOT_ALIGNMENT}));
-        std::unique_ptr<Slab, SlabDeleter> slab(std::construct_at(reinterpret_cast<Slab *>(storage)));
-        storage += sizeof(Slab);
-        slab->endAddress = reinterpret_cast<std::uintptr_t>(storage + count * slotSize);
-        for (size_t i = count; i > 0; --i)
-        {
-            auto *slot = reinterpret_cast<FreeNode *>(storage + (i - 1) * slotSize);
-            slab->freeHead = std::construct_at(slot, FreeNode{slab->freeHead});
-        }
+        Slab slab(count, slotSize);
+        const auto address = slab.firstAddress();
 
         // Prepare both allocations before acquiring the pool lock.
         SlabMap pending;
-        const auto address = firstAddress(slab.get());
         return pending.extract(pending.emplace(address, std::move(slab)).first);
     }
 
     void link(Slab *slab) noexcept
     {
+        assert(slab->previousLink == nullptr);
         slab->next = available;
         slab->previousLink = &available;
         if (available)
@@ -251,9 +267,12 @@ class SlabPool
 
     void unlink(Slab *slab) noexcept
     {
+        assert(slab->previousLink != nullptr);
         *slab->previousLink = slab->next;
         if (slab->next)
             slab->next->previousLink = slab->previousLink;
+        slab->next = nullptr;
+        slab->previousLink = nullptr;
     }
 
     const size_t objectSize;
@@ -268,6 +287,13 @@ class SlabPool
 
 using Pools = std::array<SlabPool, static_cast<size_t>(PooledObjectKind::Count)>;
 constinit std::atomic<Pools *> publishedPools{nullptr};
+
+size_t poolIndex(PooledObjectKind kind) noexcept
+{
+    const size_t index = static_cast<size_t>(kind);
+    assert(index < static_cast<size_t>(PooledObjectKind::Count));
+    return index;
+}
 
 Pools &getPools()
 {
@@ -298,9 +324,7 @@ Pools &getPools()
 
 void *allocatePooledObject(PooledObjectKind kind, size_t size)
 {
-    const size_t index = static_cast<size_t>(kind);
-    assert(index < static_cast<size_t>(PooledObjectKind::Count));
-    return getPools()[index].allocate(size);
+    return getPools()[poolIndex(kind)].allocate(size);
 }
 
 void deallocatePooledObject(PooledObjectKind kind, void *ptr, size_t size) noexcept
@@ -308,8 +332,7 @@ void deallocatePooledObject(PooledObjectKind kind, void *ptr, size_t size) noexc
     if (!ptr)
         return;
 
-    const size_t index = static_cast<size_t>(kind);
-    assert(index < static_cast<size_t>(PooledObjectKind::Count));
+    const size_t index = poolIndex(kind);
     auto *pools = publishedPools.load(std::memory_order_acquire);
     if (!pools || !(*pools)[index].deallocate(ptr, size))
         ::operator delete(ptr);

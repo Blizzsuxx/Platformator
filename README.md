@@ -10,7 +10,7 @@ The default preset builds an optimized Release engine and editor with debug tool
 
 ```sh
 cmake --preset default
-cmake --build --preset default --parallel 3
+cmake --build --preset default --parallel 6
 ```
 
 Launch the editor with `build/default/platformator_editor`. For Debug, replace
@@ -20,11 +20,11 @@ Tests and benchmarks have separate build directories:
 
 ```sh
 cmake --preset test
-cmake --build --preset test --parallel 4
+cmake --build --preset test --parallel 6
 ctest --preset test
 
 cmake --preset benchmark
-cmake --build --preset benchmark --parallel 4
+cmake --build --preset benchmark --parallel 6
 ctest --preset benchmark
 ```
 

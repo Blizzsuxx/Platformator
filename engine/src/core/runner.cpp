@@ -1,42 +1,48 @@
 #include "platformator/runner.h"
 
 #include "platformator/runtime.h"
-#include "platformator/scriptregistration.h"
 #if PLATFORMATOR_ENABLE_EDITOR_SESSION
 #include "editor/editorsession.h"
 #endif
-#include <algorithm>
 #include <exception>
 #include <iostream>
 #include <memory>
 #include <stdexcept>
-#include <string_view>
 
 namespace platformator
 {
-int run(const RuntimeOptions &runtimeOptions)
+namespace
+{
+int runWithExceptionHandling(auto &&fn)
 {
     try
     {
+        return fn();
+    }
+    catch (const std::exception &error)
+    {
+        std::cerr << "Platformator: " << error.what() << '\n';
+        return 1;
+    }
+}
+} // namespace
+
+int run(const RuntimeOptions &runtimeOptions)
+{
+    return runWithExceptionHandling([&] {
 #if PLATFORMATOR_ENABLE_EDITOR_SESSION
         std::unique_ptr<EditorSessionService> editorSession;
         if (runtimeOptions.editorSession)
+        {
             editorSession = std::make_unique<EditorSessionService>(*runtimeOptions.editorSession);
+            if (runtimeOptions.windowSettings.width != 640 || runtimeOptions.windowSettings.height != 360)
+                throw std::runtime_error("embedded editor-session rendering requires a 640x360 output.");
+        }
 #else
         if (runtimeOptions.editorSession)
             throw std::runtime_error("this runner was built without editor-session support.");
 #endif
-        RuntimeOptions effectiveOptions = runtimeOptions;
-#if PLATFORMATOR_ENABLE_EDITOR_SESSION
-        if (editorSession)
-        {
-            effectiveOptions.windowSettings.hidden = true;
-            if (effectiveOptions.windowSettings.width != 640 ||
-                effectiveOptions.windowSettings.height != 360)
-                throw std::runtime_error("embedded editor-session rendering requires a 640x360 output.");
-        }
-#endif
-        Runtime runtime(effectiveOptions);
+        Runtime runtime(runtimeOptions);
 #if PLATFORMATOR_ENABLE_EDITOR_SESSION
         if (editorSession)
         {
@@ -53,24 +59,13 @@ int run(const RuntimeOptions &runtimeOptions)
 #endif
         runtime.run();
         return 0;
-    }
-    catch (const std::exception &error)
-    {
-        std::cerr << "Platformator: " << error.what() << '\n';
-        return 1;
-    }
+    });
 }
 
 int run(int argc, char *args[], const std::string &defaultScenePath)
 {
-    try
-    {
+    return runWithExceptionHandling([&] {
         return run(parseRuntimeOptions(argc, args, defaultScenePath));
-    }
-    catch (const std::exception &error)
-    {
-        std::cerr << "Platformator: " << error.what() << '\n';
-        return 1;
-    }
+    });
 }
 } // namespace platformator

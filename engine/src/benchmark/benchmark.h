@@ -60,13 +60,10 @@ class BenchmarkRecorder
     void enterScope(BenchmarkScopeId scope);
     void leaveScope(BenchmarkScopeId scope, uint64_t nanoseconds);
     bool scopeActive(BenchmarkScopeId scope) const;
-    void addScopeDuration(BenchmarkScopeId scope, uint64_t nanoseconds);
     void setCounter(BenchmarkCounterId counter, int64_t value);
     void addCounter(BenchmarkCounterId counter, int64_t delta);
-    void setCsvOutputPath(const std::string &path);
-    void clearCsvOutputPath();
     void updateMetadata(const nlohmann::json &metadata);
-    void writeOutputs(const std::string &path = {}) const;
+    void writeOutputs(const std::string &path) const;
     void printSummary(FILE *output = stdout) const;
     const std::vector<BenchmarkFrameStats> &samples() const
     {
@@ -84,6 +81,7 @@ class BenchmarkRecorder
   private:
     BenchmarkRecorder();
     nlohmann::json manifest() const;
+    std::vector<double> collectScopeMilliseconds(size_t scope) const;
     bool frameActive = false;
     size_t nextFrame = 0, nextRender = 0;
     uint64_t totalSteps = 0;
@@ -94,17 +92,15 @@ class BenchmarkRecorder
     std::vector<BenchmarkFrameStats> frames;
     std::vector<uint64_t> renders;
     nlohmann::json metadata;
-    std::string csvOutputPath;
 };
 class BenchmarkScopeTimer
 {
   public:
-    explicit BenchmarkScopeTimer(BenchmarkScopeId scope, bool enabled = true);
+    explicit BenchmarkScopeTimer(BenchmarkScopeId scope);
     ~BenchmarkScopeTimer();
 
   private:
     BenchmarkScopeId scope;
-    bool enabled;
     std::chrono::steady_clock::time_point started;
 };
 } // namespace platformator_detail
@@ -113,9 +109,6 @@ class BenchmarkScopeTimer
 #define PLATFORMATOR_BENCH_SCOPE(scope)                                                                                \
     platformator_detail::BenchmarkScopeTimer PLATFORMATOR_BENCH_CONCAT(benchmarkScope_, __LINE__)(                     \
         platformator_detail::BenchmarkScopeId::scope)
-#define PLATFORMATOR_BENCH_SCOPE_IF(scope, enabled)                                                                    \
-    platformator_detail::BenchmarkScopeTimer PLATFORMATOR_BENCH_CONCAT(benchmarkScope_, __LINE__)(                     \
-        platformator_detail::BenchmarkScopeId::scope, enabled)
 #define PLATFORMATOR_BENCH_FRAME_BEGIN() platformator_detail::BenchmarkRecorder::getInstance().beginFrame()
 #define PLATFORMATOR_BENCH_FRAME_END() platformator_detail::BenchmarkRecorder::getInstance().endFrame()
 #define PLATFORMATOR_BENCH_SET_COUNTER(counter, value)                                                                 \
@@ -125,20 +118,11 @@ class BenchmarkScopeTimer
     platformator_detail::BenchmarkRecorder::getInstance().addCounter(platformator_detail::BenchmarkCounterId::counter, \
                                                                      static_cast<int64_t>(delta))
 #define PLATFORMATOR_BENCH_RESET() platformator_detail::BenchmarkRecorder::getInstance().reset()
-#define PLATFORMATOR_BENCH_SET_CSV_OUTPUT_PATH(path)                                                                   \
-    platformator_detail::BenchmarkRecorder::getInstance().setCsvOutputPath(path)
-#define PLATFORMATOR_BENCH_CLEAR_CSV_OUTPUT_PATH()                                                                     \
-    platformator_detail::BenchmarkRecorder::getInstance().clearCsvOutputPath()
-#define PLATFORMATOR_BENCH_PRINT_SUMMARY() platformator_detail::BenchmarkRecorder::getInstance().printSummary()
 #else
 #define PLATFORMATOR_BENCH_SCOPE(scope) ((void)0)
-#define PLATFORMATOR_BENCH_SCOPE_IF(scope, enabled) ((void)0)
 #define PLATFORMATOR_BENCH_FRAME_BEGIN() ((void)0)
 #define PLATFORMATOR_BENCH_FRAME_END() ((void)0)
 #define PLATFORMATOR_BENCH_SET_COUNTER(counter, value) ((void)0)
 #define PLATFORMATOR_BENCH_ADD_COUNTER(counter, delta) ((void)0)
 #define PLATFORMATOR_BENCH_RESET() ((void)0)
-#define PLATFORMATOR_BENCH_SET_CSV_OUTPUT_PATH(path) ((void)0)
-#define PLATFORMATOR_BENCH_CLEAR_CSV_OUTPUT_PATH() ((void)0)
-#define PLATFORMATOR_BENCH_PRINT_SUMMARY() ((void)0)
 #endif

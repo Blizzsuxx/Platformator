@@ -222,11 +222,6 @@ BenchmarkRunnerOptions parseBenchmarkRunnerOptions(int argc, char *args[])
             options.runtimeOptions.windowSettings.width = 1600;
             options.runtimeOptions.windowSettings.height = 900;
             options.runtimeOptions.windowSettings.keepAspectRatio = true;
-            // options.runtimeOptions.debugSettings.startPaused = false;
-            // options.runtimeOptions.debugSettings.showColliders = true;
-            // options.runtimeOptions.debugSettings.showCollisionPoints = true;
-            // options.runtimeOptions.debugSettings.showCollisionNormals = true;
-            // options.runtimeOptions.debugSettings.showGridCells = true;
             continue;
         }
 
@@ -280,7 +275,7 @@ nlohmann::json resolvedParameters(const BenchmarkRunnerOptions &options)
 {
     nlohmann::json result = {
         {"gravity", {GRAVITY_VECTOR_X, GRAVITY_VECTOR_Y}},
-        {"solver_iterations", COLLISION_SOLVER_ITERATIONS},
+        {"solver_substeps", COLLISION_SOLVER_SUBSTEPS},
         {"seed_policy", "deterministic velocity/pattern phase; seed zero preserves historical layouts"}};
     if (options.scenario == BenchmarkScenario::BroadPhase)
         result.update({{"body_count", options.broadPhaseElementCount},
@@ -648,9 +643,9 @@ void printUsage(FILE *output)
         "broad_phase|broad_phase_stress|narrow_phase|rigid_body_container|add_and_remove|moving_add_and_remove|"
         "persistent_contacts|ideal_world|large_pyramid|many_pyramids|smash] "
         "[--warmup-frames N] [--measure-frames N] [--dt seconds] [--box-count N] [--circle-count N] [--broad-count N] "
-        "[--contact-pair-count N] [--scripted-endpoints 0|1|2] [--narrow-count N] [--ideal-count N] [--steady-count N] [--add-count N] "
-        "[--remove-count N] [--churn-count N] [--csv-output "
-        "path] [--workers N] [--seed N] [--validate-invariants] [--asset-root path] [--render] "
+        "[--contact-pair-count N] [--scripted-endpoints 0|1|2] [--narrow-count N] [--ideal-count N] [--steady-count N] "
+        "[--add-count N] [--remove-count N] [--churn-count N] [--csv-output|--csv path] [--repetitions N] "
+        "[--run-index N] [--workers N] [--seed N] [--validate-invariants] [--asset-root path] [--render] "
         "[--no-render-culling] [--debug-draw <categories>]\n");
 }
 } // namespace

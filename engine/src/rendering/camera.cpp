@@ -26,10 +26,6 @@ Camera::Camera(GameObject *gameObject, float w, float h) : Component(gameObject,
 {
 }
 
-Camera::~Camera()
-{
-}
-
 Component *Camera::clone() const
 {
     auto cloned = std::make_unique<Camera>();
@@ -61,19 +57,12 @@ platformator_detail::SpriteRenderView Camera::prepareRenderView(int outputWidth,
 }
 
 void Camera::renderWithView(Sprite *sprite, SDL_Renderer *renderer,
-                            const platformator_detail::SpriteRenderView &view, bool applyCulling) const
+                            const platformator_detail::SpriteRenderView &view) const
 {
     SDL_FRect renderQuad{};
     float angleDegrees = 0.0f;
     prepareSpriteGeometry(sprite, view, renderQuad, angleDegrees);
 
-    if (applyCulling && view.cullingEligible && sprite->getTexture() != nullptr)
-    {
-        PLATFORMATOR_RENDER_VISIBILITY_CHECK();
-        if (platformator_detail::classifySpriteForRender(renderQuad, angleDegrees, view) ==
-            platformator_detail::SpriteRenderClassification::Reject)
-            return;
-    }
     PLATFORMATOR_RENDER_SUBMISSION(sprite);
     platformator_detail::submitSpriteRender(renderer, sprite->getTexture(), sprite->getSourceRect(),
                                              renderQuad, angleDegrees, sprite->getFlip(),
@@ -102,20 +91,6 @@ Eigen::Vector2f Camera::worldToScreenPoint(const Eigen::Vector2f &worldPoint, in
     const auto &cameraPosition = getGameObject()->worldPosition;
     return Eigen::Vector2f((worldPoint.x() - cameraPosition.x()) * getScaleX(outputWidth),
                            (worldPoint.y() - cameraPosition.y()) * getScaleY(outputHeight));
-}
-
-Eigen::Vector2f Camera::worldToScreenSize(const Eigen::Vector2f &worldSize, int outputWidth, int outputHeight) const
-{
-    return Eigen::Vector2f(worldSize.x() * getScaleX(outputWidth), worldSize.y() * getScaleY(outputHeight));
-}
-
-SDL_FRect Camera::worldToScreenRect(const SDL_FRect &worldRect, int outputWidth, int outputHeight) const
-{
-    Eigen::Vector2f screenOrigin =
-        worldToScreenPoint(Eigen::Vector2f(worldRect.x, worldRect.y), outputWidth, outputHeight);
-    Eigen::Vector2f screenSize =
-        worldToScreenSize(Eigen::Vector2f(worldRect.w, worldRect.h), outputWidth, outputHeight);
-    return SDL_FRect{screenOrigin.x(), screenOrigin.y(), screenSize.x(), screenSize.y()};
 }
 
 // Getters

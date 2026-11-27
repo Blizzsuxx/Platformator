@@ -21,7 +21,6 @@ class PathManager
     std::filesystem::path resolveScenePath(const std::string &path) const;
 
     std::string canonicalizeAssetPath(const std::string &rawPath) const;
-    std::string getAssetsRootAbsolutePath() const;
     ResolvedAssetPath resolveAssetPath(const std::string &rawPath) const;
 
   private:

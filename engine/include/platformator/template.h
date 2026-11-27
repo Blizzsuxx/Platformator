@@ -30,11 +30,6 @@ class Template : public Asset
     Template() = default;
     ~Template() override;
 
-    const std::string &getName() const
-    {
-        return name;
-    }
-
     GameObject *instantiate(GameObject *parent = nullptr) const;
     GameObject *instantiate(const Eigen::Vector2f &worldPosition, float worldRotation,
                             GameObject *parent = nullptr) const;
@@ -58,7 +53,6 @@ class Template : public Asset
     GameObject *instantiateImpl(std::optional<Eigen::Vector2f> worldPosition, std::optional<float> worldRotation,
                                 GameObject *parent) const;
 
-    std::string name;
     std::optional<std::string> invalidInternalReferenceError;
     std::vector<Asset::Reference<TextureWrapper>> textures;
     std::vector<Asset::Reference<AudioWrapper>> audio;

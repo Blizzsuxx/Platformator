@@ -6,7 +6,7 @@
 
 namespace
 {
-bool proxySortLess(BoundingRadiusProjectionProxy *a, BoundingRadiusProjectionProxy *b) noexcept
+bool proxySortLess(platformator_detail::ProjectionProxy *a, platformator_detail::ProjectionProxy *b) noexcept
 {
     const float posA = a->getCachedProjectedPosition();
     const float posB = b->getCachedProjectedPosition();
@@ -85,8 +85,8 @@ void AABB::addBatch(const std::vector<Collider *> &colliders)
 
     if (wasEmpty)
     {
-        std::vector<BoundingRadiusProjectionProxy *> xProxies;
-        std::vector<BoundingRadiusProjectionProxy *> yProxies;
+        std::vector<platformator_detail::ProjectionProxy *> xProxies;
+        std::vector<platformator_detail::ProjectionProxy *> yProxies;
         xProxies.reserve(added.size() * 2);
         yProxies.reserve(added.size() * 2);
         for (ColliderBinding *binding : added)
@@ -193,7 +193,7 @@ bool AABB::tryClearAllRemoved(const std::vector<Collider *> &colliders)
         return false;
     }
 
-    for (const AABBPair &pair : pairsWithBothAxisOverlapping)
+    for (const PairKey &pair : pairsWithBothAxisOverlapping)
     {
         owner->recordPairDelta(pair.a, pair.b, -1);
     }
@@ -274,7 +274,7 @@ void AABB::repair(Collider *element)
     repair(binding);
 }
 
-void AABB::repairAxis(SegmentedIntervalList &list, BoundingRadiusProjectionAxisBinding &axisBinding)
+void AABB::repairAxis(SegmentedIntervalList &list, platformator_detail::ProjectionAxisBinding &axisBinding)
 {
     const float oldMin = axisBinding.minProxy.getCachedProjectedPosition();
     const float newMin = axisBinding.minProxy.getProjectedPosition();
@@ -332,11 +332,6 @@ SegmentedIntervalList *AABB::getIntervalListX()
     return &intervalListX;
 }
 
-SegmentedIntervalList *AABB::getIntervalListY()
-{
-    return &intervalListY;
-}
-
 void AABB::axisOverlapBegin(Collider *colliderA, Collider *colliderB)
 {
     if (!colliderA->getGameObject()->getActive() || !colliderB->getGameObject()->getActive())
@@ -349,12 +344,12 @@ void AABB::axisOverlapBegin(Collider *colliderA, Collider *colliderB)
         return;
     }
 
-    if (!checkOverlapOnAxis(colliderA, colliderB))
+    if (!colliderA->overlapsFatBounds(*colliderB))
     {
         return;
     }
 
-    if (pairsWithBothAxisOverlapping.insert(AABBPair(colliderA, colliderB)))
+    if (pairsWithBothAxisOverlapping.insert(PairKey(colliderA, colliderB)))
     {
         owner->recordPairDelta(colliderA, colliderB, 1);
     }
@@ -362,37 +357,12 @@ void AABB::axisOverlapBegin(Collider *colliderA, Collider *colliderB)
 
 void AABB::axisOverlapEnd(Collider *colliderA, Collider *colliderB)
 {
-    if (pairsWithBothAxisOverlapping.erase(AABBPair(colliderA, colliderB)) == 0)
+    if (pairsWithBothAxisOverlapping.erase(PairKey(colliderA, colliderB)) == 0)
     {
         return;
     }
 
     owner->recordPairDelta(colliderA, colliderB, -1);
-}
-
-void AABB::overlapBeginCheckpoint(Collider *colliderA, Collider *colliderB)
-{
-    axisOverlapBegin(colliderA, colliderB);
-}
-
-void AABB::overlapEndCheckpoint(Collider *colliderA, Collider *colliderB)
-{
-    axisOverlapEnd(colliderA, colliderB);
-}
-
-bool AABB::checkOverlapOnAxis(Collider *colliderA, Collider *colliderB) const
-{
-    auto *xA = colliderA->getXProjections();
-    auto *xB = colliderB->getXProjections();
-    if (xA->getMax()->getProjectedPosition() < xB->getMin()->getProjectedPosition() ||
-        xA->getMin()->getProjectedPosition() > xB->getMax()->getProjectedPosition())
-    {
-        return false;
-    }
-    auto *yA = colliderA->getYProjections();
-    auto *yB = colliderB->getYProjections();
-    return yA->getMax()->getProjectedPosition() >= yB->getMin()->getProjectedPosition() &&
-           yA->getMin()->getProjectedPosition() <= yB->getMax()->getProjectedPosition();
 }
 
 bool AABB::getIsEmpty() const

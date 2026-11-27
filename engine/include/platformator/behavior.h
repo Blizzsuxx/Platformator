@@ -29,7 +29,6 @@ class ReferenceResolver;
 class Behavior
 {
     friend class ScriptComponent;
-    friend class Template;
 
   public:
     Behavior();
@@ -73,34 +72,19 @@ namespace platformator_detail
 template <typename T>
 constexpr uint8_t detectBehaviorUpdateMask() noexcept
 {
+    auto overrides = []<typename BaseFn>(auto probe, BaseFn baseFn) constexpr noexcept -> bool {
+        if constexpr (requires { probe(); })
+            return !std::is_same_v<decltype(probe()), BaseFn>;
+        else
+            return true;
+    };
     uint8_t mask = BEHAVIOR_UPDATE_NONE;
-    if constexpr (requires { &T::fixedUpdate; })
-    {
-        if constexpr (!std::is_same_v<decltype(&T::fixedUpdate), decltype(&Behavior::fixedUpdate)>)
-            mask |= BEHAVIOR_UPDATE_FIXED;
-    }
-    else
-    {
+    if (overrides([]() requires requires { &T::fixedUpdate; } { return &T::fixedUpdate; }, &Behavior::fixedUpdate))
         mask |= BEHAVIOR_UPDATE_FIXED;
-    }
-    if constexpr (requires { &T::update; })
-    {
-        if constexpr (!std::is_same_v<decltype(&T::update), decltype(&Behavior::update)>)
-            mask |= BEHAVIOR_UPDATE_FRAME;
-    }
-    else
-    {
+    if (overrides([]() requires requires { &T::update; } { return &T::update; }, &Behavior::update))
         mask |= BEHAVIOR_UPDATE_FRAME;
-    }
-    if constexpr (requires { &T::lateUpdate; })
-    {
-        if constexpr (!std::is_same_v<decltype(&T::lateUpdate), decltype(&Behavior::lateUpdate)>)
-            mask |= BEHAVIOR_UPDATE_LATE;
-    }
-    else
-    {
+    if (overrides([]() requires requires { &T::lateUpdate; } { return &T::lateUpdate; }, &Behavior::lateUpdate))
         mask |= BEHAVIOR_UPDATE_LATE;
-    }
     return mask;
 }
 } // namespace platformator_detail

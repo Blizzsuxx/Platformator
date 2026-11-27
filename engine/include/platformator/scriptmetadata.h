@@ -28,7 +28,9 @@ class Animator;
 class Audio;
 class AudioWrapper;
 class Behavior;
+class BoxCollider;
 class Camera;
+class CircleCollider;
 class Collider;
 class ScriptComponent;
 class Sprite;
@@ -280,6 +282,14 @@ template <> struct ObjectTargetName<Camera>
 template <> struct ObjectTargetName<Collider>
 {
     static constexpr std::string_view value = "Collider";
+};
+template <> struct ObjectTargetName<BoxCollider>
+{
+    static constexpr std::string_view value = "BoxCollider";
+};
+template <> struct ObjectTargetName<CircleCollider>
+{
+    static constexpr std::string_view value = "CircleCollider";
 };
 template <> struct ObjectTargetName<Rigidbody>
 {
@@ -581,7 +591,8 @@ void append_script_field(ScriptInspectionResult &result, std::string_view name, 
                                           remainingArrayItems, remainingStringBytes);
     const auto reason = available ? std::string{} :
         std::string("field type is not allowlisted for read-only inspection");
-    const std::size_t projectedBytes = name.size() + std::string(script_field_kind_name(descriptor.kind)).size() +
+    const std::string_view kindName(script_field_kind_name(descriptor.kind));
+    const std::size_t projectedBytes = name.size() + kindName.size() +
         reason.size() + jsonValue.dump().size() + 64;
     if (projectedBytes > limits.maxOutputBytes - result.retainedOutputBytes)
     {
@@ -589,7 +600,7 @@ void append_script_field(ScriptInspectionResult &result, std::string_view name, 
         result.outputTruncated = true;
         return;
     }
-    result.fields.push_back({std::string(name), script_field_kind_name(descriptor.kind), available,
+    result.fields.push_back({std::string(name), std::string(kindName), available,
                              truncated, std::move(jsonValue), reason});
     result.retainedOutputBytes += projectedBytes;
 }

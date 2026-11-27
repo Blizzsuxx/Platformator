@@ -1,11 +1,9 @@
 #include "core/gamemanager.h"
 #include "core/simulationclock.h"
-#include "benchmark/workprobe.h"
 
 #include <algorithm>
 #include <cassert>
 #include <cmath>
-#include <cstdio>
 #include <limits>
 #include <stdexcept>
 
@@ -22,7 +20,6 @@
 #include "platformator/scriptcomponent.h"
 #include "platformator/sprite.h"
 #include "scene/referenceresolver.h"
-#include "scene/scenebuilder.h"
 
 namespace
 {
@@ -88,6 +85,28 @@ void GameManager::createMainCameraIfNoMainCameraExists()
     createGameObject()->setName("Main Camera")->addComponent<Camera>();
 }
 
+void GameManager::registerIdentity(BaseObject &object, platformator_detail::ObjectKind kind)
+{
+    registry.add(object, kind);
+    try
+    {
+        idToObjectMap.insertOrAssign(object.getId(), &object);
+    }
+    catch (...)
+    {
+        registry.erase(object);
+        throw;
+    }
+}
+
+void GameManager::assertIdleMainThread() const
+{
+    if (!isIdle() || std::this_thread::get_id() != mainThread)
+    {
+        throw std::logic_error("Simulation steps require an idle runtime on its main thread");
+    }
+}
+
 GameObject *GameManager::createGameObject()
 {
     assertCanMutate();
@@ -95,18 +114,9 @@ GameObject *GameManager::createGameObject()
     std::unique_ptr<GameObject, decltype(cleanup)> gameObject(new GameObject(), cleanup);
     assignFileId(*gameObject);
     gameObjects.reserve(gameObjects.size() + 1);
-    registry.add(*gameObject, platformator_detail::ObjectKind::GameObject);
-    try
-    {
-        idToObjectMap.insertOrAssign(gameObject->getId(), gameObject.get());
-    }
-    catch (...)
-    {
-        registry.erase(*gameObject);
-        throw;
-    }
-    gameObject->setGameManagerIteratorIndex(gameObjects.size());
+    registerIdentity(*gameObject, platformator_detail::ObjectKind::GameObject);
     gameObjects.push_back(gameObject.get());
+    gameObject->setGameManagerIteratorIndex(gameObjects.size() - 1);
     return gameObject.release();
 }
 
@@ -176,11 +186,17 @@ void GameManager::registerGameObjectSubtree(GameObject *gameObject)
                     assignFileId(*component);
                 }
             }
-            obj->setGameManagerIteratorIndex(gameObjects.size());
             gameObjects.push_back(obj);
+            obj->setGameManagerIteratorIndex(gameObjects.size() - 1);
             registry.add(*obj, platformator_detail::ObjectKind::GameObject);
             idToObjectMap.insertOrAssign(obj->getId(), obj);
-            obj->addComponentsToGameManager();
+            for (Component *component : obj->components)
+            {
+                if (component != nullptr)
+                {
+                    notifyComponentAdded(component);
+                }
+            }
         }
     }
     catch (...)
@@ -337,18 +353,9 @@ void GameManager::assignFileId(BaseObject &object)
 // Simulation Loop & Frame Stepping
 // ============================================================================
 
-void GameManager::runSimulationStep(const double timeDelta)
+void GameManager::runSimulationStep(double timeDelta, const std::function<void(double)> &customCallback)
 {
-    runSimulationStepWithCustomCallback({}, timeDelta);
-}
-
-void GameManager::runSimulationStepWithCustomCallback(const std::function<void(double)> &customCallback,
-                                                      double timeDelta)
-{
-    if (!isIdle() || std::this_thread::get_id() != mainThread)
-    {
-        throw std::logic_error("Simulation steps require an idle runtime on its main thread");
-    }
+    assertIdleMainThread();
     if (!std::isfinite(timeDelta) || timeDelta <= 0)
     {
         throw std::invalid_argument("Simulation timestep must be finite and positive");
@@ -443,7 +450,7 @@ void GameManager::loop(const std::function<bool(SDLWindow &)> &ownerThreadServic
         const auto now = std::chrono::steady_clock::now();
         const double elapsed = std::chrono::duration<double>(now - previous).count();
         previous = now;
-        window->handleSDLEvents(elapsed);
+        window->handleSDLEvents();
         if (!window->isRunning())
         {
             break;
@@ -479,35 +486,15 @@ void GameManager::loop(const std::function<bool(SDLWindow &)> &ownerThreadServic
     }
 }
 
-void GameManager::simulateFrame(double timeDelta)
+bool GameManager::simulateAndRenderFrame(double timeDelta, const std::function<void(double)> &customCallback)
 {
-    runSimulationStep(timeDelta);
-}
-
-void GameManager::simulateFrameWithCustomCallback(const std::function<void(double)> &customCallback,
-                                                  double timeDelta)
-{
-    runSimulationStepWithCustomCallback(customCallback, timeDelta);
-}
-
-bool GameManager::simulateAndRenderFrame(double timeDelta)
-{
-    return simulateAndRenderFrameWithCustomCallback({}, timeDelta);
-}
-
-bool GameManager::simulateAndRenderFrameWithCustomCallback(const std::function<void(double)> &customCallback,
-                                                           double timeDelta)
-{
-    if (!isIdle() || std::this_thread::get_id() != mainThread)
-    {
-        throw std::logic_error("Simulation steps require an idle runtime on its main thread");
-    }
+    assertIdleMainThread();
     if (!window->isRunning())
     {
         return false;
     }
 
-    window->handleSDLEvents(timeDelta);
+    window->handleSDLEvents();
     if (!window->isRunning())
     {
         return false;
@@ -516,7 +503,7 @@ bool GameManager::simulateAndRenderFrameWithCustomCallback(const std::function<v
     if (window->shouldSimulateFrame())
     {
         window->clearDebugObjects();
-        runSimulationStepWithCustomCallback(customCallback, timeDelta);
+        runSimulationStep(timeDelta, customCallback);
     }
     else
     {
@@ -547,16 +534,7 @@ void GameManager::notifyComponentAdded(Component *component)
                        : CircleCollider;
         }
         reconciliations.reserve(reconciliations.size() + 1);
-        registry.add(*component, kind);
-        try
-        {
-            idToObjectMap.insertOrAssign(component->getId(), component);
-        }
-        catch (...)
-        {
-            registry.erase(*component);
-            throw;
-        }
+        registerIdentity(*component, kind);
     }
     queueReconciliation(component);
 }
@@ -567,14 +545,14 @@ void GameManager::registerComponentInSystems(Component *component)
     {
     case ComponentType::ANIMATOR: {
         auto *animator = static_cast<Animator *>(component);
-        animator->setGameManagerIndex(animatorComponents.size());
         animatorComponents.push_back(animator);
+        animator->setGameManagerIndex(animatorComponents.size() - 1);
         break;
     }
     case ComponentType::SCRIPT: {
         auto *script = static_cast<ScriptComponent *>(component);
-        script->setGameManagerIndex(scriptComponents.size());
         scriptComponents.push_back(script);
+        script->setGameManagerIndex(scriptComponents.size() - 1);
         syncScriptUpdateLists(script);
         queueScriptStart(script);
         break;

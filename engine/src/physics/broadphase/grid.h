@@ -1,9 +1,11 @@
 #pragma once
 
+#include <oneapi/tbb/enumerable_thread_specific.h>
+#include <utility>
 #include <vector>
+
 #include "physics/broadphase/gridcell.h"
 #include "physics/broadphase/gridmaps.h"
-#include "oneapi/tbb.h"
 
 struct PairDelta
 {
@@ -40,7 +42,7 @@ class Grid
     using CellMap = FlatCellMap;
 
     explicit Grid(PhysicsManager *owner = nullptr);
-    ~Grid();
+    ~Grid() = default;
 
     const CellMap &getCells() const;
     float getCellSize() const noexcept
@@ -51,13 +53,12 @@ class Grid
     size_t getCandidatePairCount() const;
 
     void clearPendingNarrowPhasePairs();
-    const std::vector<const ColliderPair *> *getPendingNarrowPhasePairs() const;
+    const std::vector<ColliderPair *> *getPendingNarrowPhasePairs() const;
 
     void queueSyncCollider(Collider *collider);
     void queueRemoveCollider(Collider *collider);
     void queueAddCollider(Collider *collider);
 
-    void syncCollider(Collider *collider);
     void flushDeferredPairDeltas();
     void flushPendingCellUpdates();
     void clearAll();
@@ -73,19 +74,20 @@ class Grid
 
   private:
     void flushPendingWork();
+    void flushDirtyCells(size_t operationWeight);
     static float selectQuantizedCellSize(const std::vector<Collider *> &colliders);
     void rebuildGridForCellSize(float newCellSize);
     static bool rangeFitsCellCache(const GridCellRange &range) noexcept;
     void expandActiveCellBounds(const GridCellRange &range) noexcept;
     void recomputeActiveCellBounds() const noexcept;
-    void addColliderInternal(Collider *collider, bool geometryPrepared = false);
-    void syncColliderInternal(Collider *collider, bool geometryPrepared);
+    void addColliderInternal(Collider *collider);
+    void syncColliderInternal(Collider *collider);
     void removeColliderInternal(Collider *collider);
     bool removeGridCellIfEmpty(GridCell *cell);
-    void dequeuePairFromNarrowPhase(const ColliderPair *pair);
-    void queuePairForNarrowPhase(const ColliderPair *pair);
+    void dequeuePairFromNarrowPhase(ColliderPair *pair);
+    void queuePairForNarrowPhase(ColliderPair *pair);
     void queuePairsForCollider(Collider *collider);
-    const std::vector<const ColliderPair *> *getTouchingPairs(Collider *collider) const;
+    const std::vector<ColliderPair *> *getTouchingPairs(Collider *collider) const;
     GridCell *findCell(const GridCellKey &key);
     const GridCell *findCell(const GridCellKey &key) const;
     GridCell &getOrCreateCell(const GridCellKey &key);
@@ -100,12 +102,12 @@ class Grid
 
     CellMap cells;
     FlatCandidatePairPool candidateCollisions;
-    std::vector<const ColliderPair *> pendingNarrowPhasePairs;
+    std::vector<ColliderPair *> pendingNarrowPhasePairs;
     std::vector<GridCell *> potentiallyEmptyCells;
     std::vector<GridCell *> cellsWithOperations;
     std::vector<Collider *> pendingColliderOperations;
     std::vector<Collider *> responseDirtyColliders;
-    std::vector<std::vector<const ColliderPair *>> pairQueueChunkScratch;
+    std::vector<std::vector<ColliderPair *>> pairQueueChunkScratch;
     std::vector<std::pair<size_t, size_t>> pairQueueChunkRanges;
     std::vector<size_t> pairQueueChunkOffsets;
     PairDeltaCollector activePairDeltaCollector;

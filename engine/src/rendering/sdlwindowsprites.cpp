@@ -2,7 +2,10 @@
 
 #include <algorithm>
 #include <cassert>
+#if PLATFORMATOR_ENABLE_BENCHMARK_ORDER_MODES
 #include <chrono>
+#endif
+#include <cmath>
 #include <limits>
 #include <vector>
 
@@ -14,12 +17,6 @@
 
 namespace
 {
-bool overlaps(const platformator_detail::SpriteRenderBounds &a,
-              const platformator_detail::SpriteRenderBounds &b)
-{
-    return a.maxX >= b.minX && a.minX <= b.maxX && a.maxY >= b.minY && a.minY <= b.maxY;
-}
-
 #if PLATFORMATOR_ENABLE_BENCHMARK_ORDER_MODES
 struct ScopedBenchmarkTiming
 {
@@ -109,7 +106,7 @@ bool SDLWindow::prepareVisibleSelection(Camera *camera, const platformator_detai
         PLATFORMATOR_RENDER_CULLING_ADD(renderCullingCandidateVisits, 1);
         if (!record.boundsValid)
             return true;
-        if (!overlaps(record.bounds, query))
+        if (!spriteBoundsOverlap(record.bounds, query))
             return false;
 
         Sprite *sprite = hasResolvedSprite ? resolvedSprite : resolveRecordSprite(record);
@@ -164,6 +161,73 @@ bool SDLWindow::prepareVisibleSelection(Camera *camera, const platformator_detai
     return true;
 }
 
+#if PLATFORMATOR_ENABLE_BENCHMARK_ORDER_MODES
+bool SDLWindow::trySingleEntryRepair(SpriteDrawOrder &order, size_t population)
+{
+    if (order.orderMode != BenchmarkSpriteOrderMode::SingleEntryRepair || !order.orderDirty ||
+        !order.singleEditCandidateValid || order.singleEditSlot >= population)
+        return false;
+
+    const auto entryLess = [](const SpriteDrawEntry &left, const SpriteDrawEntry &right) {
+        PLATFORMATOR_RENDER_CULLING_ADD(spriteOrderComparisons, 1);
+        if (left.zOrder != right.zOrder)
+            return left.zOrder < right.zOrder;
+        return left.registrationSequence < right.registrationSequence;
+    };
+
+    const size_t targetRank = order.singleEditSlot;
+    size_t oldPos = order.entries.size();
+    size_t lookupVisits = 0;
+    for (size_t idx = 0; idx < order.entries.size(); ++idx)
+    {
+        ++lookupVisits;
+        if (order.entries[idx].rank == targetRank)
+        {
+            oldPos = idx;
+            break;
+        }
+    }
+    PLATFORMATOR_RENDER_CULLING_ADD(spriteOrderLookupVisits, lookupVisits);
+    if (oldPos >= order.entries.size())
+        return false;
+
+    const SpriteDrawEntry updated{targetRank, spriteComponents[targetRank]->getZOrder(),
+                                  order.sequenceBySlot[targetRank]};
+    size_t moves = 0;
+    if (oldPos > 0 && entryLess(updated, order.entries[oldPos - 1]))
+    {
+        auto it = std::lower_bound(order.entries.begin(),
+                                   order.entries.begin() + static_cast<std::ptrdiff_t>(oldPos), updated, entryLess);
+        const size_t newPos = static_cast<size_t>(it - order.entries.begin());
+        std::move_backward(it, order.entries.begin() + static_cast<std::ptrdiff_t>(oldPos),
+                           order.entries.begin() + static_cast<std::ptrdiff_t>(oldPos + 1));
+        order.entries[newPos] = updated;
+        moves = oldPos - newPos;
+    }
+    else if (oldPos + 1 < order.entries.size() && entryLess(order.entries[oldPos + 1], updated))
+    {
+        auto it = std::lower_bound(order.entries.begin() + static_cast<std::ptrdiff_t>(oldPos + 1),
+                                   order.entries.end(), updated, entryLess);
+        const size_t newPos = static_cast<size_t>(it - order.entries.begin()) - 1;
+        std::move(order.entries.begin() + static_cast<std::ptrdiff_t>(oldPos + 1), it,
+                  order.entries.begin() + static_cast<std::ptrdiff_t>(oldPos));
+        order.entries[newPos] = updated;
+        moves = newPos - oldPos;
+    }
+    else
+    {
+        order.entries[oldPos] = updated;
+    }
+    PLATFORMATOR_RENDER_CULLING_ADD(spriteOrderPreparations, 1);
+    PLATFORMATOR_RENDER_CULLING_ADD(spriteOrderEntries, 1);
+    PLATFORMATOR_RENDER_CULLING_ADD(spriteOrderRepairs, 1);
+    PLATFORMATOR_RENDER_CULLING_ADD(spriteOrderMoves, moves);
+    order.orderDirty = false;
+    order.singleEditCandidateValid = false;
+    return true;
+}
+#endif
+
 void SDLWindow::prepareDrawOrder(bool useCachedSelection)
 {
     if (!spriteDrawOrder)
@@ -180,72 +244,12 @@ void SDLWindow::prepareDrawOrder(bool useCachedSelection)
     const bool membershipChanged = !order.preparedOnce || (currentAll != order.preparedAll) ||
                                    (!currentAll && order.preparedMembershipRevision != currentRevision);
 
-    const auto entryLess = [](const SpriteDrawEntry &left, const SpriteDrawEntry &right) {
-        PLATFORMATOR_RENDER_CULLING_ADD(spriteOrderComparisons, 1);
-        if (left.zOrder != right.zOrder)
-            return left.zOrder < right.zOrder;
-        return left.registrationSequence < right.registrationSequence;
-    };
-
 #if PLATFORMATOR_ENABLE_BENCHMARK_ORDER_MODES
     if (order.orderMode != BenchmarkSpriteOrderMode::ForcedFullSort && !order.orderDirty && !membershipChanged)
         return;
 
-    if (order.orderMode == BenchmarkSpriteOrderMode::SingleEntryRepair && order.orderDirty && !membershipChanged &&
-        order.singleEditCandidateValid && order.singleEditSlot < population)
-    {
-        const size_t targetRank = order.singleEditSlot;
-        size_t oldPos = order.entries.size();
-        size_t lookupVisits = 0;
-        for (size_t idx = 0; idx < order.entries.size(); ++idx)
-        {
-            ++lookupVisits;
-            if (order.entries[idx].rank == targetRank)
-            {
-                oldPos = idx;
-                break;
-            }
-        }
-        PLATFORMATOR_RENDER_CULLING_ADD(spriteOrderLookupVisits, lookupVisits);
-        if (oldPos < order.entries.size())
-        {
-            const SpriteDrawEntry updated{targetRank, spriteComponents[targetRank]->getZOrder(),
-                                          order.sequenceBySlot[targetRank]};
-            size_t moves = 0;
-            if (oldPos > 0 && entryLess(updated, order.entries[oldPos - 1]))
-            {
-                auto it = std::lower_bound(order.entries.begin(),
-                                           order.entries.begin() + static_cast<std::ptrdiff_t>(oldPos), updated,
-                                           entryLess);
-                const size_t newPos = static_cast<size_t>(it - order.entries.begin());
-                std::move_backward(it, order.entries.begin() + static_cast<std::ptrdiff_t>(oldPos),
-                                   order.entries.begin() + static_cast<std::ptrdiff_t>(oldPos + 1));
-                order.entries[newPos] = updated;
-                moves = oldPos - newPos;
-            }
-            else if (oldPos + 1 < order.entries.size() && entryLess(order.entries[oldPos + 1], updated))
-            {
-                auto it = std::lower_bound(order.entries.begin() + static_cast<std::ptrdiff_t>(oldPos + 1),
-                                           order.entries.end(), updated, entryLess);
-                const size_t newPos = static_cast<size_t>(it - order.entries.begin()) - 1;
-                std::move(order.entries.begin() + static_cast<std::ptrdiff_t>(oldPos + 1), it,
-                          order.entries.begin() + static_cast<std::ptrdiff_t>(oldPos));
-                order.entries[newPos] = updated;
-                moves = newPos - oldPos;
-            }
-            else
-            {
-                order.entries[oldPos] = updated;
-            }
-            PLATFORMATOR_RENDER_CULLING_ADD(spriteOrderPreparations, 1);
-            PLATFORMATOR_RENDER_CULLING_ADD(spriteOrderEntries, 1);
-            PLATFORMATOR_RENDER_CULLING_ADD(spriteOrderRepairs, 1);
-            PLATFORMATOR_RENDER_CULLING_ADD(spriteOrderMoves, moves);
-            order.orderDirty = false;
-            order.singleEditCandidateValid = false;
-            return;
-        }
-    }
+    if (!membershipChanged && trySingleEntryRepair(order, population))
+        return;
 #else
     if (!order.orderDirty && !membershipChanged)
         return;
@@ -253,34 +257,31 @@ void SDLWindow::prepareDrawOrder(bool useCachedSelection)
 
     PLATFORMATOR_RENDER_CULLING_ADD(spriteOrderPreparations, 1);
     order.entries.clear();
+    const auto appendRank = [&](size_t rank) {
+        order.entries.push_back({rank, spriteComponents[rank]->getZOrder(), order.sequenceBySlot[rank]});
+    };
     if (useCachedSelection)
     {
         for (const size_t rank : renderCullingState->visibleRanks())
-        {
-            Sprite *sprite = spriteComponents[rank];
-            order.entries.push_back({rank, sprite->getZOrder(), order.sequenceBySlot[rank]});
-        }
+            appendRank(rank);
     }
     else
     {
         for (size_t rank = 0; rank < population; ++rank)
-        {
-            Sprite *sprite = spriteComponents[rank];
-            order.entries.push_back({rank, sprite->getZOrder(), order.sequenceBySlot[rank]});
-        }
+            appendRank(rank);
     }
     PLATFORMATOR_RENDER_CULLING_ADD(spriteOrderEntries, order.entries.size());
 
     if (order.entries.size() > 1)
     {
-        // EFFICIENCY: Retained Z edits and membership changes perform a full O(V log V)
-        // rebuild-and-sort over active visible slots. SingleEntryRepair exists behind
-        // BenchmarkSpriteOrderMode for bounded comparison, but pilot timing under
-        // software vsync=1 was inconclusive within run variation (median -0.001 ms,
-        // stdev 0.065 ms vs ~7.4k shifted entries per edit), so the simpler full
-        // rebuild remains the production default.
         PLATFORMATOR_RENDER_CULLING_ADD(spriteOrderSorts, 1);
-        std::sort(order.entries.begin(), order.entries.end(), entryLess);
+        std::sort(order.entries.begin(), order.entries.end(),
+                  [](const SpriteDrawEntry &left, const SpriteDrawEntry &right) {
+                      PLATFORMATOR_RENDER_CULLING_ADD(spriteOrderComparisons, 1);
+                      if (left.zOrder != right.zOrder)
+                          return left.zOrder < right.zOrder;
+                      return left.registrationSequence < right.registrationSequence;
+                  });
     }
 
     order.preparedAll = currentAll;
@@ -325,10 +326,7 @@ void SDLWindow::addSpriteComponent(Sprite *spriteComponent)
     const size_t required = newIndex + 1;
     if (required > spriteComponents.capacity())
     {
-        const size_t doubled = spriteComponents.capacity() > std::numeric_limits<size_t>::max() / 2
-                                   ? std::numeric_limits<size_t>::max()
-                                   : spriteComponents.capacity() * 2;
-        const size_t target = std::max(required, std::max<size_t>(4, doubled));
+        const size_t target = platformator_detail::nextGeometricCapacity(spriteComponents.capacity(), required);
         spriteComponents.reserve(target);
         if (spriteDrawOrder)
         {
@@ -348,12 +346,7 @@ void SDLWindow::addSpriteComponent(Sprite *spriteComponent)
     if (spriteDrawOrder)
     {
         spriteDrawOrder->sequenceBySlot.push_back(spriteDrawOrder->nextSequence++);
-        spriteDrawOrder->entries.clear();
-        spriteDrawOrder->orderDirty = true;
-#if PLATFORMATOR_ENABLE_BENCHMARK_ORDER_MODES
-        spriteDrawOrder->singleEditCandidateValid = false;
-#endif
-        spriteDrawOrder->preparedAll = false;
+        spriteDrawOrder->invalidateForPopulationChange();
     }
     spriteComponents.push_back(spriteComponent);
     spriteComponent->setWindowIndex(newIndex);
@@ -373,12 +366,7 @@ void SDLWindow::removeSpriteComponent(Sprite *spriteComponent)
 
     if (spriteDrawOrder)
     {
-        spriteDrawOrder->entries.clear();
-        spriteDrawOrder->orderDirty = true;
-#if PLATFORMATOR_ENABLE_BENCHMARK_ORDER_MODES
-        spriteDrawOrder->singleEditCandidateValid = false;
-#endif
-        spriteDrawOrder->preparedAll = false;
+        spriteDrawOrder->invalidateForPopulationChange();
     }
 
     if (renderCullingState)
@@ -554,20 +542,17 @@ void SDLWindow::renderSpritesBatched(Camera *camera, const platformator_detail::
     {
         Sprite *sprite = spriteComponents[entry.rank];
         const GameObject *object = sprite->getGameObject();
-        if (!useCachedSelection && !object->getActive())
-            continue;
+        assert(object->getActive());
 
         SDL_Texture *texture = sprite->getTexture();
-        const float renderW = sprite->getWidth();
-        const float renderH = sprite->getHeight();
-        const Eigen::Vector2f &spritePos = camera->getPublishedSpritePosition(sprite);
-        const SDL_FRect dst =
-            platformator_detail::makeSpriteRenderDestination(spritePos.x(), spritePos.y(), renderW, renderH, view);
+        SDL_FRect dst{};
+        float angleDegrees = 0.0f;
+        camera->prepareSpriteGeometry(sprite, view, dst, angleDegrees);
 
         if (!useCachedSelection && view.cullingEligible && texture != nullptr)
         {
             PLATFORMATOR_RENDER_VISIBILITY_CHECK();
-            if (platformator_detail::classifySpriteForRender(dst, object->getRotationInDegrees(), view) ==
+            if (platformator_detail::classifySpriteForRender(dst, angleDegrees, view) ==
                 platformator_detail::SpriteRenderClassification::Reject)
                 continue;
         }
@@ -579,16 +564,15 @@ void SDLWindow::renderSpritesBatched(Camera *camera, const platformator_detail::
         if (!std::isfinite(dst.x) || !std::isfinite(dst.y) || !std::isfinite(dst.w) || !std::isfinite(dst.h))
         {
             flushBatch();
-            platformator_detail::submitSpriteRender(renderer, texture, sprite->getSourceRect(), dst,
-                                                    object->getRotationInDegrees(), sprite->getFlip(),
-                                                    sprite->getColor());
+            platformator_detail::submitSpriteRender(renderer, texture, sprite->getSourceRect(), dst, angleDegrees,
+                                                    sprite->getFlip(), sprite->getColor());
             continue;
         }
         if (dst.w <= 0.0f || dst.h <= 0.0f)
             continue;
 
         const SDL_Color color = sprite->getColor();
-        const bool modulated = (color.r != 255 || color.g != 255 || color.b != 255 || color.a != 255);
+        const bool modulated = platformator_detail::isColorModulated(color);
         if (texture != batchTexture)
         {
             flushBatch();
@@ -705,18 +689,7 @@ void SDLWindow::releaseRenderingStorage() noexcept
 #endif
     if (spriteDrawOrder)
     {
-        std::vector<uint64_t>().swap(spriteDrawOrder->sequenceBySlot);
-        std::vector<SpriteDrawEntry>().swap(spriteDrawOrder->entries);
-        spriteDrawOrder->nextSequence = 1;
-        spriteDrawOrder->preparedMembershipRevision = 0;
-#if PLATFORMATOR_ENABLE_BENCHMARK_ORDER_MODES
-        spriteDrawOrder->singleEditSlot = 0;
-        spriteDrawOrder->benchmarkTiming = {};
-        spriteDrawOrder->singleEditCandidateValid = false;
-#endif
-        spriteDrawOrder->preparedOnce = false;
-        spriteDrawOrder->orderDirty = true;
-        spriteDrawOrder->preparedAll = false;
+        spriteDrawOrder->releaseStorage();
     }
     publishOrderCapacityObservation();
 }

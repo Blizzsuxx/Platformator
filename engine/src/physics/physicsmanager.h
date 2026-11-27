@@ -1,21 +1,21 @@
 #pragma once
 
 #include "buildconfig.h"
-#include "platformator/collision.h"
 #include "physics/broadphase/grid.h"
-#include "core/helpers.h"
+#include "physics/physicssolver_simd.h"
 #include "platformator/collider.h"
+#include "platformator/collision.h"
+#include "platformator/collisiontypes.h"
 #include "platformator/rigidbody.h"
-#include <algorithm>
 #include <array>
+#include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <oneapi/tbb/enumerable_thread_specific.h>
 #include <optional>
 #include <utility>
 #include <vector>
-
-#include "platformator/collisiontypes.h"
 
 class GameManager;
 
@@ -56,7 +56,7 @@ public:
     }
     const std::vector<Collider *> &getColliders() const;
 
-    const std::vector<const ColliderPair *> &getContactPairs() const
+    const std::vector<ColliderPair *> &getContactPairs() const
     {
         return contactPairs;
     }
@@ -97,24 +97,58 @@ public:
                                                      bool includeTriggers = false) const;
 
 private:
+    static constexpr uint32_t UNMAPPED_SOLVER_BODY = std::numeric_limits<uint32_t>::max();
+    static constexpr size_t PARALLEL_SOLVER_BATCH_SIZE = 128;
+    static constexpr size_t PARALLEL_PRESTEP_THRESHOLD = 256;
+    static constexpr size_t PARALLEL_BODY_SUBSTEP_THRESHOLD = 512;
+
 #if PLATFORMATOR_ENABLE_BENCHMARKS
     bool benchmarkSleepingDisabled = false;
 #endif
     template <typename HitCallback>
-    bool traverseRayCandidates(const Eigen::Vector2f &origin, const Eigen::Vector2d &dir, float maxDistance,
+    void traverseRayCandidates(const Eigen::Vector2f &origin, const Eigen::Vector2d &dir, float maxDistance,
                                const double &limit, uint64_t collisionMask, bool includeTriggers,
                                HitCallback &&onHit) const;
     void flushPendingColliderOperations();
     void clearAll();
 
+    static bool hasParallelPhysicsWorkers() noexcept;
+    static std::pair<bool, bool> pairSupportFlags(const ColliderPair *pair, const Collision *collision) noexcept
+    {
+        if (collision == nullptr)
+        {
+            return {false, false};
+        }
+        const bool referenceIsA = collision->getReferenceObject() == pair->getObjectA();
+        const bool supportsA =
+            (collision->supportState &
+             (referenceIsA ? Collision::SUPPORTS_REFERENCE : Collision::SUPPORTS_INCIDENT)) != 0;
+        const bool supportsB =
+            (collision->supportState &
+             (referenceIsA ? Collision::SUPPORTS_INCIDENT : Collision::SUPPORTS_REFERENCE)) != 0;
+        return {supportsA, supportsB};
+    }
+    static bool extractSolverPair(ColliderPair *pair, Collision *&outCollision, Rigidbody *&outRbA,
+                                  Rigidbody *&outRbB) noexcept
+    {
+        outCollision = pair->getCollision();
+        if (outCollision == nullptr)
+        {
+            return false;
+        }
+        outRbA = outCollision->getReferenceObject()->getAttachedRigidbody();
+        outRbB = outCollision->getIncidentObject()->getAttachedRigidbody();
+        return outRbA != nullptr && outRbB != nullptr;
+    }
+
     void updateSleepingStates(double timeDelta);
     void broadPhase();
     void narrowPhase();
-    void processNarrowPhasePair(const ColliderPair *pair);
-    void refreshContactParticipation(const ColliderPair *pair);
-    void refreshSolverParticipation(const ColliderPair *pair, bool live);
-    void removePair(const ColliderPair *pair);
-    void reconcilePairSupport(const ColliderPair *pair);
+    void processNarrowPhasePair(ColliderPair *pair);
+    void refreshContactParticipation(ColliderPair *pair);
+    void refreshSolverParticipation(ColliderPair *pair, bool live);
+    void removePair(ColliderPair *pair);
+    void reconcilePairSupport(ColliderPair *pair);
     void reconcileSupportContribution(Rigidbody *&contributor, Rigidbody *desired);
     void queueSupportDelta(Rigidbody *body, int delta);
     void flushSupportDeltas();
@@ -123,17 +157,6 @@ private:
     void reconcileBodyParticipation(Rigidbody *body);
     void reconcileChangedBodies();
 
-    static void resetSleepIsland(Rigidbody *body)
-    {
-        // Step-local aggregation: the solver merges these roots before the sleep decision.
-        body->sleepParent = body;
-        body->sleepRank = 0;
-        body->islandQuiet = true;
-        body->islandTimer = body->getSleepTimer();
-    }
-
-    Rigidbody *findSleepRoot(Rigidbody *body);
-    void mergeSleepIslands(Rigidbody *a, Rigidbody *b);
 #if PLATFORMATOR_ENABLE_BENCHMARKS
     size_t countAwakeDynamicBodies() const;
 #endif
@@ -142,7 +165,6 @@ private:
 
     struct SoftStepParams
     {
-        float dt = 0.0f;
         float h = 0.0f;
         float invH = 0.0f;
         float biasRate = 0.0f;
@@ -171,26 +193,42 @@ private:
         float dAngle = 0.0f;
     };
 
-    struct SolverBodyState
-    {
-        Eigen::Vector2f velocity = Eigen::Vector2f::Zero();
-        float angularVelocity = 0.0f;
-        Eigen::Vector2f deltaPosition = Eigen::Vector2f::Zero();
-        float deltaAngle = 0.0f;
-        float inverseMass = 0.0f;
-        float inverseMomentOfInertia = 0.0f;
-    };
-
-    struct alignas(16) WideBodyState
+    struct alignas(16) SolverBodyState
     {
         float vx = 0.0f;
         float vy = 0.0f;
         float w = 0.0f;
-        float pad0 = 0.0f;
+        float inverseMass = 0.0f;
         float dpX = 0.0f;
         float dpY = 0.0f;
         float dAngle = 0.0f;
-        float pad1 = 0.0f;
+        float inverseMomentOfInertia = 0.0f;
+    };
+    static_assert(sizeof(SolverBodyState) == 32 && alignof(SolverBodyState) >= 16);
+    static_assert(offsetof(SolverBodyState, dpX) == 16);
+
+    struct WritableSolverBody
+    {
+        size_t regIndex = SIZE_MAX;
+        uint32_t localIndex = 0;
+        Rigidbody *body = nullptr;
+    };
+
+    struct ScopedSolverBodyMapGuard
+    {
+        std::vector<uint32_t> &localIndices;
+        const std::vector<WritableSolverBody> &writable;
+
+        ~ScopedSolverBodyMapGuard() noexcept
+        {
+            for (const WritableSolverBody &entry : writable)
+            {
+                if (entry.regIndex != SIZE_MAX)
+                {
+                    localIndices[entry.regIndex] = UNMAPPED_SOLVER_BODY;
+                }
+            }
+        }
     };
 
     struct IslandWorkUnit
@@ -202,8 +240,6 @@ private:
 
     struct SolverConstraint
     {
-        Rigidbody *rbA = nullptr;
-        Rigidbody *rbB = nullptr;
         ClipPointsWithData *contactPoints = nullptr;
         uint32_t bodyIndexA = 0;
         uint32_t bodyIndexB = 0;
@@ -226,9 +262,9 @@ private:
     {
         std::vector<SolverConstraint> constraints;
         std::vector<SolverBodyState> bodies;
-        std::vector<WideBodyState> wideBodies;
         std::vector<SolverBodyForce> bodyForces;
-        std::vector<std::pair<size_t, Rigidbody *>> writableBodies;
+        std::vector<WritableSolverBody> writableBodies;
+        std::vector<platformator_solver_simd::WideConstraint8> wideSteps;
     };
 
     struct IslandColorGraph
@@ -237,7 +273,7 @@ private:
         static constexpr uint8_t OVERFLOW_COLOR = 16;
         static constexpr uint8_t TOTAL_BUCKETS = 17;
 
-        std::array<std::vector<const ColliderPair *>, TOTAL_BUCKETS> buckets;
+        std::array<std::vector<ColliderPair *>, TOTAL_BUCKETS> buckets;
     };
 
     struct PersistentIsland
@@ -245,7 +281,7 @@ private:
         int32_t id = -1;
         size_t activeListIndex = SIZE_MAX;
         std::vector<Rigidbody *> bodies;
-        std::vector<const ColliderPair *> contacts;
+        std::vector<ColliderPair *> contacts;
         std::unique_ptr<IslandColorGraph> colorGraph;
         uint16_t splitCooldown = 0;
         bool maySplit = false;
@@ -258,6 +294,8 @@ private:
         Collision *collision = nullptr;
         Rigidbody *rbA = nullptr;
         Rigidbody *rbB = nullptr;
+        uint32_t bodyIndexA = 0;
+        uint32_t bodyIndexB = 0;
     };
 
     int32_t acquirePersistentIsland();
@@ -267,18 +305,20 @@ private:
     void addBodyToPersistentIsland(PersistentIsland &island, Rigidbody *body);
     void detachBodyFromPersistentIsland(Rigidbody *body);
     int32_t mergePersistentIslands(int32_t islandIdA, int32_t islandIdB);
-    void removeContactFromPersistentIsland(const ColliderPair *pair);
-    void updatePersistentIslandContact(const ColliderPair *pair, bool solve, Collision::CollisionType response,
+    void removeContactFromPersistentIsland(ColliderPair *pair);
+    void updatePersistentIslandContact(ColliderPair *pair, bool solve, Collision::CollisionType response,
                                        Rigidbody *rbA, Rigidbody *rbB);
     void splitPersistentIsland(int32_t islandId);
     void splitDirtyIslands();
     void wakePersistentIslandEndpoints();
     static void clearIslandColorGraph(PersistentIsland &island);
-    static void insertContactIntoColorGraph(IslandColorGraph &graph, const ColliderPair *pair);
-    static void removeContactFromColorGraph(IslandColorGraph &graph, const ColliderPair *pair);
+    static void insertContactIntoColorGraph(IslandColorGraph &graph, ColliderPair *pair);
+    static void removeContactFromColorGraph(IslandColorGraph &graph, ColliderPair *pair);
     static void ensureIslandColorGraph(PersistentIsland &island);
     SoftStepParams makeSoftStepParams(double timeDelta, bool integrateForces, bool commitPositions) const noexcept;
     SolverBodyForce makeBodyForce(const Rigidbody *rb) const noexcept;
+    void commitWritableBodies(const std::vector<WritableSolverBody> &writable,
+                              const std::vector<SolverBodyState> &states, bool commitPositions) noexcept;
     bool solveColoredIsland(PersistentIsland &island, const SoftStepParams &params, bool allowParallel);
 
     void prepareSolverConstraint(const SolverPreStepJob &job, const SoftStepParams &params,
@@ -299,6 +339,7 @@ private:
     void solveConstraintIterations(const SoftStepParams &params);
     void solveConstraintsSerial(const SoftStepParams &params);
     void solveIslands(const SoftStepParams &params, size_t totalContacts);
+    void resolveKinematicPairs();
     void resolveKinematicCollision(const Collision *collision, Rigidbody *rbA, Rigidbody *rbB);
     void resolveKinematicBodyAgainstNormal(Rigidbody *rigidBody, const Eigen::Vector2f &approachNormal,
                                            float correctionDistance);
@@ -312,35 +353,42 @@ private:
     std::vector<int32_t> freeIslandIds;
     std::vector<int32_t> activeIslandIds;
     std::vector<int32_t> dirtySplitIslandIds;
-    std::vector<const ColliderPair *> kinematicSolverPairs;
+    std::vector<ColliderPair *> kinematicSolverPairs;
     std::vector<int32_t> splitAdjHead;
     std::vector<int32_t> splitAdjNext;
     std::vector<uint32_t> splitAdjTo;
     std::vector<int32_t> splitComponentOfBody;
     std::vector<uint32_t> splitQueue;
-    std::vector<const ColliderPair *> splitRemainingContacts;
+    std::vector<ColliderPair *> splitRemainingContacts;
+    std::vector<Rigidbody *> splitOldBodies;
+    std::vector<size_t> splitComponentContactCounts;
+    std::vector<int32_t> splitContactComponents;
     std::vector<int32_t> splitComponentIslandIds;
     std::vector<SolverPreStepJob> solverPreStepJobs;
     std::vector<SolverConstraint> solverConstraints;
     std::vector<uint32_t> solverBodyLocalIndices;
     std::vector<SolverBodyState> solverBodyStates;
-    std::vector<WideBodyState> solverWideBodyStates;
     std::vector<SolverBodyForce> solverBodyForces;
     std::vector<SolverBodyDelta> solverBodyDeltas;
     std::vector<uint8_t> solverBodyIntegrated;
-    std::vector<std::pair<size_t, Rigidbody *>> solverTouchedWritableBodies;
+    std::vector<WritableSolverBody> solverTouchedWritableBodies;
+    std::array<std::vector<platformator_solver_simd::WideConstraint8>, IslandColorGraph::MAX_PARALLEL_COLORS>
+        colorWideBlocks;
+    std::array<std::vector<SolverConstraint>, IslandColorGraph::MAX_PARALLEL_COLORS> colorTailConstraints;
+    std::vector<SolverConstraint> overflowConstraints;
     std::vector<int32_t> bucketedIslandIds;
     std::vector<IslandWorkUnit> islandWorkUnits;
-    std::vector<std::vector<const ColliderPair *>> narrowTransitionChunks;
+    std::vector<std::vector<ColliderPair *>> narrowTransitionChunks;
+#if PLATFORMATOR_ENABLE_WORK_PROBES
     std::vector<uint64_t> narrowGeometryCounts;
+#endif
     IslandSolverScratch serialSolverScratch;
     tbb::enumerable_thread_specific<IslandSolverScratch> solverIslandScratch;
     tbb::enumerable_thread_specific<std::vector<Rigidbody *>> parallelBodiesToSleep;
 
-    std::vector<std::pair<size_t, size_t>> solverEndpoints;
     std::vector<size_t> solverIslandJobEnds;
 
-    std::vector<const ColliderPair *> contactPairs;
+    std::vector<ColliderPair *> contactPairs;
     std::vector<Rigidbody *> supportDeltaBodies;
     std::vector<PhysicsEvent> pendingPhysicsEvents;
 

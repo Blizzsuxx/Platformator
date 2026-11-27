@@ -1,12 +1,10 @@
 #pragma once
 
-#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
-#include <cstring>
 
-#include "physics/physicsmanager.h"
+#include "platformator/collisiontypes.h"
 
 #if (defined(__x86_64__) || defined(_M_X64)) && (defined(__GNUC__) || defined(__clang__))
 #define PLATFORMATOR_HAS_RUNTIME_AVX2 1
@@ -36,7 +34,7 @@ inline bool cpuSupportsAVX2() noexcept
 
 struct alignas(32) WideConstraint8
 {
-    // Hot solve/relax prefix (~736 bytes; no 2x2 block LCP matrices or branch masks).
+    // Hot solve/relax prefix (~736 bytes).
     alignas(32) float normalX[8] = {};
     alignas(32) float normalY[8] = {};
 
@@ -79,6 +77,14 @@ struct alignas(32) WideConstraint8
     alignas(32) float restitution[8] = {};
     ClipPointsWithData *contactPoints[8] = {nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr};
     uint8_t pointCount[8] = {0, 0, 0, 0, 0, 0, 0, 0};
+
+    void resetMasks() noexcept
+    {
+        twoPointMask = 0;
+        writeMaskA = 0;
+        writeMaskB = 0;
+        restitutionMask = 0;
+    }
 };
 
 template <typename ConstraintT>
@@ -211,27 +217,34 @@ inline void storeWideImpulses(const WideConstraint8 &wide) noexcept
 
 #if PLATFORMATOR_HAS_RUNTIME_AVX2
 
-template <typename BodyStateT>
-__attribute__((target("avx2,fma"))) inline void gatherBodyVels8AVX2(const uint32_t idx[8], const BodyStateT *bodies,
-                                                                    __m256 &vx, __m256 &vy, __m256 &w) noexcept
+template <typename BodyStateT, float BodyStateT::*FirstField>
+__attribute__((target("avx2,fma"))) inline void gatherBodyVec3x8AVX2(const uint32_t idx[8], const BodyStateT *bodies,
+                                                                     __m256 &c0, __m256 &c1, __m256 &c2) noexcept
 {
-    const __m256 r0 = _mm256_insertf128_ps(_mm256_castps128_ps256(_mm_load_ps(&bodies[idx[0]].vx)),
-                                           _mm_load_ps(&bodies[idx[4]].vx), 1);
-    const __m256 r1 = _mm256_insertf128_ps(_mm256_castps128_ps256(_mm_load_ps(&bodies[idx[1]].vx)),
-                                           _mm_load_ps(&bodies[idx[5]].vx), 1);
-    const __m256 r2 = _mm256_insertf128_ps(_mm256_castps128_ps256(_mm_load_ps(&bodies[idx[2]].vx)),
-                                           _mm_load_ps(&bodies[idx[6]].vx), 1);
-    const __m256 r3 = _mm256_insertf128_ps(_mm256_castps128_ps256(_mm_load_ps(&bodies[idx[3]].vx)),
-                                           _mm_load_ps(&bodies[idx[7]].vx), 1);
+    const __m256 r0 = _mm256_insertf128_ps(_mm256_castps128_ps256(_mm_load_ps(&(bodies[idx[0]].*FirstField))),
+                                           _mm_load_ps(&(bodies[idx[4]].*FirstField)), 1);
+    const __m256 r1 = _mm256_insertf128_ps(_mm256_castps128_ps256(_mm_load_ps(&(bodies[idx[1]].*FirstField))),
+                                           _mm_load_ps(&(bodies[idx[5]].*FirstField)), 1);
+    const __m256 r2 = _mm256_insertf128_ps(_mm256_castps128_ps256(_mm_load_ps(&(bodies[idx[2]].*FirstField))),
+                                           _mm_load_ps(&(bodies[idx[6]].*FirstField)), 1);
+    const __m256 r3 = _mm256_insertf128_ps(_mm256_castps128_ps256(_mm_load_ps(&(bodies[idx[3]].*FirstField))),
+                                           _mm_load_ps(&(bodies[idx[7]].*FirstField)), 1);
 
     const __m256 t0 = _mm256_unpacklo_ps(r0, r1);
     const __m256 t1 = _mm256_unpackhi_ps(r0, r1);
     const __m256 t2 = _mm256_unpacklo_ps(r2, r3);
     const __m256 t3 = _mm256_unpackhi_ps(r2, r3);
 
-    vx = _mm256_shuffle_ps(t0, t2, _MM_SHUFFLE(1, 0, 1, 0));
-    vy = _mm256_shuffle_ps(t0, t2, _MM_SHUFFLE(3, 2, 3, 2));
-    w = _mm256_shuffle_ps(t1, t3, _MM_SHUFFLE(1, 0, 1, 0));
+    c0 = _mm256_shuffle_ps(t0, t2, _MM_SHUFFLE(1, 0, 1, 0));
+    c1 = _mm256_shuffle_ps(t0, t2, _MM_SHUFFLE(3, 2, 3, 2));
+    c2 = _mm256_shuffle_ps(t1, t3, _MM_SHUFFLE(1, 0, 1, 0));
+}
+
+template <typename BodyStateT>
+__attribute__((target("avx2,fma"))) inline void gatherBodyVels8AVX2(const uint32_t idx[8], const BodyStateT *bodies,
+                                                                    __m256 &vx, __m256 &vy, __m256 &w) noexcept
+{
+    gatherBodyVec3x8AVX2<BodyStateT, &BodyStateT::vx>(idx, bodies, vx, vy, w);
 }
 
 template <typename BodyStateT>
@@ -239,23 +252,7 @@ __attribute__((target("avx2,fma"))) inline void gatherBodyDeltas8AVX2(const uint
                                                                       __m256 &dpX, __m256 &dpY,
                                                                       __m256 &dAngle) noexcept
 {
-    const __m256 r0 = _mm256_insertf128_ps(_mm256_castps128_ps256(_mm_load_ps(&bodies[idx[0]].dpX)),
-                                           _mm_load_ps(&bodies[idx[4]].dpX), 1);
-    const __m256 r1 = _mm256_insertf128_ps(_mm256_castps128_ps256(_mm_load_ps(&bodies[idx[1]].dpX)),
-                                           _mm_load_ps(&bodies[idx[5]].dpX), 1);
-    const __m256 r2 = _mm256_insertf128_ps(_mm256_castps128_ps256(_mm_load_ps(&bodies[idx[2]].dpX)),
-                                           _mm_load_ps(&bodies[idx[6]].dpX), 1);
-    const __m256 r3 = _mm256_insertf128_ps(_mm256_castps128_ps256(_mm_load_ps(&bodies[idx[3]].dpX)),
-                                           _mm_load_ps(&bodies[idx[7]].dpX), 1);
-
-    const __m256 t0 = _mm256_unpacklo_ps(r0, r1);
-    const __m256 t1 = _mm256_unpackhi_ps(r0, r1);
-    const __m256 t2 = _mm256_unpacklo_ps(r2, r3);
-    const __m256 t3 = _mm256_unpackhi_ps(r2, r3);
-
-    dpX = _mm256_shuffle_ps(t0, t2, _MM_SHUFFLE(1, 0, 1, 0));
-    dpY = _mm256_shuffle_ps(t0, t2, _MM_SHUFFLE(3, 2, 3, 2));
-    dAngle = _mm256_shuffle_ps(t1, t3, _MM_SHUFFLE(1, 0, 1, 0));
+    gatherBodyVec3x8AVX2<BodyStateT, &BodyStateT::dpX>(idx, bodies, dpX, dpY, dAngle);
 }
 
 template <typename BodyStateT>
@@ -507,8 +504,8 @@ __attribute__((target("avx2,fma"))) inline void solveWide8SoftAVX2(WideConstrain
 __attribute__((target("avx2,fma"))) inline void bouncePointSoftAVX2(
     __m256 &vAx, __m256 &vAy, __m256 &wA, __m256 invMA, __m256 invIA, __m256 &vBx, __m256 &vBy, __m256 &wB,
     __m256 invMB, __m256 invIB, __m256 nX, __m256 nY, __m256 rest, __m256 negThreshold, const float *rAxPtr,
-    const float *rAyPtr, const float *rBxPtr, const float *rByPtr, const float *massNPtr, const float *relVelPtr,
-    float *accumNPtr) noexcept
+    const float *rAyPtr, const float *rBxPtr, const float *rByPtr, const float *massNPtr,
+    const float *relVelPtr) noexcept
 {
     const __m256 zero = _mm256_setzero_ps();
     const __m256 relVel = _mm256_load_ps(relVelPtr);
@@ -518,7 +515,6 @@ __attribute__((target("avx2,fma"))) inline void bouncePointSoftAVX2(
     {
         return;
     }
-    (void)accumNPtr;
     const __m256 rAx = _mm256_load_ps(rAxPtr);
     const __m256 rAy = _mm256_load_ps(rAyPtr);
     const __m256 rBx = _mm256_load_ps(rBxPtr);
@@ -559,11 +555,11 @@ __attribute__((target("avx2,fma"))) inline void applyRestitutionWide8AVX2(WideCo
     const __m256 negThreshold = _mm256_set1_ps(-params.restitutionThreshold);
 
     bouncePointSoftAVX2(vAx, vAy, wA, invMA, invIA, vBx, vBy, wB, invMB, invIB, nX, nY, rest, negThreshold, c.rAx0,
-                        c.rAy0, c.rBx0, c.rBy0, c.massNormal0, c.relVel0, c.accumNormal0);
+                        c.rAy0, c.rBx0, c.rBy0, c.massNormal0, c.relVel0);
     if (c.twoPointMask != 0)
     {
         bouncePointSoftAVX2(vAx, vAy, wA, invMA, invIA, vBx, vBy, wB, invMB, invIB, nX, nY, rest, negThreshold, c.rAx1,
-                            c.rAy1, c.rBx1, c.rBy1, c.massNormal1, c.relVel1, c.accumNormal1);
+                            c.rAy1, c.rBx1, c.rBy1, c.massNormal1, c.relVel1);
     }
 
     scatterBodyVels8AVX2(c.bodyIndexA, bodies, vAx, vAy, wA, c.writeMaskA);

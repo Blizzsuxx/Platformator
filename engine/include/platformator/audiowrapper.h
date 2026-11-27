@@ -5,7 +5,6 @@
 #include <string>
 
 #include <SDL3_mixer/SDL_mixer.h>
-#include <json.hpp>
 
 #include "platformator/baseobject.h"
 
@@ -32,5 +31,3 @@ private:
 
     void destroyAudio();
 };
-
-void to_json(nlohmann::json &j, const AudioWrapper &audioWrapper);

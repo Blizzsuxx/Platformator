@@ -42,23 +42,4 @@ void validateSceneReference(const BaseObject *object)
         throw std::runtime_error("Live reference to file ID " + std::to_string(object->getId()) +
                                  " is outside the saved scene");
 }
-TextureWrapper *loadTextureAssetReference(platformator::Runtime &runtime, const std::string &assetPath)
-{
-    return runtime.loadTexture(assetPath);
-}
-
-AudioWrapper *loadAudioAssetReference(platformator::Runtime &runtime, const std::string &assetPath)
-{
-    return runtime.loadAudio(assetPath);
-}
-
-AnimationClip *loadAnimationClipAssetReference(platformator::Runtime &runtime, const std::string &assetPath)
-{
-    return runtime.loadAnimationClip(assetPath);
-}
-
-Template *loadTemplateAssetReference(platformator::Runtime &runtime, const std::string &assetPath)
-{
-    return runtime.loadTemplate(assetPath);
-}
 } // namespace platformator_detail

@@ -5,7 +5,6 @@
 #include <cstdint>
 #include <limits>
 #include <stdexcept>
-#include <utility>
 
 #include "benchmark/workprobe.h"
 
@@ -20,14 +19,7 @@ RenderCullingState::~RenderCullingState()
 
 void RenderCullingState::reserveRecords(RecordIndex capacity)
 {
-    RecordIndex target = records.capacity();
-    if (capacity > target)
-    {
-        const RecordIndex doubled = target > std::numeric_limits<RecordIndex>::max() / 2
-                                        ? std::numeric_limits<RecordIndex>::max()
-                                        : target * 2;
-        target = std::max(capacity, std::max<RecordIndex>(4, doubled));
-    }
+    const RecordIndex target = nextGeometricCapacity(records.capacity(), capacity);
     // Retry every related allocation to the same target. An earlier reserve
     // may have grown records before another vector threw.
     records.reserve(target);
@@ -71,6 +63,19 @@ void RenderCullingState::appendRecord(platformator::ObjectHandle spriteHandle)
     publishCapacityObservation();
 }
 
+void RenderCullingState::removeVisiblePosition(RecordIndex rank, RecordIndex position) noexcept
+{
+    const RecordIndex lastPosition = currentVisibleRanks.size() - 1;
+    if (position != lastPosition)
+    {
+        const RecordIndex movedRank = currentVisibleRanks[lastPosition];
+        currentVisibleRanks[position] = movedRank;
+        records[movedRank].visiblePosition = position;
+    }
+    currentVisibleRanks.pop_back();
+    records[rank].visiblePosition = absentIndex;
+}
+
 void RenderCullingState::removeRecord(RecordIndex index)
 {
     if (index >= records.size())
@@ -80,17 +85,7 @@ void RenderCullingState::removeRecord(RecordIndex index)
     ++visibleMembershipRevision_;
     const RecordIndex visiblePos = records[index].visiblePosition;
     if (visiblePos != absentIndex)
-    {
-        const RecordIndex lastVisiblePos = currentVisibleRanks.size() - 1;
-        if (visiblePos != lastVisiblePos)
-        {
-            const RecordIndex movedVisibleRank = currentVisibleRanks[lastVisiblePos];
-            currentVisibleRanks[visiblePos] = movedVisibleRank;
-            records[movedVisibleRank].visiblePosition = visiblePos;
-        }
-        currentVisibleRanks.pop_back();
-        records[index].visiblePosition = absentIndex;
-    }
+        removeVisiblePosition(index, visiblePos);
     cancelDirty(index);
     const RecordIndex lastIndex = records.size() - 1;
     if (index != lastIndex)
@@ -275,15 +270,7 @@ void RenderCullingState::updateVisibleRank(RecordIndex rank, bool visible)
     }
     else
     {
-        const RecordIndex lastPosition = currentVisibleRanks.size() - 1;
-        if (position != lastPosition)
-        {
-            const RecordIndex movedRank = currentVisibleRanks[lastPosition];
-            currentVisibleRanks[position] = movedRank;
-            records[movedRank].visiblePosition = position;
-        }
-        currentVisibleRanks.pop_back();
-        records[rank].visiblePosition = absentIndex;
+        removeVisiblePosition(rank, position);
     }
 }
 
@@ -308,12 +295,6 @@ RenderCullingState::RecordIndex RenderCullingState::recordCount() const
 }
 
 RenderCullingState::Record &RenderCullingState::recordAt(RecordIndex index)
-{
-    assert(index < records.size());
-    return records[index];
-}
-
-const RenderCullingState::Record &RenderCullingState::recordAt(RecordIndex index) const
 {
     assert(index < records.size());
     return records[index];

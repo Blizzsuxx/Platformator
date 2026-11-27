@@ -240,20 +240,16 @@ bool EditorSessionService::pump_impl(std::uint64_t runtimeSerial, ::SDLWindow *w
             }
             for (const auto &request : decoded.messages)
             {
-                std::string encodedError;
-                const auto encoded =
-                    editor_session::encode_frame(request, editor_session::Direction::Request, encodedError);
-                if (!encodedError.empty() ||
-                    encoded.size() > editor_session::MaximumQueuedBytes -
-                                         std::min(pendingRequestBytes_, editor_session::MaximumQueuedBytes))
+                const std::size_t frameBytes = request.frameBytes;
+                if (frameBytes == 0 ||
+                    frameBytes > editor_session::MaximumQueuedBytes -
+                                     std::min(pendingRequestBytes_, editor_session::MaximumQueuedBytes))
                 {
-                    fail(encodedError.empty() ? "decoded request backlog exceeded its byte bound"
-                                              : "decoded request could not be accounted: " + encodedError,
-                         runtimeSerial);
+                    fail("decoded request backlog exceeded its byte bound", runtimeSerial);
                     break;
                 }
-                pendingRequestBytes_ += encoded.size();
-                pendingRequests_.push_back({request, encoded.size()});
+                pendingRequestBytes_ += frameBytes;
+                pendingRequests_.push_back({request, frameBytes});
             }
             if (failed_)
                 break;

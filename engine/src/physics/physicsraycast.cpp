@@ -1,9 +1,8 @@
 #include "physics/physicsmanager.h"
 
-#include "core/constants.h"
+#include "benchmark/workprobe.h"
 #include "platformator/boxcollider.h"
 #include "platformator/circlecollider.h"
-#include "benchmark/workprobe.h"
 
 #include <algorithm>
 #include <array>
@@ -31,57 +30,52 @@ namespace
         return scaled / std::hypot(scaled.x(), scaled.y());
     }
 
+    bool clipRayToSlab(double origin, double dir, double minBound, double maxBound, double &tMin, double &tMax,
+                       int axis = -1, int *outHitAxis = nullptr, double *outHitSign = nullptr) noexcept
+    {
+        if (dir == 0.0)
+        {
+            return origin >= minBound && origin <= maxBound;
+        }
+        double t1 = (minBound - origin) / dir;
+        double t2 = (maxBound - origin) / dir;
+        double sign = -1.0;
+        if (t1 > t2)
+        {
+            std::swap(t1, t2);
+            sign = 1.0;
+        }
+        if (t1 > tMin)
+        {
+            tMin = t1;
+            if (outHitAxis != nullptr)
+            {
+                *outHitAxis = axis;
+            }
+            if (outHitSign != nullptr)
+            {
+                *outHitSign = sign;
+            }
+        }
+        if (t2 < tMax)
+        {
+            tMax = t2;
+        }
+        return tMin <= tMax;
+    }
+
     bool rayIntersectsAABBInterval(const Eigen::Vector2f &origin, const Eigen::Vector2d &dir, double dLimit,
                                    double minX, double maxX, double minY, double maxY, double tol,
                                    double &outTMin, double &outTMax) noexcept
     {
-        const double bMinX = minX - tol;
-        const double bMaxX = maxX + tol;
-        const double bMinY = minY - tol;
-        const double bMaxY = maxY + tol;
-        const double ox = static_cast<double>(origin.x());
-        const double oy = static_cast<double>(origin.y());
-        const double dx = dir.x();
-        const double dy = dir.y();
-
         double tMin = 0.0;
         double tMax = dLimit;
-        if (dx == 0.0)
+        if (!clipRayToSlab(static_cast<double>(origin.x()), dir.x(), minX - tol, maxX + tol, tMin, tMax) ||
+            !clipRayToSlab(static_cast<double>(origin.y()), dir.y(), minY - tol, maxY + tol, tMin, tMax) ||
+            tMin > dLimit || tMax < 0.0)
         {
-            if (ox < bMinX || ox > bMaxX)
-                return false;
-        }
-        else
-        {
-            double t1 = (bMinX - ox) / dx;
-            double t2 = (bMaxX - ox) / dx;
-            if (t1 > t2)
-                std::swap(t1, t2);
-            tMin = std::max(tMin, t1);
-            tMax = std::min(tMax, t2);
-            if (tMin > tMax)
-                return false;
-        }
-
-        if (dy == 0.0)
-        {
-            if (oy < bMinY || oy > bMaxY)
-                return false;
-        }
-        else
-        {
-            double t1 = (bMinY - oy) / dy;
-            double t2 = (bMaxY - oy) / dy;
-            if (t1 > t2)
-                std::swap(t1, t2);
-            tMin = std::max(tMin, t1);
-            tMax = std::min(tMax, t2);
-            if (tMin > tMax)
-                return false;
-        }
-
-        if (tMin > dLimit || tMax < 0.0)
             return false;
+        }
         outTMin = tMin;
         outTMax = tMax;
         return true;
@@ -95,7 +89,7 @@ namespace
         if (collider == nullptr || collider->isRetired())
             return false;
         GameObject *obj = collider->getGameObject();
-        if (obj == nullptr || !obj->getActive() || obj->getIsMarkedForDeletion())
+        if (obj == nullptr || !obj->getActive() || obj->isRetired())
             return false;
         if ((collider->getCollisionGroup() & collisionMask) == 0ULL)
             return false;
@@ -216,33 +210,9 @@ namespace
                 int hitAxis = -1;
                 double hitSign = 0.0;
 
-                const auto testSlab = [&](double o, double d, double halfExtent, int axis) -> bool
-                {
-                    if (d == 0.0)
-                        return std::abs(o) <= halfExtent;
-                    double t1 = (-halfExtent - o) / d;
-                    double t2 = (halfExtent - o) / d;
-                    double sign = -1.0;
-                    if (t1 > t2)
-                    {
-                        std::swap(t1, t2);
-                        sign = 1.0;
-                    }
-                    if (t1 > tMin)
-                    {
-                        tMin = t1;
-                        hitAxis = axis;
-                        hitSign = sign;
-                    }
-                    if (t2 < tMax)
-                    {
-                        tMax = t2;
-                    }
-                    return tMin <= tMax;
-                };
-
-                if (!testSlab(ox, dx, dHalfW, 0) || !testSlab(oy, dy, dHalfH, 1) || tMin > dLimit + limitTol ||
-                    hitAxis < 0)
+                if (!clipRayToSlab(ox, dx, -dHalfW, dHalfW, tMin, tMax, 0, &hitAxis, &hitSign) ||
+                    !clipRayToSlab(oy, dy, -dHalfH, dHalfH, tMin, tMax, 1, &hitAxis, &hitSign) ||
+                    tMin > dLimit + limitTol || hitAxis < 0)
                     return false;
 
                 tMin = std::min(tMin, dLimit);
@@ -270,14 +240,14 @@ namespace
 } // namespace
 
 template <typename HitCallback>
-bool PhysicsManager::traverseRayCandidates(const Eigen::Vector2f &origin, const Eigen::Vector2d &dir, float maxDistance,
+void PhysicsManager::traverseRayCandidates(const Eigen::Vector2f &origin, const Eigen::Vector2d &dir, float maxDistance,
                                            const double &limit, uint64_t collisionMask, bool includeTriggers,
                                            HitCallback &&onHit) const
 {
     platformator::RaycastHit candidate;
     const GridCellRange &activeBounds = grid.getActiveCellBounds();
     if (!activeBounds.getIsValid() || grid.getCells().empty())
-        return false;
+        return;
 
     const double cellSize = static_cast<double>(grid.getCellSize());
     const double gridMinX = static_cast<double>(activeBounds.minX) * cellSize;
@@ -290,7 +260,7 @@ bool PhysicsManager::traverseRayCandidates(const Eigen::Vector2f &origin, const 
     if (!rayIntersectsAABBInterval(origin, dir, limit, gridMinX, gridMaxX, gridMinY, gridMaxY,
                                    1.0, tGridStart, tGridEnd))
     {
-        return true;
+        return;
     }
 
     std::array<const Collider *, 64> seenMultiCell{};
@@ -343,7 +313,7 @@ bool PhysicsManager::traverseRayCandidates(const Eigen::Vector2f &origin, const 
     const double tStart = std::max(0.0, tGridStart);
     const double tEnd = std::min(limit, tGridEnd);
     if (tStart > tEnd)
-        return true;
+        return;
 
     const double startX = ox + tStart * dx;
     const double startY = oy + tStart * dy;
@@ -499,7 +469,7 @@ bool PhysicsManager::traverseRayCandidates(const Eigen::Vector2f &origin, const 
                 visitOnce(ex, ey, finalEnd, finalEnd);
             }
         }
-        return true;
+        return;
     }
 
     for (const auto &entry : grid.getCells())
@@ -517,7 +487,6 @@ bool PhysicsManager::traverseRayCandidates(const Eigen::Vector2f &origin, const 
             visitCellInterval(entry.second, cTEnter, cTExit);
         }
     }
-    return true;
 }
 
 std::optional<platformator::RaycastHit> PhysicsManager::raycast(const Eigen::Vector2f &origin,
@@ -571,12 +540,10 @@ std::vector<platformator::RaycastHit> PhysicsManager::raycastAll(const Eigen::Ve
 
     std::vector<platformator::RaycastHit> hits;
     const double limit = static_cast<double>(maxDistance);
-    const bool usedGrid = traverseRayCandidates(
-        origin, dir, maxDistance, limit, collisionMask, includeTriggers,
-        [&](const platformator::RaycastHit &candidate)
-        { hits.push_back(candidate); });
+    traverseRayCandidates(origin, dir, maxDistance, limit, collisionMask, includeTriggers,
+                          [&](const platformator::RaycastHit &candidate) { hits.push_back(candidate); });
 
-    if (usedGrid && hits.size() > 1)
+    if (hits.size() > 1)
     {
         std::sort(hits.begin(), hits.end(), [](const platformator::RaycastHit &a, const platformator::RaycastHit &b)
                   {

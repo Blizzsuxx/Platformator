@@ -1,19 +1,30 @@
 #include "platformator/gameobject.h"
 
-#include <algorithm>
 #include <cmath>
 #include <numbers>
 #include <stdexcept>
 
+#include "benchmark/workprobe.h"
+#include "core/gamemanager.h"
+#include "core/inputvalidation.h"
 #include "core/membership.h"
 #include "core/objectpool.h"
-#include "platformator/collider.h"
-#include "core/gamemanager.h"
-#include "platformator/rigidbody.h"
 #include "core/runtimeaccess.h"
-#include "platformator/runtime.h"
-#include "core/inputvalidation.h"
-#include "benchmark/workprobe.h"
+#include "platformator/collider.h"
+#include "platformator/rigidbody.h"
+
+Component::Component(GameObject *gameObject, ComponentType type) : gameObject(gameObject), type(type)
+{
+}
+
+Component::Component(ComponentType type) : gameObject(nullptr), type(type)
+{
+}
+
+void Component::setGameObject(GameObject *gameObject)
+{
+    this->gameObject = gameObject;
+}
 
 PLATFORMATOR_DEFINE_POOLED_ALLOCATORS(GameObject, GameObject)
 
@@ -97,8 +108,7 @@ GameObject *GameObject::setActive(const bool active)
 GameObject *GameObject::setPosition(const Eigen::Vector2f &position)
 {
     validateMutation();
-    if (!position.allFinite())
-        throw std::invalid_argument("position must be finite");
+    platformator_detail::finite(position, "position");
     const auto local = parent ? (position - parent->getPosition()).eval() : position;
     return applyLocalPosition(local);
 }
@@ -106,8 +116,7 @@ GameObject *GameObject::setPosition(const Eigen::Vector2f &position)
 GameObject *GameObject::setLocalPosition(const Eigen::Vector2f &localPosition)
 {
     validateMutation();
-    if (!localPosition.allFinite())
-        throw std::invalid_argument("position must be finite");
+    platformator_detail::finite(localPosition, "position");
     return applyLocalPosition(localPosition);
 }
 
@@ -235,12 +244,7 @@ Component *GameObject::getColliderByShape(bool box) const
 
 void GameObject::addComponentInternal(Component *component)
 {
-    if (component == nullptr)
-    {
-        throw std::invalid_argument("Component cannot be null");
-    }
-
-    ComponentType type = component->getType();
+    const ComponentType type = component->getType();
     if (components[type] != nullptr)
     {
         auto *old = components[type];
@@ -256,7 +260,7 @@ void GameObject::addComponentInternal(Component *component)
     if (type == ComponentType::COLLIDER || type == ComponentType::RIGID_BODY)
     {
         Rigidbody *rigidbodyComponent = getComponent<Rigidbody>();
-        if (auto *collider = static_cast<Collider *>(components[ComponentType::COLLIDER]))
+        if (auto *collider = getComponent<Collider>())
         {
             collider->attachedRigidbody = rigidbodyComponent;
         }
@@ -266,16 +270,16 @@ void GameObject::addComponentInternal(Component *component)
         }
     }
 
-    if (component->getType() == ComponentType::COLLIDER)
+    if (type == ComponentType::COLLIDER)
     {
         static_cast<Collider *>(component)->scheduleSync();
     }
-    if (type == RIGID_BODY)
+    if (type == ComponentType::RIGID_BODY)
         if (auto *collider = getComponent<Collider>())
             collider->invalidateResponse();
 }
 
-bool GameObject::removeComponent(const ComponentType &componentType)
+bool GameObject::removeComponent(ComponentType componentType)
 {
     validateMutation();
     auto *component = components[componentType];
@@ -289,14 +293,13 @@ bool GameObject::removeComponent(const ComponentType &componentType)
     if (componentType == ComponentType::COLLIDER)
         if (auto *body = getComponent<Rigidbody>())
             body->refreshMomentOfInertiaCache();
-    if (componentType == RIGID_BODY)
+    if (componentType == ComponentType::RIGID_BODY)
         if (auto *collider = getComponent<Collider>())
         {
             collider->attachedRigidbody = nullptr;
             collider->invalidateResponse();
         }
-    if (getIsRegisteredInGameManager())
-        platformator_detail::RuntimeAccess::gameManager().flushIfIdle();
+    flushMutations();
     return true;
 }
 
@@ -316,8 +319,8 @@ void GameObject::addChild(GameObject *child)
         return;
     const auto world = child->getPosition().eval();
     child->detachFromParent();
-    child->parentIndex = children.size();
     children.push_back(child);
+    child->parentIndex = children.size() - 1;
     child->parent = this;
     child->position = world - getPosition();
     child->queueTransform(false);
@@ -334,17 +337,6 @@ bool GameObject::removeChild(GameObject *child)
     child->detachFromParent();
     child->queueTransform(false);
     return true;
-}
-
-void GameObject::addComponentsToGameManager()
-{
-    for (Component *component : components)
-    {
-        if (component != nullptr)
-        {
-            platformator_detail::RuntimeAccess::gameManager().notifyComponentAdded(component);
-        }
-    }
 }
 
 void GameObject::destroy()

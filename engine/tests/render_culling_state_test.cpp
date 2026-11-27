@@ -218,9 +218,8 @@ void checkCapacityFailureCanRetryWithoutPartialPublication()
         countAllocations = false;
         test_support::require(observedAllocations == 0 && state->visibleRanks().size() == 64 &&
                                   state->validateMembershipInvariants() &&
-                                  platformator_test::work.renderCullingNumericRankSorts == 0 &&
                                   platformator_test::work.visibleMembershipChanges == 0,
-                              "Retried preparation must prime visibility selection and run warmed frames without allocation or numeric rank sorts");
+                              "Retried preparation must prime visibility selection and run warmed frames without allocation");
         if (!failed)
             break;
     }

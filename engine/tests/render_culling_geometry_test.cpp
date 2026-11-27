@@ -72,7 +72,7 @@ void checkValid(const SDL_FRect &destination, float angleDegrees, const SpriteRe
 
 bool overlaps(const SpriteRenderBounds &a, const SpriteRenderBounds &b)
 {
-    return a.maxX >= b.minX && a.minY <= b.maxY && a.maxY >= b.minY && a.minX <= b.maxX;
+    return platformator_detail::spriteBoundsOverlap(a, b);
 }
 
 SDL_FRect actualDestination(float worldX, float worldY, float width, float height, const SpriteRenderView &view)

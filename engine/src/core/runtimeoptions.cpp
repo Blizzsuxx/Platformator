@@ -8,16 +8,22 @@
 
 namespace
 {
-    int parsePositiveInteger(const std::string &value, const std::string &argumentName)
+    template <typename IntT>
+    IntT parsePositive(const std::string &value, const std::string &errorMessage)
     {
-        int parsedValue = 0;
+        IntT parsedValue = 0;
         const auto parsed = std::from_chars(value.data(), value.data() + value.size(), parsedValue);
         if (parsed.ec != std::errc{} || parsed.ptr != value.data() + value.size() || parsedValue <= 0)
         {
-            throw std::runtime_error(argumentName + " must be greater than zero.");
+            throw std::runtime_error(errorMessage);
         }
 
         return parsedValue;
+    }
+
+    int parsePositiveInteger(const std::string &value, const std::string &argumentName)
+    {
+        return parsePositive<int>(value, argumentName + " must be greater than zero.");
     }
 
     std::string requireArgumentValue(int argc, char *args[], int &index, const std::string &argumentName)
@@ -31,14 +37,17 @@ namespace
         return args[index];
     }
 
-    std::uintptr_t parseSessionDescriptor(const std::string &value, const std::string &argumentName)
+    void parseUniqueSessionDescriptor(int argc, char *args[], int &index, const std::string &argumentName,
+                                      std::optional<std::uintptr_t> &target)
     {
-        std::uint64_t parsedValue = 0;
-        const auto parsed = std::from_chars(value.data(), value.data() + value.size(), parsedValue);
-        if (parsed.ec != std::errc{} || parsed.ptr != value.data() + value.size() || parsedValue == 0 ||
-            parsedValue > std::numeric_limits<std::uintptr_t>::max())
+        if (target)
+            throw std::runtime_error(argumentName + " may be specified only once.");
+        const std::string value = requireArgumentValue(argc, args, index, argumentName);
+        const auto parsedValue =
+            parsePositive<std::uint64_t>(value, argumentName + " must be a positive native descriptor value.");
+        if (parsedValue > std::numeric_limits<std::uintptr_t>::max())
             throw std::runtime_error(argumentName + " must be a positive native descriptor value.");
-        return static_cast<std::uintptr_t>(parsedValue);
+        target = static_cast<std::uintptr_t>(parsedValue);
     }
 
     std::string normalizeArgumentValue(std::string value)
@@ -175,34 +184,23 @@ RuntimeOptions parseRuntimeOptions(int argc, char *args[], const std::string &de
         }
         if (argument == "--editor-session-command-fd")
         {
-            if (commandReadHandle)
-                throw std::runtime_error("--editor-session-command-fd may be specified only once.");
-            commandReadHandle = parseSessionDescriptor(
-                requireArgumentValue(argc, args, index, argument), argument);
+            parseUniqueSessionDescriptor(argc, args, index, argument, commandReadHandle);
             continue;
         }
         if (argument == "--editor-session-event-fd")
         {
-            if (eventWriteHandle)
-                throw std::runtime_error("--editor-session-event-fd may be specified only once.");
-            eventWriteHandle = parseSessionDescriptor(
-                requireArgumentValue(argc, args, index, argument), argument);
+            parseUniqueSessionDescriptor(argc, args, index, argument, eventWriteHandle);
             continue;
         }
         if (argument == "--editor-session-frame-fd")
         {
-            if (frameMappingHandle)
-                throw std::runtime_error("--editor-session-frame-fd may be specified only once.");
-            frameMappingHandle = parseSessionDescriptor(
-                requireArgumentValue(argc, args, index, argument), argument);
+            parseUniqueSessionDescriptor(argc, args, index, argument, frameMappingHandle);
             continue;
         }
         if (argument == "--smoke-steps")
         {
-            const auto value = requireArgumentValue(argc, args, index, argument);
-            const auto parsed = std::from_chars(value.data(), value.data() + value.size(), runtimeOptions.smokeSteps);
-            if (parsed.ec != std::errc{} || parsed.ptr != value.data() + value.size() || !runtimeOptions.smokeSteps)
-                throw std::runtime_error("--smoke-steps must be a positive integer");
+            runtimeOptions.smokeSteps = parsePositive<std::uint64_t>(
+                requireArgumentValue(argc, args, index, argument), "--smoke-steps must be a positive integer");
             continue;
         }
         if (argument == "--headless")
@@ -251,7 +249,9 @@ RuntimeOptions parseRuntimeOptions(int argc, char *args[], const std::string &de
 
         if (argument == "--debug-draw")
         {
+            const bool startPaused = runtimeOptions.debugSettings.startPaused;
             runtimeOptions.debugSettings = parseDebugDrawSettings(requireArgumentValue(argc, args, index, argument));
+            runtimeOptions.debugSettings.startPaused = startPaused;
             continue;
         }
 

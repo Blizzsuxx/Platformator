@@ -1,11 +1,10 @@
 #pragma once
 
-#include <algorithm>
 #include <cstdint>
-#include <vector>
-#include "core/flatset.h"
-#include "platformator/collider.h"
+
 #include "core/constants.h"
+#include "core/flatset.h"
+#include "physics/broadphase/projectionproxy.h"
 
 class SegmentedIntervalList;
 
@@ -14,28 +13,14 @@ class LocalSortArray
   public:
     LocalSortArray(SegmentedIntervalList *owner);
     LocalSortArray(LocalSortArray *other);
-    ~LocalSortArray();
+    ~LocalSortArray() = default;
 
-    size_t add(BoundingRadiusProjectionProxy *element);
-    BoundingRadiusProjectionProxy *pop();
-    BoundingRadiusProjectionProxy *remove(size_t index);
-    size_t remove(BoundingRadiusProjectionProxy *element);
+    size_t add(platformator_detail::ProjectionProxy *element);
+    platformator_detail::ProjectionProxy *remove(size_t index);
 
-    BoundingRadiusProjectionProxy *get(size_t index)
+    platformator_detail::ProjectionProxy *get(size_t index)
     {
         return array[index];
-    }
-    BoundingRadiusProjectionProxy *operator[](size_t index)
-    {
-        return array[index];
-    }
-    BoundingRadiusProjectionProxy *getMax()
-    {
-        return array[size - 1];
-    }
-    BoundingRadiusProjectionProxy *getMin()
-    {
-        return array[0];
     }
     float getPosition(size_t index) const noexcept
     {
@@ -61,13 +46,13 @@ class LocalSortArray
     {
         positions[index] = pos;
     }
-    void setSlot(size_t index, BoundingRadiusProjectionProxy *proxy, float pos, bool maxFlag) noexcept
+    void setSlot(size_t index, platformator_detail::ProjectionProxy *proxy, float pos, bool maxFlag) noexcept
     {
         array[index] = proxy;
         positions[index] = pos;
         isMaxima[index] = maxFlag ? 1 : 0;
     }
-    void appendSorted(BoundingRadiusProjectionProxy *proxy) noexcept
+    void appendSorted(platformator_detail::ProjectionProxy *proxy) noexcept
     {
         const size_t idx = size++;
         array[idx] = proxy;
@@ -80,7 +65,7 @@ class LocalSortArray
     {
         return size;
     }
-    BoundingRadiusProjectionProxy **getArray()
+    platformator_detail::ProjectionProxy **getArray()
     {
         return array;
     }
@@ -97,7 +82,7 @@ class LocalSortArray
         return &checkpoints;
     }
 
-    size_t find(BoundingRadiusProjectionProxy *element)
+    size_t find(platformator_detail::ProjectionProxy *element)
     {
         const size_t cachedIndex = element->getChunkIndex();
         if (cachedIndex < size && array[cachedIndex] == element)
@@ -123,11 +108,6 @@ class LocalSortArray
     {
         this->rightChunk = rightChunk;
     }
-
-    SegmentedIntervalList *getOwner() const
-    {
-        return owner;
-    }
     void setOwner(SegmentedIntervalList *owner)
     {
         this->owner = owner;
@@ -140,20 +120,16 @@ class LocalSortArray
   private:
     size_t logInvalidFind();
     size_t binarySearch(float pos, bool maxFlag) const noexcept;
-    void addCheckpointInternal(Collider *element);
-    std::size_t removeCheckpointInternal(Collider *element);
 
     // Cache-line-aligned SoA keys eliminate pointer chasing during binary search and interval repair.
     alignas(64) float positions[MAX_CHUNK_SIZE];
     uint8_t isMaxima[MAX_CHUNK_SIZE];
-    BoundingRadiusProjectionProxy *array[MAX_CHUNK_SIZE];
+    platformator_detail::ProjectionProxy *array[MAX_CHUNK_SIZE];
     size_t size;
     size_t chunkListIndex = SIZE_MAX;
 
-    // The ‘checkpoints’ set contains the set of object id’s which
-    // overlap with the ‘trailing edge’ of the chunk (AABBs whose min-
-    // ima is within this chunk or one to the left, but whose maxima is in
-    // a chunk to the right)
+    // Checkpoints store colliders overlapping the trailing edge of the chunk
+    // (minima within this chunk or left, maxima in a chunk to the right).
     FlatPointerSet<Collider> checkpoints;
     FlatPointerSet<Collider> checkpointCache;
 

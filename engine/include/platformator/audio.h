@@ -14,9 +14,9 @@ class Audio : public Component
 {
   public:
     Audio(GameObject *gameObject);
-    Audio(GameObject *gameObject, const char *filePath, float gain = 1.0f, bool autoPlay = false, float loopCount = 0);
+    Audio(GameObject *gameObject, const char *filePath, float gain = 1.0f, bool autoPlay = false, int loopCount = 0);
     Audio(GameObject *gameObject, AudioWrapper *audioWrapper, float gain = 1.0f, bool autoPlay = false,
-          float loopCount = 0);
+          int loopCount = 0);
     Audio();
     ~Audio() override;
     Component *clone() const override;
@@ -33,7 +33,7 @@ class Audio : public Component
     float getGain() const;
     bool isPlaying() const;
     bool isPaused() const;
-    float getLoopCount() const;
+    int getLoopCount() const;
 
     bool play();
     bool play(AudioWrapper *audioWrapper);
@@ -48,8 +48,7 @@ class Audio : public Component
 
     void setAudio(AudioWrapper *audioWrapper);
     void setGain(float gain);
-    void setLoopCount(float loopCount);
-
+    void setLoopCount(int loopCount);
 
   private:
     friend class GameManager;
@@ -73,4 +72,3 @@ template <> struct ComponentTypeFor<Audio>
 };
 
 void to_json(nlohmann::json &j, const Audio &audio);
-void from_json(const nlohmann::json &j, Audio &audio);

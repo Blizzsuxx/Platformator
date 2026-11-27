@@ -2,7 +2,6 @@
 #include "core/runtimeaccess.h"
 #include <SDL3/SDL_filesystem.h>
 #include <algorithm>
-#include <cstdio>
 #include <stdexcept>
 
 namespace fs = std::filesystem;
@@ -43,10 +42,6 @@ PathManager::PathManager(const std::string &configuredRoot) : startupBase(fs::cu
 PathManager &PathManager::getInstance()
 {
     return platformator_detail::RuntimeAccess::pathManager();
-}
-std::string PathManager::getAssetsRootAbsolutePath() const
-{
-    return root.generic_string();
 }
 
 std::string PathManager::canonicalizeAssetPath(const std::string &raw) const

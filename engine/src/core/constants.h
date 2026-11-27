@@ -10,7 +10,7 @@ inline const Eigen::Vector2f Y_AXIS(0.0f, 1.0f);
 constexpr float SCREEN_WIDTH = 1920.0f;
 constexpr float SCREEN_HEIGHT = 1080.0f;
 constexpr int TARGET_FPS = 120;
-constexpr const double FRAME_TIME = 1.0 / static_cast<double>(TARGET_FPS);
+constexpr double FRAME_TIME = 1.0 / static_cast<double>(TARGET_FPS);
 constexpr double FIXED_TIME_STEP = 1.0 / 120.0;
 constexpr unsigned MAXIMUM_CATCH_UP_STEPS = 8;
 
@@ -30,12 +30,10 @@ constexpr float FAT_AABB_MAX_VELOCITY_LEAD = 48.0f;
 constexpr float GRAVITY_VECTOR_X = 0.0f;
 constexpr float GRAVITY_VECTOR_Y = 98.10f;
 
-constexpr size_t COLLISION_SOLVER_ITERATIONS = 10;
 constexpr size_t COLLISION_SOLVER_SUBSTEPS = 4;
 constexpr float CONTACT_HERTZ = 30.0f;
 constexpr float CONTACT_DAMPING_RATIO = 10.0f;
 constexpr float COLLISION_ALLOWED_PENETRATION = 0.01f;
-constexpr float COLLISION_BIAS_FACTOR = 0.2f;
 constexpr float RESTITUTION_VELOCITY_THRESHOLD = 1.0f;
 constexpr size_t MAX_CHUNK_SIZE = 32;
 constexpr size_t CHUNK_MERGE_THRESHOLD = MAX_CHUNK_SIZE - 4;

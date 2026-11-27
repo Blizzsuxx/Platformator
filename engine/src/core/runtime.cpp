@@ -180,17 +180,18 @@ Template *Runtime::loadTemplate(const std::string &filePath) const
 void Runtime::saveScene(Scene &scene)
 {
     gameManager->saveScene(scene);
-    currentSceneFilePath = scene.resolvedFilePath().string();
+    gameManager->setCurrentSceneFilePath(scene.resolvedFilePath().string());
 }
 
 void Runtime::saveScene()
 {
-    if (currentSceneFilePath.empty())
+    const std::string &currentPath = gameManager->getCurrentSceneFilePath();
+    if (currentPath.empty())
     {
         throw std::logic_error("Platformator runtime has no current scene path to save.");
     }
 
-    saveScene(currentSceneFilePath);
+    saveScene(currentPath);
 }
 
 void Runtime::saveScene(const std::string &sceneFilePath)
@@ -223,9 +224,7 @@ void Runtime::run_with_owner_service(const std::function<bool()> &ownerThreadSer
 {
     if (!ownerThreadService)
         throw std::invalid_argument("owner-thread Runtime service callback is required");
-    if (smokeStepLimit != 0)
-        throw std::logic_error("owner-thread Runtime services cannot be combined with smoke-step mode");
-    gameManager->loop([&](SDLWindow &) { return ownerThreadService(); });
+    run_with_owner_service([&](SDLWindow &) { return ownerThreadService(); }, {});
 }
 
 void Runtime::run_with_owner_service(
@@ -241,13 +240,13 @@ void Runtime::run_with_owner_service(
 
 void Runtime::simulateFrame(double timeDelta)
 {
-    gameManager->simulateFrame(timeDelta);
+    gameManager->runSimulationStep(timeDelta);
 }
 
 void Runtime::simulateFrameWithCustomCallback(double timeDelta,
                                               const std::function<void(double)> &prePhysicsStepHook)
 {
-    gameManager->simulateFrameWithCustomCallback(prePhysicsStepHook, timeDelta);
+    gameManager->runSimulationStep(timeDelta, prePhysicsStepHook);
 }
 
 bool Runtime::simulateAndRenderFrame(double timeDelta)
@@ -258,7 +257,7 @@ bool Runtime::simulateAndRenderFrame(double timeDelta)
 bool Runtime::simulateAndRenderFrameWithCustomCallback(double timeDelta,
                                                        const std::function<void(double)> &prePhysicsStepHook)
 {
-    return gameManager->simulateAndRenderFrameWithCustomCallback(prePhysicsStepHook, timeDelta);
+    return gameManager->simulateAndRenderFrame(timeDelta, prePhysicsStepHook);
 }
 
 bool Runtime::isKeyDown(SDL_Scancode key) const

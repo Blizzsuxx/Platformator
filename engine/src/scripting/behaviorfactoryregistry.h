@@ -1,6 +1,7 @@
 #pragma once
 
 #include <functional>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -28,6 +29,7 @@ public:
     platformator::ScriptInspectionResult inspectFields(const std::string &typeName, const Behavior &instance,
                                                        platformator::ScriptInspectionLimits limits) const;
     Behavior *createBehavior(const std::string &typeName) const;
+    std::optional<platformator::ScriptDescriptor> findDescriptor(const std::string &typeName) const;
     std::vector<platformator::ScriptDescriptor> registeredDescriptors() const;
 
 private:

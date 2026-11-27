@@ -43,6 +43,29 @@ Behavior *BehaviorFactoryRegistry::createBehavior(const std::string &typeName) c
     return nullptr;
 }
 
+std::optional<platformator::ScriptDescriptor>
+BehaviorFactoryRegistry::findDescriptor(const std::string &typeName) const
+{
+    if (!factories.contains(typeName))
+        return std::nullopt;
+    const auto providers = descriptorProviders.find(typeName);
+    if (providers == descriptorProviders.end() || providers->second.empty())
+        return platformator::ScriptDescriptor{typeName, false, {}};
+    auto descriptor = providers->second.front()();
+    descriptor.name = typeName;
+    descriptor.fieldSchemaAvailable = true;
+    const auto expected = platformator::script_descriptor_json(descriptor);
+    for (std::size_t index = 1; index < providers->second.size(); ++index)
+    {
+        auto duplicate = providers->second[index]();
+        duplicate.name = typeName;
+        duplicate.fieldSchemaAvailable = true;
+        if (platformator::script_descriptor_json(duplicate) != expected)
+            throw std::runtime_error("inconsistent behavior descriptors registered for '" + typeName + "'");
+    }
+    return descriptor;
+}
+
 std::vector<platformator::ScriptDescriptor> BehaviorFactoryRegistry::registeredDescriptors() const
 {
     std::vector<std::string> names;
@@ -58,25 +81,8 @@ std::vector<platformator::ScriptDescriptor> BehaviorFactoryRegistry::registeredD
     descriptors.reserve(names.size());
     for (const auto &name : names)
     {
-        const auto providers = descriptorProviders.find(name);
-        if (providers == descriptorProviders.end() || providers->second.empty())
-        {
-            descriptors.push_back(platformator::ScriptDescriptor{name, false, {}});
-            continue;
-        }
-        auto descriptor = providers->second.front()();
-        descriptor.name = name;
-        descriptor.fieldSchemaAvailable = true;
-        const auto expected = platformator::script_descriptor_json(descriptor);
-        for (std::size_t index = 1; index < providers->second.size(); ++index)
-        {
-            auto duplicate = providers->second[index]();
-            duplicate.name = name;
-            duplicate.fieldSchemaAvailable = true;
-            if (platformator::script_descriptor_json(duplicate) != expected)
-                throw std::runtime_error("inconsistent behavior descriptors registered for '" + name + "'");
-        }
-        descriptors.push_back(std::move(descriptor));
+        if (auto descriptor = findDescriptor(name))
+            descriptors.push_back(std::move(*descriptor));
     }
     return descriptors;
 }

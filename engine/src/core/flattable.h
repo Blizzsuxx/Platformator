@@ -48,11 +48,6 @@ class FlatHashTable
         return count;
     }
 
-    size_t capacity() const noexcept
-    {
-        return slots.size();
-    }
-
     const Slot *data() const noexcept
     {
         return slots.data();
@@ -70,16 +65,6 @@ class FlatHashTable
             return nullptr;
         }
         const Slot &slot = slots[findSlot(key)];
-        return Traits::isEmpty(slot) ? nullptr : &slot;
-    }
-
-    Slot *find(const Key &key) noexcept
-    {
-        if (count == 0)
-        {
-            return nullptr;
-        }
-        Slot &slot = slots[findSlot(key)];
         return Traits::isEmpty(slot) ? nullptr : &slot;
     }
 
@@ -114,17 +99,7 @@ class FlatHashTable
 
     bool erase(const Key &key) noexcept
     {
-        if (count == 0)
-        {
-            return false;
-        }
-        const size_t idx = findSlot(key);
-        if (Traits::isEmpty(slots[idx]))
-        {
-            return false;
-        }
-        eraseAt(idx);
-        return true;
+        return erase(key, [](const Slot &) {});
     }
 
     template <typename OnFound>

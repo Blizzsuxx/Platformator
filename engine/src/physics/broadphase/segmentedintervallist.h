@@ -1,7 +1,7 @@
 #pragma once
 
-#include <array>
 #include <cstdint>
+#include <utility>
 #include <vector>
 
 #include "physics/broadphase/localsortarray.h"
@@ -18,10 +18,10 @@ class SegmentedIntervalList
 
     void clear();
     void resetToEmpty();
-    void add(BoundingRadiusProjectionAxisBinding *binding);
-    void addBulkEmpty(const std::vector<BoundingRadiusProjectionProxy *> &sortedProxies);
-    void remove(BoundingRadiusProjectionAxisBinding *binding);
-    void repairProjection(BoundingRadiusProjectionProxy *projection);
+    void add(platformator_detail::ProjectionAxisBinding *binding);
+    void addBulkEmpty(const std::vector<platformator_detail::ProjectionProxy *> &sortedProxies);
+    void remove(platformator_detail::ProjectionAxisBinding *binding);
+    void repairProjection(platformator_detail::ProjectionProxy *projection);
 
     bool getIsPrimary() const
     {
@@ -73,7 +73,7 @@ class SegmentedIntervalList
              chunk != nullptr && chunk->getSize() > 0 && chunk->getMinPosition() <= maxCoord;
              chunk = chunk->getRightChunk())
         {
-            BoundingRadiusProjectionProxy **arr = chunk->getArray();
+            platformator_detail::ProjectionProxy **arr = chunk->getArray();
             const size_t sz = chunk->getSize();
             for (size_t i = 0; i < sz; ++i)
             {
@@ -92,35 +92,24 @@ class SegmentedIntervalList
     static constexpr size_t BULK_CHUNK_FILL = 24;
 
     template <typename EmitFn>
-    void processProjectionCollisions(BoundingRadiusProjectionProxy *lowerProjection, size_t lowerIndexInsideChunk,
-                                     BoundingRadiusProjectionProxy *upperProjection, size_t upperIndexInsideChunk,
+    void processProjectionCollisions(platformator_detail::ProjectionProxy *lowerProjection, size_t lowerIndexInsideChunk,
+                                     platformator_detail::ProjectionProxy *upperProjection, size_t upperIndexInsideChunk,
                                      EmitFn &&emit);
 
-    size_t binarySearch(BoundingRadiusProjectionProxy *element) const noexcept;
-    std::pair<LocalSortArray *, size_t> find(BoundingRadiusProjectionProxy *element);
+    size_t binarySearch(platformator_detail::ProjectionProxy *element) const noexcept;
+    std::pair<LocalSortArray *, size_t> find(platformator_detail::ProjectionProxy *element);
 
-    std::pair<LocalSortArray *, size_t> add(BoundingRadiusProjectionProxy *element);
-    std::pair<LocalSortArray *, size_t> add(BoundingRadiusProjectionProxy *element, size_t chunkIndex);
-    std::pair<LocalSortArray *, size_t> remove(BoundingRadiusProjectionProxy *element);
-    std::pair<LocalSortArray *, size_t> remove(LocalSortArray *array, size_t index);
+    void add(platformator_detail::ProjectionProxy *element);
+    void add(platformator_detail::ProjectionProxy *element, size_t chunkIndex);
+    void remove(platformator_detail::ProjectionProxy *element);
+    void remove(LocalSortArray *array, size_t index);
     std::pair<LocalSortArray *, size_t> getPreviousIndex(LocalSortArray *chunk, size_t index) const;
     std::pair<LocalSortArray *, size_t> getNextIndex(LocalSortArray *chunk, size_t index) const;
 
-    void repairProjectionFromIndexInternal(BoundingRadiusProjectionProxy *projection, LocalSortArray *chunk,
+    void repairProjectionFromIndexInternal(platformator_detail::ProjectionProxy *projection, LocalSortArray *chunk,
                                            size_t arrayIndex);
-    void addCollisionsForNewlyAddedProjection(BoundingRadiusProjectionProxy *lowerProjection,
-                                              size_t lowerIndexInsideChunkWhereItWasInserted,
-                                              BoundingRadiusProjectionProxy *upperProjection,
-                                              size_t upperIndexInsideChunkWhereItWasInserted);
-    void removeCollisionsForRemovedProjection(BoundingRadiusProjectionProxy *lowerProjection,
-                                              size_t lowerIndexInsideChunkWhereItWasRemoved,
-                                              BoundingRadiusProjectionProxy *upperProjection,
-                                              size_t upperIndexInsideChunkWhereItWasRemoved);
-
-    void emitCollision(Collider *colliderA, Collider *colliderB);
-    void removeCollision(Collider *colliderA, Collider *colliderB);
-    void swap(BoundingRadiusProjectionProxy *leftRadiusProjection, size_t leftRadiusProjectionIndex,
-              BoundingRadiusProjectionProxy *rightRadiusProjection, size_t rightRadiusProjectionIndex);
+    void swap(platformator_detail::ProjectionProxy *leftRadiusProjection, size_t leftRadiusProjectionIndex,
+              platformator_detail::ProjectionProxy *rightRadiusProjection, size_t rightRadiusProjectionIndex);
 
     LocalSortArray *allocateEmptyChunk();
     LocalSortArray *allocateSplitChunk(LocalSortArray *other);

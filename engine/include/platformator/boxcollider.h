@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <cmath>
 #include <new>
 
 #include <json.hpp>
@@ -17,8 +18,6 @@ class BoxCollider : public Collider
     ~BoxCollider();
     Component *clone() const override;
 
-    Eigen::Vector2f projectOntoAxis(const Eigen::Vector2f &axis) const override;
-
     float getWidth() const;
     float getHeight() const;
     float getWidthWithoutScale() const;
@@ -26,8 +25,6 @@ class BoxCollider : public Collider
 
     void setWidth(float width);
     void setHeight(float height);
-
-    std::vector<Eigen::Vector2f> getNormals(const Collider *other) const override;
 
     const std::array<Eigen::Vector2f, 4> &getVertices() const;
     const std::array<Eigen::Vector2f, 2> &getAxes() const
@@ -46,7 +43,34 @@ class BoxCollider : public Collider
     {
         return normals[0];
     }
-    Edge getEdgeWithNormal(const Eigen::Vector2f &normal) const override;
+    Edge getSupportEdge(const Eigen::Vector2f &normal, Eigen::Vector2f *outUnitTangent = nullptr) const noexcept
+    {
+        const float projX = normal.dot(normals[0]);
+        const float projY = normal.dot(normals[1]);
+
+        if (std::abs(projX) > std::abs(projY))
+        {
+            if (projX > 0.0f)
+            {
+                if (outUnitTangent != nullptr)
+                    *outUnitTangent = normals[1];
+                return Edge(vertices[1], vertices[2], EDGE4);
+            }
+            if (outUnitTangent != nullptr)
+                *outUnitTangent = -normals[1];
+            return Edge(vertices[3], vertices[0], EDGE2);
+        }
+
+        if (projY > 0.0f)
+        {
+            if (outUnitTangent != nullptr)
+                *outUnitTangent = -normals[0];
+            return Edge(vertices[2], vertices[3], EDGE3);
+        }
+        if (outUnitTangent != nullptr)
+            *outUnitTangent = normals[0];
+        return Edge(vertices[0], vertices[1], EDGE1);
+    }
 
   private:
     float width;
@@ -56,9 +80,6 @@ class BoxCollider : public Collider
     std::array<Eigen::Vector2f, 4> vertices;
     std::array<Eigen::Vector2f, 2> normals;
 
-    void generateNormals();
-    void generateProjections();
-    void generateVertices();
     void updateCollider() override;
 };
 

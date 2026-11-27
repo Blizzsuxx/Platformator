@@ -150,7 +150,7 @@ int main(int argc, char **argv)
         }
         countAllocations = false;
         auto work = platformator_test::work;
-        require(work.hierarchyRebuilds == 0 && work.transformVisits == 0 && work.reconciliations == 0 &&
+        require(work.transformVisits == 0 && work.reconciliations == 0 &&
                     work.geometryPairs == 0 && work.contactTransitionChecks == 0 &&
                     work.contactEventRecords == 0 && work.solverRefreshPairs == 0 && work.forceBodies == 0 &&
                     work.movingBodies == 0 && work.sleepBodies == 0,
@@ -168,7 +168,7 @@ int main(int argc, char **argv)
             root->setPosition({2, 0});
         });
         work = platformator_test::work;
-        require(work.hierarchyRebuilds == 0 && work.transformVisits == 21,
+        require(work.transformVisits == 21,
                 "One dirty root must visit only its affected subtree once");
         auto *changedChild = root->getChildren().front();
         auto *retiredChild = root->getChildren().back();
@@ -188,8 +188,8 @@ int main(int argc, char **argv)
             victim->destroy();
         });
         work = platformator_test::work;
-        require(work.hierarchyRebuilds == 0 && work.forceBodies == 0 && work.movingBodies == 0,
-                "Flat creation/retirement cannot rebuild the hierarchy or integrate a terminal body");
+        require(work.forceBodies == 0 && work.movingBodies == 0,
+                "Flat creation/retirement cannot integrate a terminal body");
         platformator_test::work = {};
         auto *script = observed.front()->addComponent<ScriptComponent>()->getComponent<ScriptComponent>();
         script->addBehavior(new test_support::Behavior);

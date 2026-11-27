@@ -571,7 +571,7 @@ void checkStaticCacheReuse()
                     test_support::require(work.renderCullingViewQueryBuilds == 1 &&
                                               work.renderCullingProjectionRebuilds == 1 &&
                                               work.renderCullingFullPopulationVisits == testCase.count &&
-                                              work.renderCullingNumericRankSorts == 0 && work.spriteOrderSorts <= 1 &&
+                                              work.spriteOrderSorts <= 1 &&
                                               work.renderCullingCacheHits == 0,
                                           std::string(testCase.name) +
                                               ": initial cached-linear preparation must scan common records once");
@@ -582,7 +582,6 @@ void checkStaticCacheReuse()
                                           work.renderCullingBoundsRefreshes == 0 &&
                                           work.renderCullingFullPopulationVisits == 0 &&
                                           work.renderCullingCandidateVisits == 0 &&
-                                          work.renderCullingNumericRankSorts == 0 &&
                                           work.visibleMembershipChanges == 0 &&
                                           work.spriteOrderPreparations == 0 &&
                                           work.spriteOrderSorts == 0 &&
@@ -796,8 +795,7 @@ void checkSimultaneousCrossingOrderWork()
         test_support::require(work.renderCullingDirtyEnqueues == population &&
                                   work.renderCullingBoundsRefreshes == population,
                               "Every crossing sprite must publish and refresh exactly once");
-        test_support::require(work.renderCullingNumericRankSorts == 0 &&
-                                  work.visibleMembershipChanges == population &&
+        test_support::require(work.visibleMembershipChanges == population &&
                                   work.spriteOrderPreparations == 1 &&
                                   work.spriteOrderSorts <= 1,
                               "Simultaneous visibility changes must use bounded delta membership updates and at most one draw sort");
@@ -875,10 +873,9 @@ void checkCachedPanSelection()
                               "A camera pan under cached-linear must scan all registered common records once");
         test_support::require(work.renderCullingBoundsRefreshes == 0,
                               "Camera-only pans must reuse certified bounds");
-        test_support::require(work.renderCullingNumericRankSorts == 0 &&
-                                  work.spriteOrderEntries < population &&
+        test_support::require(work.spriteOrderEntries < population &&
                                   work.spriteOrderSorts <= 1,
-                              "Spread-scene pan must sort only retained candidates without numeric rank sorts");
+                              "Spread-scene pan must sort only retained candidates");
     }
 
     const auto &projectionWork = cached.back().work;

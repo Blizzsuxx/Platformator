@@ -1248,6 +1248,7 @@ void EditorPreview::poll_asset_reloads(const DocumentSession &document)
     {
         if (error.empty())
         {
+            auto &assets = platformator_detail::RuntimeAccess::gameManager().assetStore();
             std::set<std::filesystem::path> committedTexturePaths;
             for (const auto &target : liveTargets)
             {
@@ -1255,23 +1256,22 @@ void EditorPreview::poll_asset_reloads(const DocumentSession &document)
                 {
                     if (committedTexturePaths.contains(target.token.canonicalPath))
                     {
-                        (void)platformator_detail::RuntimeAccess::findTexture(target.logicalPath);
+                        (void)assets.findTexture(target.logicalPath);
                         continue;
                     }
                     committedTexturePaths.insert(target.token.canonicalPath);
                     const std::uint64_t candidateBytes =
                         static_cast<std::uint64_t>(result.surface->w) *
                         static_cast<std::uint64_t>(result.surface->h) * 4ULL;
-                    const std::uint64_t retainedBytes =
-                        platformator_detail::RuntimeAccess::textureCacheBytes();
+                    const std::uint64_t retainedBytes = assets.textureCacheBytes();
                     if (candidateBytes > proxyTextureBudgetBytes_ ||
                         retainedBytes > proxyTextureBudgetBytes_ - candidateBytes)
                         throw std::runtime_error("Scene preview proxy textures exceed the 256 MiB retained-texture limit.");
-                    platformator_detail::RuntimeAccess::reloadTexture(target.logicalPath, result.surface.get());
+                    assets.reloadTexture(target.logicalPath, result.surface.get());
                     work::record(work::Counter::TextureUploads);
                 }
                 else
-                    platformator_detail::RuntimeAccess::reloadAnimationClip(target.logicalPath, result.animation);
+                    assets.reloadAnimationClip(target.logicalPath, result.animation);
             }
         }
     }
@@ -1716,11 +1716,12 @@ void EditorPreview::update_proxy(const DocumentSession &document, int documentId
     }
     proxy.hasPublishedTransform = true;
 
+    auto &assets = platformator_detail::RuntimeAccess::gameManager().assetStore();
     const bool pendingSpriteReady = !proxy.info.textureAvailable && proxy.failedAssetIdentity.empty() &&
         ((!spriteInputs.texturePath.empty() &&
-          platformator_detail::RuntimeAccess::findTexture(spriteInputs.texturePath) != nullptr) ||
+          assets.findTexture(spriteInputs.texturePath) != nullptr) ||
          (!animatorInputs.clipPath.empty() &&
-          platformator_detail::RuntimeAccess::findAnimationClip(animatorInputs.clipPath) != nullptr));
+          assets.findAnimationClip(animatorInputs.clipPath) != nullptr));
     if (documentStateUnchanged && !pendingSpriteReady)
     {
         syncAuthoringAsset();
@@ -1756,7 +1757,7 @@ void EditorPreview::update_proxy(const DocumentSession &document, int documentId
     {
         if (!animationPath.empty())
         {
-            AnimationClip *cachedClip = platformator_detail::RuntimeAccess::findAnimationClip(animationPath);
+            AnimationClip *cachedClip = assets.findAnimationClip(animationPath);
             if (proxy.clip != cachedClip)
             {
                 if (proxy.clip != nullptr)
@@ -1784,7 +1785,7 @@ void EditorPreview::update_proxy(const DocumentSession &document, int documentId
         }
         if (!hasAnimationRegion && !spritePath.empty())
         {
-            region.setTextureWrapper(platformator_detail::RuntimeAccess::findTexture(spritePath));
+            region.setTextureWrapper(assets.findTexture(spritePath));
             if (spriteInputs.sourceRectEnabled)
             {
                 region.setSourceRect(SDL_FRect{spriteInputs.sourceRectX, spriteInputs.sourceRectY,
@@ -1954,10 +1955,9 @@ void EditorPreview::sync_asset_consumers(const DocumentSession &document, int do
         if (!consumers.empty())
             refresh_asset(document, path, false, consumers);
     };
-    request_if_missing(spritePath, ResourceKind::Texture,
-        platformator_detail::RuntimeAccess::findTexture(spritePath) != nullptr);
-    request_if_missing(clipPath, ResourceKind::Animation,
-        platformator_detail::RuntimeAccess::findAnimationClip(clipPath) != nullptr);
+    auto &assets = platformator_detail::RuntimeAccess::gameManager().assetStore();
+    request_if_missing(spritePath, ResourceKind::Texture, assets.findTexture(spritePath) != nullptr);
+    request_if_missing(clipPath, ResourceKind::Animation, assets.findAnimationClip(clipPath) != nullptr);
 }
 
 void EditorPreview::register_frame_consumers(const DocumentSession &document, int documentId, Proxy &proxy)
@@ -2274,6 +2274,6 @@ void EditorPreviewAccess::render_sprite(Camera &camera, Sprite &sprite, SDL_Rend
     const platformator_detail::SpriteRenderView view{
         cameraX, cameraY, static_cast<float>(outputWidth) / worldWidth,
         static_cast<float>(outputHeight) / worldHeight, outputWidth, outputHeight, false};
-    camera.renderWithView(&sprite, renderer, view, false);
+    camera.renderWithView(&sprite, renderer, view);
 }
 } // namespace platformator_editor_detail

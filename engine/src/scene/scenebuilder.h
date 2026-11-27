@@ -8,9 +8,9 @@
 #include "core/flatidmap.h"
 #include "platformator/animationclip.h"
 #include "platformator/audiowrapper.h"
-#include "platformator/referenceresolver.h"
 #include "platformator/template.h"
 #include "platformator/texturewrapper.h"
+#include "scene/referenceresolver.h"
 
 class GameManager;
 class Scene;
@@ -32,7 +32,7 @@ GameObject *buildObjectSubtree(const nlohmann::json &record, platformator::Refer
                                const SubtreeBuildSink &sink, GameObject *parent = nullptr);
 } // namespace platformator_detail
 
-class SceneBuildContext : public platformator::ReferenceResolver
+class SceneBuildContext : public platformator_detail::RuntimeReferenceResolver
 {
     friend class GameManager;
 
@@ -51,7 +51,6 @@ class SceneBuildContext : public platformator::ReferenceResolver
   private:
     GameObject *buildObject(const nlohmann::json &record, GameObject *parent = nullptr);
     void addIdentity(BaseObject &object, platformator_detail::ObjectKind kind);
-    GameManager &manager;
     std::string path;
     std::vector<GameObject *> objects;
     platformator_detail::FlatIdMap ids;
@@ -59,8 +58,5 @@ class SceneBuildContext : public platformator::ReferenceResolver
     size_t componentCount = 0;
     size_t scriptCount = 0;
     size_t animatorCount = 0;
-    std::vector<Asset::Reference<TextureWrapper>> textures;
-    std::vector<Asset::Reference<AudioWrapper>> audio;
-    std::vector<Asset::Reference<AnimationClip>> clips;
-    std::vector<Asset::Reference<Template>> templates;
+    platformator_detail::AssetRetentionLedger retainedAssets;
 };

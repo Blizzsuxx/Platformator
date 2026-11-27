@@ -83,7 +83,7 @@ float Rigidbody::calculateAutomaticMomentOfInertia() const
         return 1.0f;
     }
 
-    Collider *collider = (Collider *)gameObject->getComponent(ComponentType::COLLIDER);
+    Collider *collider = gameObject->getComponent<Collider>();
     if (collider == nullptr)
     {
         return 1.0f;
@@ -92,13 +92,13 @@ float Rigidbody::calculateAutomaticMomentOfInertia() const
     switch (collider->getColliderType())
     {
     case ColliderType::BoxCollider: {
-        const BoxCollider *boxCollider = (const BoxCollider *)collider;
+        const auto *boxCollider = static_cast<const BoxCollider *>(collider);
         float width = boxCollider->getWidth();
         float height = boxCollider->getHeight();
         return mass * (width * width + height * height) / 12.0f;
     }
     case ColliderType::CircleCollider: {
-        const CircleCollider *circleCollider = (const CircleCollider *)collider;
+        const auto *circleCollider = static_cast<const CircleCollider *>(collider);
         float radius = circleCollider->getRadius();
         return 0.5f * mass * radius * radius;
     }
@@ -118,10 +118,7 @@ Rigidbody *Rigidbody::refreshMomentOfInertiaCache()
 // Setters
 Rigidbody *Rigidbody::setVelocity(const Eigen::Vector2f &velocity)
 {
-    if (!velocity.allFinite())
-    {
-        throw std::invalid_argument("body.velocity must be finite");
-    }
+    platformator_detail::finite(velocity, "body.velocity");
     if (getIsSleeping() && velocity.squaredNorm() > WAKE_LINEAR_EPSILON_SQUARED)
     {
         wakeUp();
@@ -144,10 +141,7 @@ Rigidbody *Rigidbody::setVelocity(const Eigen::Vector2f &velocity)
 
 Rigidbody *Rigidbody::setForce(const Eigen::Vector2f &force)
 {
-    if (!force.allFinite())
-    {
-        throw std::invalid_argument("body.force must be finite");
-    }
+    platformator_detail::finite(force, "body.force");
     if (getIsSleeping() && force.squaredNorm() > WAKE_LINEAR_EPSILON_SQUARED)
     {
         wakeUp();
@@ -159,10 +153,7 @@ Rigidbody *Rigidbody::setForce(const Eigen::Vector2f &force)
 
 Rigidbody *Rigidbody::addForce(const Eigen::Vector2f &force)
 {
-    if (!force.allFinite())
-    {
-        throw std::invalid_argument("body.force must be finite");
-    }
+    platformator_detail::finite(force, "body.force");
     if (getIsSleeping() && force.squaredNorm() > WAKE_LINEAR_EPSILON_SQUARED)
     {
         wakeUp();
@@ -321,16 +312,14 @@ uint8_t Rigidbody::integrateDelta(float dx, float dy, float dAngle)
         object->sinRotation = std::sin(object->rotation);
         object->cosRotation = std::cos(object->rotation);
     }
-    return (translated ? 1 : 0) | (rotated ? 2 : 0);
+    return (translated ? INTEGRATE_TRANSLATED : 0) | (rotated ? INTEGRATE_ROTATED : 0);
 }
 
 Rigidbody *Rigidbody::addImpulse(const Eigen::Vector2f &impulse)
 {
-    if (!impulse.allFinite())
-    {
-        throw std::invalid_argument("body.impulse must be finite");
-    }
-    if (this->getBodyType() != BodyType::DYNAMIC || this->getGameObject()->getActive() == false)
+    platformator_detail::finite(impulse, "body.impulse");
+    auto *object = getGameObject();
+    if (bodyType != BodyType::DYNAMIC || object == nullptr || !object->getActive())
     {
         return this;
     }
@@ -373,16 +362,6 @@ void Rigidbody::queueParticipationChange()
     {
         platformator_detail::RuntimeAccess::physicsManager()->queueBodyParticipationChange(this);
     }
-}
-
-void Rigidbody::applySolverImpulse(const Eigen::Vector2f &impulse, const Eigen::Vector2f &arm)
-{
-    if (bodyType != DYNAMIC || sleeping)
-    {
-        return;
-    }
-    velocity += impulse * inverseMass;
-    angularVelocity += inverseMomentOfInertia * (arm.x() * impulse.y() - arm.y() * impulse.x());
 }
 
 Rigidbody *Rigidbody::wakeUp()

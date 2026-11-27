@@ -1,5 +1,4 @@
 #include "physics/colliderpair.h"
-#include "physics/broadphase/aabb.h"
 
 ColliderPair::ColliderPair(Collider *a, Collider *b)
     : objectA(nullptr), objectB(nullptr), collisionStorage(), objectAStateVersion(-1), objectBStateVersion(-1),
@@ -20,7 +19,7 @@ ColliderPair::ColliderPair(Collider *a, Collider *b)
 
 ColliderPair::~ColliderPair() = default;
 
-Collision *ColliderPair::getOrCreateCollisionNoEvent() const
+Collision *ColliderPair::getOrCreateCollisionNoEvent()
 {
     if (!hasCollision)
     {
@@ -33,7 +32,7 @@ Collision *ColliderPair::getOrCreateCollisionNoEvent() const
     return &collisionStorage;
 }
 
-void ColliderPair::clearCollisionNoEvent() const
+void ColliderPair::clearCollisionNoEvent() noexcept
 {
     hasCollision = false;
     updateCachedCollisionVersions();

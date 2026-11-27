@@ -86,8 +86,6 @@ template <typename T> class ObjectReference
     }
     T *resolve(platformator::ReferenceResolver &resolver)
     {
-        if (!resolver.shouldResolveObjectReferences())
-            return nullptr;
         if (!handle && !objectId)
             return nullptr;
         if (!handle && resolver.isExternalObjectId(*objectId))

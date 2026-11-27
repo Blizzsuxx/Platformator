@@ -5,7 +5,6 @@
 #include "audio/audiomanager.h"
 #include "core/gamemanager.h"
 #include "platformator/runtime.h"
-#include "rendering/sdlwindow.h"
 
 namespace platformator_detail
 {
@@ -50,35 +49,9 @@ TextureWrapper *RuntimeAccess::loadTexture(const std::string &filePath)
     return runtime().loadTexture(filePath);
 }
 
-TextureWrapper *RuntimeAccess::findTexture(const std::string &filePath)
-{
-    return gameManager().assetStore().findTexture(filePath);
-}
-
-std::uint64_t RuntimeAccess::textureCacheBytes()
-{
-    return gameManager().assetStore().textureCacheBytes();
-}
-
-TextureWrapper *RuntimeAccess::reloadTexture(const std::string &filePath, SDL_Surface *preparedSurface)
-{
-    return gameManager().assetStore().reloadTexture(filePath, preparedSurface);
-}
-
 AudioWrapper *RuntimeAccess::loadAudio(const std::string &filePath)
 {
     return runtime().loadAudio(filePath);
-}
-
-AnimationClip *RuntimeAccess::findAnimationClip(const std::string &filePath)
-{
-    return gameManager().assetStore().findAnimationClip(filePath);
-}
-
-AnimationClip *RuntimeAccess::reloadAnimationClip(const std::string &filePath,
-                                                   const nlohmann::json &preparedDocument)
-{
-    return gameManager().assetStore().reloadAnimationClip(filePath, preparedDocument);
 }
 
 void RuntimeAccess::freeTexture(TextureWrapper *textureWrapper)

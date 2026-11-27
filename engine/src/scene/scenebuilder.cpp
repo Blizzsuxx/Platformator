@@ -27,11 +27,6 @@ namespace
 using Json = nlohmann::json;
 using Kind = platformator_detail::ObjectKind;
 using platformator_detail::positive;
-template <typename T> T *retainAcquisition(std::vector<Asset::Reference<T>> &ledger, T *asset)
-{
-    ledger.push_back(Asset::retain(asset));
-    return asset;
-}
 } // namespace
 
 namespace platformator_detail
@@ -161,7 +156,7 @@ GameObject *buildObjectSubtree(const Json &record, platformator::ReferenceResolv
 }
 } // namespace platformator_detail
 
-SceneBuildContext::SceneBuildContext(GameManager &manager) : manager(manager)
+SceneBuildContext::SceneBuildContext(GameManager &manager) : RuntimeReferenceResolver(manager)
 {
 }
 
@@ -290,17 +285,17 @@ BaseObject *SceneBuildContext::findObject(int id, Kind kind)
 }
 TextureWrapper *SceneBuildContext::loadTexture(const std::string &path)
 {
-    return retainAcquisition(textures, manager.assetStore().loadTexture(path, true));
+    return retainedAssets.retain(RuntimeReferenceResolver::loadTexture(path));
 }
 AudioWrapper *SceneBuildContext::loadAudio(const std::string &path)
 {
-    return retainAcquisition(audio, manager.assetStore().loadAudio(path, true));
+    return retainedAssets.retain(RuntimeReferenceResolver::loadAudio(path));
 }
 AnimationClip *SceneBuildContext::loadAnimationClip(const std::string &path)
 {
-    return retainAcquisition(clips, manager.assetStore().loadAnimationClip(path, *this, true));
+    return retainedAssets.retain(RuntimeReferenceResolver::loadAnimationClip(path));
 }
 Template *SceneBuildContext::loadTemplate(const std::string &path)
 {
-    return retainAcquisition(templates, manager.assetStore().loadTemplate(path, true));
+    return retainedAssets.retain(RuntimeReferenceResolver::loadTemplate(path));
 }

@@ -57,13 +57,9 @@ class BaseObject
 {
     friend class platformator_detail::ObjectRegistry;
     friend class GameManager;
-    friend class Template;
 
   protected:
     BaseObject() = default;
-    explicit BaseObject(int loadedId) : id(loadedId)
-    {
-    }
 
   public:
     BaseObject(const BaseObject &) = delete;
@@ -105,7 +101,6 @@ class BaseObject
 class Asset
 {
     friend class GameManager;
-    friend class Template;
 
   protected:
     Asset(std::string filePath) : filePath(std::move(filePath))

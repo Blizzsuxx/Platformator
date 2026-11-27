@@ -1,56 +1,17 @@
 #pragma once
 
 #include <cstddef>
+#include <functional>
 #include <vector>
 
-#include "core/flathash.h"
 #include "core/flatmap.h"
 #include "core/flatset.h"
 #include "core/slotpool.h"
+#include "physics/broadphase/projectionproxy.h"
 #include "physics/broadphase/segmentedintervallist.h"
 #include "platformator/collider.h"
 
 class Grid;
-
-class AABBPair
-{
-  public:
-    AABBPair() noexcept : a(nullptr), b(nullptr)
-    {
-    }
-
-    AABBPair(Collider *first, Collider *second) noexcept
-        : a(first <= second ? first : second), b(first <= second ? second : first)
-    {
-    }
-
-    ~AABBPair() = default;
-
-    bool operator==(const AABBPair &other) const noexcept
-    {
-        return a == other.a && b == other.b;
-    }
-
-    struct IsEmpty
-    {
-        bool operator()(const AABBPair &pair) const noexcept
-        {
-            return pair.a == nullptr;
-        }
-    };
-
-    class HashFunction
-    {
-      public:
-        size_t operator()(const AABBPair &pair) const noexcept
-        {
-            return platformator_detail::hashPointerPair(pair.a, pair.b);
-        }
-    };
-
-    Collider *a;
-    Collider *b;
-};
 
 class AABB
 {
@@ -58,12 +19,12 @@ class AABB
     struct ColliderBinding
     {
         Collider *collider;
-        BoundingRadiusProjectionAxisBinding xBinding;
-        BoundingRadiusProjectionAxisBinding yBinding;
+        platformator_detail::ProjectionAxisBinding xBinding;
+        platformator_detail::ProjectionAxisBinding yBinding;
         bool pendingRemoval = false;
 
-        explicit ColliderBinding(Collider *collider)
-            : collider(collider), xBinding(collider->getXProjections()), yBinding(collider->getYProjections())
+        explicit ColliderBinding(Collider *collider) noexcept
+            : collider(collider), xBinding(collider, false), yBinding(collider, true)
         {
         }
     };
@@ -84,7 +45,6 @@ class AABB
     void repair(ColliderBinding *binding);
     ColliderBinding *getBinding(Collider *element);
     SegmentedIntervalList *getIntervalListX();
-    SegmentedIntervalList *getIntervalListY();
     template <typename Fn> void forEachRegisteredCollider(Fn &&fn) const
     {
         bindingMap.forEach([&](Collider *collider, ColliderBinding *) { fn(collider); });
@@ -93,34 +53,29 @@ class AABB
     void forEachOverlappingAABB(float minX, float maxX, float minY, float maxY, Visitor &&visitor) const
     {
         intervalListX.forEachOverlappingInterval(minX, maxX, [&](Collider *collider) {
-            const float cMinX = collider->getTightMinX();
-            const float cMaxX = collider->getTightMaxX();
-            const float cMinY = collider->getTightMinY();
-            const float cMaxY = collider->getTightMaxY();
-            if (cMaxX >= minX && cMinX <= maxX && cMaxY >= minY && cMinY <= maxY)
+            if (collider->overlapsTightBounds(minX, maxX, minY, maxY))
             {
-                visitor(collider, cMinX, cMaxX, cMinY, cMaxY);
+                visitor(collider, collider->getTightMinX(), collider->getTightMaxX(), collider->getTightMinY(),
+                        collider->getTightMaxY());
             }
         });
     }
     bool getIsEmpty() const;
 
   private:
-    void repairAxis(SegmentedIntervalList &list, BoundingRadiusProjectionAxisBinding &axisBinding);
+    using PairKey = platformator_detail::CanonicalColliderPairKey;
+
+    void repairAxis(SegmentedIntervalList &list, platformator_detail::ProjectionAxisBinding &axisBinding);
     bool tryClearAllRemoved(const std::vector<Collider *> &colliders);
     void axisOverlapBegin(Collider *colliderA, Collider *colliderB);
     void axisOverlapEnd(Collider *colliderA, Collider *colliderB);
-    void overlapBeginCheckpoint(Collider *colliderA, Collider *colliderB);
-    void overlapEndCheckpoint(Collider *colliderA, Collider *colliderB);
-    bool checkOverlapOnAxis(Collider *colliderA, Collider *colliderB) const;
 
     // Declare binding storage before intervalLists so proxies outlive interval chunks if implicitly torn down.
     platformator_detail::ChunkedSlotPool<ColliderBinding, 4, 64> bindingPool;
     FlatPointerMap<Collider, ColliderBinding, 8> bindingMap;
     SegmentedIntervalList intervalListX;
     SegmentedIntervalList intervalListY;
-    FlatHashSet<AABBPair, AABBPair::HashFunction, std::equal_to<AABBPair>, AABBPair::IsEmpty>
-        pairsWithBothAxisOverlapping;
+    FlatHashSet<PairKey, PairKey::Hash, std::equal_to<PairKey>, PairKey::IsEmpty> pairsWithBothAxisOverlapping;
     Grid *owner;
 
     friend class Grid;

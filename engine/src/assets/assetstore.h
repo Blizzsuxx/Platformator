@@ -69,6 +69,9 @@ class AssetStore
         void clear();
     };
 
+    void requireIdleReloadBoundary() const;
+    std::unique_ptr<TextureWrapper> wrapTexture(SDL_Texture *rawTexture, const std::string &filePath,
+                                                const std::string &canonicalPath) const;
     template <typename Resource, typename BuildFn>
     Resource *loadCached(Cache<Resource> &cache, const std::string &filePath, const std::string &resolveRequest,
                          bool required, const char *emptyMessage, BuildFn &&build);

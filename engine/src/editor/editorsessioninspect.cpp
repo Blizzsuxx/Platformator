@@ -16,6 +16,7 @@
 #include "platformator/scriptcomponent.h"
 #include "platformator/scriptregistration.h"
 #include "platformator/sprite.h"
+#include "scripting/behaviorfactoryregistry.h"
 
 namespace platformator
 {
@@ -26,10 +27,7 @@ constexpr std::size_t MaximumHierarchyPageItems = 64;
 constexpr std::size_t MaximumHierarchyNameBytes = 128;
 constexpr std::size_t MaximumInspectedBehaviors = 8;
 
-std::string bounded_utf8(std::string_view text, std::size_t byteLimit, bool &truncated)
-{
-    return metadata_detail::bounded_utf8_prefix(text, byteLimit, truncated);
-}
+using metadata_detail::bounded_utf8_prefix;
 
 const char *object_kind_name(platformator_detail::ObjectKind kind) noexcept
 {
@@ -140,7 +138,7 @@ bool build_hierarchy_snapshot(platformator::Runtime &runtime,
             return false;
         }
         bool nameTruncated = false;
-        const std::string name = bounded_utf8(object->getName(), MaximumHierarchyNameBytes, nameTruncated);
+        const std::string name = bounded_utf8_prefix(object->getName(), MaximumHierarchyNameBytes, nameTruncated);
         nlohmann::json parent = nullptr;
         if (current.hasParent)
             parent = handle_json(current.parent, platformator_detail::ObjectKind::GameObject);
@@ -185,43 +183,34 @@ nlohmann::json script_component_snapshot(const ScriptComponent &component)
         {
             const std::string typeName = behavior->getTypeName();
             bool typeTruncated = false;
-            const std::string displayType = bounded_utf8(typeName, 128, typeTruncated);
+            const std::string displayType = bounded_utf8_prefix(typeName, 128, typeTruncated);
             const auto inspected = platformator::inspectRegisteredScriptFields(typeName, *behavior, limits);
             nlohmann::json fields = nlohmann::json::array();
             for (const auto &field : inspected.fields)
             {
                 bool nameTruncated = false;
                 bool reasonTruncated = false;
-                fields.push_back({{"name", bounded_utf8(field.name, 128, nameTruncated)},
+                fields.push_back({{"name", bounded_utf8_prefix(field.name, 128, nameTruncated)},
                                   {"kind", field.kind}, {"available", field.available},
                                   {"truncated", field.truncated || nameTruncated},
                                   {"value", field.value},
-                                  {"unavailable_reason", bounded_utf8(field.unavailableReason, 256,
+                                  {"unavailable_reason", bounded_utf8_prefix(field.unavailableReason, 256,
                                                                        reasonTruncated)}});
             }
             if (!inspected.providerAvailable)
             {
-                const auto catalog = platformator::exportRegisteredBehaviorCatalog();
-                for (const auto &descriptor : catalog.value("behaviors", nlohmann::json::array()))
+                if (const auto descriptor = BehaviorFactoryRegistry::getInstance().findDescriptor(typeName))
                 {
-                    if (!descriptor.is_object() || descriptor.value("name", std::string{}) != typeName)
-                        continue;
-                    const auto declaredFields = descriptor.find("fields");
-                    if (declaredFields == descriptor.end() || !declaredFields->is_array())
-                        break;
-                    for (const auto &declared : *declaredFields)
+                    for (const auto &declared : descriptor->fields)
                     {
-                        if (!declared.is_object())
-                            continue;
                         bool nameTruncated = false;
-                        fields.push_back({{"name", bounded_utf8(declared.value("name", std::string{}),
-                                                                  128, nameTruncated)},
-                                          {"kind", declared.value("kind", std::string("opaque_json"))},
-                                          {"available", false}, {"truncated", nameTruncated},
+                        fields.push_back({{"name", bounded_utf8_prefix(declared.name, 128, nameTruncated)},
+                                          {"kind", script_field_kind_name(declared.kind)},
+                                          {"available", false},
+                                          {"truncated", nameTruncated},
                                           {"value", nullptr},
                                           {"unavailable_reason", "no generated read-only accessor"}});
                     }
-                    break;
                 }
             }
             behaviors.push_back({{"type", displayType}, {"type_truncated", typeTruncated},
@@ -234,7 +223,7 @@ nlohmann::json script_component_snapshot(const ScriptComponent &component)
         {
             bool reasonTruncated = false;
             behaviors.push_back({{"provider_available", false},
-                                 {"unavailable_reason", bounded_utf8(exception.what(), 256,
+                                 {"unavailable_reason", bounded_utf8_prefix(exception.what(), 256,
                                                                       reasonTruncated)}});
         }
         catch (...)
@@ -264,7 +253,7 @@ nlohmann::json component_snapshot(Component &component)
         properties = {{"playing", value.getIsPlaying()}, {"paused", value.getIsPaused()},
                       {"frame_index", value.getCurrentFrameIndex()},
                       {"playback_speed", safe_number(value.getPlaybackSpeed())},
-                      {"clip_name", bounded_utf8(clipPath, 128, clipNameTruncated)},
+                      {"clip_name", bounded_utf8_prefix(clipPath, 128, clipNameTruncated)},
                       {"clip_name_truncated", clipNameTruncated}};
         break;
     }
@@ -274,7 +263,7 @@ nlohmann::json component_snapshot(Component &component)
         kind = ObjectKind::Audio;
         typeName = "audio";
         bool pathTruncated = false;
-        properties = {{"file_path", bounded_utf8(value.getFilePath(), 256, pathTruncated)},
+        properties = {{"file_path", bounded_utf8_prefix(value.getFilePath(), 256, pathTruncated)},
                       {"path_truncated", pathTruncated}, {"auto_play", value.getAutoPlay()},
                       {"gain", safe_number(value.getGain())},
                       {"loop_count", safe_number(value.getLoopCount())},
@@ -353,7 +342,7 @@ nlohmann::json component_snapshot(Component &component)
         properties = {{"width", safe_number(value.getWidthWithoutScale())},
                       {"height", safe_number(value.getHeightWithoutScale())},
                       {"flip", static_cast<int>(value.getFlip())},
-                      {"asset_path", texture ? nlohmann::json(bounded_utf8(texture->getFilePath(),
+                      {"asset_path", texture ? nlohmann::json(bounded_utf8_prefix(texture->getFilePath(),
                                                         256, pathTruncated)) : nlohmann::json(nullptr)},
                       {"path_truncated", pathTruncated}};
         if (value.hasSourceRect())
@@ -388,34 +377,63 @@ bool EditorSessionService::enqueue_inspection_event(std::string type, nlohmann::
     return false;
 }
 
-bool EditorSessionService::handle_list_objects(const editor_session::Message &message, std::uint64_t runtimeSerial)
+bool EditorSessionService::begin_inspection_request(const editor_session::Message &message,
+                                                    std::uint64_t runtimeSerial, const char *responseEvent,
+                                                    bool resetSnapshotOnStale, Runtime *&outRuntime, bool &outOk)
 {
+    outRuntime = nullptr;
     if (!inspectionPageGate_.try_begin())
     {
-        return enqueue_inspection_event("inspection_busy",
-                                        {{"request_sequence", message.sequence},
-                                         {"message", "wait for the outstanding inspection response"}},
-                                        runtimeSerial);
+        outOk = enqueue_inspection_event("inspection_busy",
+                                         {{"request_sequence", message.sequence},
+                                          {"message", "wait for the outstanding inspection response"}},
+                                         runtimeSerial);
+        return false;
     }
+
+    auto respond = [&](std::string status, nlohmann::json details = nlohmann::json::object()) {
+        details["status"] = std::move(status);
+        details["request_sequence"] = message.sequence;
+        return enqueue_inspection_event(responseEvent, std::move(details), runtimeSerial);
+    };
+    if (!capabilities_.runtimeInspection)
+    {
+        outOk = respond("unsupported", {{"message", "runtime inspection is not advertised"}});
+        return false;
+    }
+    const auto serialValue = message.body.find("runtime_serial");
+    std::uint64_t requestedRuntimeSerial = 0;
+    if (serialValue == message.body.end() || !read_unsigned(*serialValue, requestedRuntimeSerial))
+    {
+        outOk = respond("invalid", {{"message", "runtime_serial must be an unsigned integer"}});
+        return false;
+    }
+    auto *runtime = platformator::Runtime::tryGetCurrent();
+    if (runtime == nullptr || runtime->getRuntimeSerial() != runtimeSerial || requestedRuntimeSerial != runtimeSerial)
+    {
+        if (resetSnapshotOnStale)
+            reset_hierarchy_snapshot();
+        outOk = respond("stale", {{"runtime_serial", runtimeSerial},
+                                  {"message", "request belongs to another Runtime"}});
+        return false;
+    }
+    outRuntime = runtime;
+    outOk = true;
+    return true;
+}
+
+bool EditorSessionService::handle_list_objects(const editor_session::Message &message, std::uint64_t runtimeSerial)
+{
+    Runtime *runtime = nullptr;
+    bool ok = false;
+    if (!begin_inspection_request(message, runtimeSerial, "object_page", true, runtime, ok))
+        return ok;
 
     auto respond = [&](std::string status, nlohmann::json details = nlohmann::json::object()) {
         details["status"] = std::move(status);
         details["request_sequence"] = message.sequence;
         return enqueue_inspection_event("object_page", std::move(details), runtimeSerial);
     };
-    if (!capabilities_.runtimeInspection)
-        return respond("unsupported", {{"message", "runtime inspection is not advertised"}});
-    const auto serialValue = message.body.find("runtime_serial");
-    std::uint64_t requestedRuntimeSerial = 0;
-    if (serialValue == message.body.end() || !read_unsigned(*serialValue, requestedRuntimeSerial))
-        return respond("invalid", {{"message", "runtime_serial must be an unsigned integer"}});
-    auto *runtime = platformator::Runtime::tryGetCurrent();
-    if (runtime == nullptr || runtime->getRuntimeSerial() != runtimeSerial || requestedRuntimeSerial != runtimeSerial)
-    {
-        reset_hierarchy_snapshot();
-        return respond("stale", {{"runtime_serial", runtimeSerial},
-                                  {"message", "request belongs to another Runtime"}});
-    }
 
     std::uint64_t cursor = 0;
     std::uint64_t snapshotRevision = 0;
@@ -500,28 +518,20 @@ bool EditorSessionService::handle_list_objects(const editor_session::Message &me
 
 bool EditorSessionService::handle_inspect_object(const editor_session::Message &message, std::uint64_t runtimeSerial)
 {
-    if (!inspectionPageGate_.try_begin())
-    {
-        return enqueue_inspection_event("inspection_busy",
-                                        {{"request_sequence", message.sequence},
-                                         {"message", "wait for the outstanding inspection response"}},
-                                        runtimeSerial);
-    }
+    Runtime *runtime = nullptr;
+    bool ok = false;
+    if (!begin_inspection_request(message, runtimeSerial, "object_snapshot", false, runtime, ok))
+        return ok;
 
     auto respond = [&](std::string status, nlohmann::json details = nlohmann::json::object()) {
         details["status"] = std::move(status);
         details["request_sequence"] = message.sequence;
         return enqueue_inspection_event("object_snapshot", std::move(details), runtimeSerial);
     };
-    if (!capabilities_.runtimeInspection)
-        return respond("unsupported", {{"message", "runtime inspection is not advertised"}});
-    const auto serialValue = message.body.find("runtime_serial");
     const auto handleValue = message.body.find("handle");
-    std::uint64_t requestedRuntimeSerial = 0;
     std::uint64_t slot = 0;
     std::uint64_t generation = 0;
-    if (serialValue == message.body.end() || !read_unsigned(*serialValue, requestedRuntimeSerial) ||
-        handleValue == message.body.end() || !handleValue->is_object() ||
+    if (handleValue == message.body.end() || !handleValue->is_object() ||
         !handleValue->contains("slot") || !read_unsigned((*handleValue)["slot"], slot) ||
         slot > std::numeric_limits<std::uint32_t>::max() ||
         !handleValue->contains("generation") ||
@@ -529,12 +539,8 @@ bool EditorSessionService::handle_inspect_object(const editor_session::Message &
         !handleValue->contains("kind") || !(*handleValue)["kind"].is_string() ||
         (*handleValue)["kind"].get<std::string>() != "game_object")
         return respond("invalid", {{"message", "inspect_object requires a game_object handle"}});
-    auto *runtime = platformator::Runtime::tryGetCurrent();
-    if (runtime == nullptr || runtime->getRuntimeSerial() != runtimeSerial || requestedRuntimeSerial != runtimeSerial)
-        return respond("stale", {{"runtime_serial", runtimeSerial},
-                                  {"message", "request belongs to another Runtime"}});
 
-    const platformator::ObjectHandle handle{static_cast<std::uint32_t>(slot), generation, requestedRuntimeSerial};
+    const platformator::ObjectHandle handle{static_cast<std::uint32_t>(slot), generation, runtimeSerial};
     auto *base = runtime->resolveHandle(handle, platformator_detail::ObjectKind::GameObject);
     auto *object = base == nullptr ? nullptr : static_cast<GameObject *>(base);
     if (object == nullptr || object->getLifecycle() != ObjectLifecycle::Live)
@@ -570,9 +576,9 @@ bool EditorSessionService::handle_inspect_object(const editor_session::Message &
     details["runtime_serial"] = runtimeSerial;
     details["handle"] = handle_json(handle, platformator_detail::ObjectKind::GameObject);
     details["file_id"] = object->getId();
-    details["name"] = bounded_utf8(object->getName(), MaximumHierarchyNameBytes, nameTruncated);
+    details["name"] = bounded_utf8_prefix(object->getName(), MaximumHierarchyNameBytes, nameTruncated);
     details["name_truncated"] = nameTruncated;
-    details["tag"] = bounded_utf8(object->getTag(), MaximumHierarchyNameBytes, tagTruncated);
+    details["tag"] = bounded_utf8_prefix(object->getTag(), MaximumHierarchyNameBytes, tagTruncated);
     details["tag_truncated"] = tagTruncated;
     details["active"] = object->getActive();
     details["position"] = {{"x", safe_number(position.x())}, {"y", safe_number(position.y())}};

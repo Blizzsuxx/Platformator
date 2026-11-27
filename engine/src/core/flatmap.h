@@ -4,7 +4,6 @@
 #include <cstddef>
 #include <functional>
 #include <type_traits>
-#include <utility>
 
 #include "core/flathash.h"
 #include "core/flattable.h"
@@ -46,11 +45,6 @@ class FlatHashMap
     {
         const Entry *entry = table.find(key);
         return entry != nullptr ? entry->value : nullptr;
-    }
-
-    bool contains(const Key &key) const noexcept
-    {
-        return find(key) != nullptr;
     }
 
     void insertOrAssign(const Key &key, ValuePtr value)

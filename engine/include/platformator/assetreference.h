@@ -18,14 +18,6 @@
 #include <stdexcept>
 #include "platformator/texturewrapper.h"
 
-namespace platformator_detail
-{
-TextureWrapper *loadTextureAssetReference(platformator::Runtime &runtime, const std::string &assetPath);
-AudioWrapper *loadAudioAssetReference(platformator::Runtime &runtime, const std::string &assetPath);
-AnimationClip *loadAnimationClipAssetReference(platformator::Runtime &runtime, const std::string &assetPath);
-Template *loadTemplateAssetReference(platformator::Runtime &runtime, const std::string &assetPath);
-} // namespace platformator_detail
-
 template <typename T> inline constexpr bool always_false_asset_reference_v = false;
 
 template <typename T> class AssetReference
@@ -265,26 +257,16 @@ template <typename T> class AssetReference
     static T *loadAsset(platformator::Runtime &runtime, const std::string &assetPath)
     {
         if constexpr (std::is_same_v<T, TextureWrapper>)
-        {
-            return platformator_detail::loadTextureAssetReference(runtime, assetPath);
-        }
+            return runtime.loadTexture(assetPath);
         else if constexpr (std::is_same_v<T, AudioWrapper>)
-        {
-            return platformator_detail::loadAudioAssetReference(runtime, assetPath);
-        }
+            return runtime.loadAudio(assetPath);
         else if constexpr (std::is_same_v<T, AnimationClip>)
-        {
-            return platformator_detail::loadAnimationClipAssetReference(runtime, assetPath);
-        }
+            return runtime.loadAnimationClip(assetPath);
         else if constexpr (std::is_same_v<T, Template>)
-        {
-            return platformator_detail::loadTemplateAssetReference(runtime, assetPath);
-        }
+            return runtime.loadTemplate(assetPath);
         else
-        {
             static_assert(always_false_asset_reference_v<T>,
                           "AssetReference does not know how to load this asset type.");
-        }
     }
 
     void assertLifetime() const

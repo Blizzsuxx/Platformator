@@ -1,12 +1,11 @@
 #include "physics/physicsgeometry.h"
+
+#include <cmath>
+
+#include "buildconfig.h"
 #include "physics/colliderpair.h"
-#include "core/constants.h"
-#include "rendering/debugdraw.h"
-#include "core/helpers.h"
 #include "platformator/boxcollider.h"
 #include "platformator/circlecollider.h"
-#include <cmath>
-#include <limits>
 
 namespace physics_geometry
 {
@@ -19,23 +18,22 @@ void generateFallbackContactPoint(Collision *collision)
 {
     const auto *referenceObject = collision->getReferenceObject();
     const auto *incidentObject = collision->getIncidentObject();
-    // As a fallback, we can use the midpoint between the two objects as the contact point, with a penetration of 0.
-    Eigen::Vector2f positionA = referenceObject->getGameObject()->getPosition();
-    Eigen::Vector2f positionB = incidentObject->getGameObject()->getPosition();
-    Eigen::Vector2f midpoint = (positionA + positionB) * 0.5f;
+    const Eigen::Vector2f midpoint =
+        (referenceObject->getCachedWorldPosition() + incidentObject->getCachedWorldPosition()) * 0.5f;
 
-    ClipVertex fallbackContactPoint(midpoint, ContactFeature());
     ClipPoints fallbackClipPoints;
-    fallbackClipPoints.add(fallbackContactPoint);
+    fallbackClipPoints.add(midpoint, ContactFeature());
     collision->setContactPoints(fallbackClipPoints);
 }
 
-void circleCircleCollision(const ColliderPair &pair, const Eigen::Vector2f &gravityDirection)
+void circleCircleCollision(ColliderPair &pair, const Eigen::Vector2f &gravityDirection)
 {
     const auto *a = static_cast<const CircleCollider *>(pair.getObjectA());
     const auto *b = static_cast<const CircleCollider *>(pair.getObjectB());
+    const float radiusA = a->getPublishedRadius();
+    const float radiusB = b->getPublishedRadius();
     const Eigen::Vector2f delta = b->getCachedWorldPosition() - a->getCachedWorldPosition();
-    const float radius = a->getRadius() + b->getRadius();
+    const float radius = radiusA + radiusB;
     const float squared = delta.squaredNorm();
     if (squared > radius * radius)
     {
@@ -49,16 +47,14 @@ void circleCircleCollision(const ColliderPair &pair, const Eigen::Vector2f &grav
     collision->setIncidentObject(b);
     collision->setNormal(normal);
     ClipPoints points;
-    points.add((a->getCachedWorldPosition() + normal * a->getRadius() + b->getCachedWorldPosition() -
-                normal * b->getRadius()) *
-                   0.5f,
+    points.add((a->getCachedWorldPosition() + normal * radiusA + b->getCachedWorldPosition() - normal * radiusB) * 0.5f,
                ContactFeature(0x100));
     collision->setContactPoints(points);
     collision->getContactPoints().points[0].separation = distance - radius;
     collision->updateSupportState(gravityDirection);
 }
 
-void circleBoxCollision(const ColliderPair &pair, const Eigen::Vector2f &gravityDirection)
+void circleBoxCollision(ColliderPair &pair, const Eigen::Vector2f &gravityDirection)
 {
     const bool boxIsA = pair.getObjectA()->getColliderType() == ColliderType::BoxCollider;
     const auto *box = static_cast<const BoxCollider *>(boxIsA ? pair.getObjectA() : pair.getObjectB());
@@ -69,7 +65,8 @@ void circleBoxCollision(const ColliderPair &pair, const Eigen::Vector2f &gravity
     const Eigen::Vector2f half(box->getPublishedHalfWidth(), box->getPublishedHalfHeight());
     const Eigen::Vector2f closest = local.cwiseMax(-half).cwiseMin(half);
     const Eigen::Vector2f gap = local - closest;
-    const float radius = circle->getRadius(), squared = gap.squaredNorm();
+    const float radius = circle->getPublishedRadius();
+    const float squared = gap.squaredNorm();
     if (squared > radius * radius)
     {
         pair.clearCollisionNoEvent();
@@ -108,68 +105,14 @@ void circleBoxCollision(const ColliderPair &pair, const Eigen::Vector2f &gravity
     collision->getContactPoints().points[0].separation = separation;
     collision->updateSupportState(gravityDirection);
 }
-
-inline Edge boxEdgeAndUnitTangent(const BoxCollider *box, const Eigen::Vector2f &normal,
-                                  Eigen::Vector2f &outTangent) noexcept
-{
-    const auto &axes = box->getAxes();
-    const auto &verts = box->getVertices();
-    const float projX = normal.dot(axes[0]);
-    const float projY = normal.dot(axes[1]);
-
-    if (std::abs(projX) > std::abs(projY))
-    {
-        if (projX > 0.0f)
-        {
-            outTangent = axes[1];
-            return Edge(verts[1], verts[1], verts[2], EDGE4);
-        }
-        outTangent = -axes[1];
-        return Edge(verts[3], verts[3], verts[0], EDGE2);
-    }
-
-    if (projY > 0.0f)
-    {
-        outTangent = -axes[0];
-        return Edge(verts[2], verts[2], verts[3], EDGE3);
-    }
-    outTangent = axes[0];
-    return Edge(verts[0], verts[0], verts[1], EDGE1);
-}
-
-inline Edge boxEdgeWithNormal(const BoxCollider *box, const Eigen::Vector2f &normal) noexcept
-{
-    const auto &axes = box->getAxes();
-    const auto &verts = box->getVertices();
-    const float projX = normal.dot(axes[0]);
-    const float projY = normal.dot(axes[1]);
-
-    if (std::abs(projX) > std::abs(projY))
-    {
-        if (projX > 0.0f)
-        {
-            return Edge(verts[1], verts[1], verts[2], EDGE4);
-        }
-        return Edge(verts[3], verts[3], verts[0], EDGE2);
-    }
-
-    if (projY > 0.0f)
-    {
-        return Edge(verts[2], verts[2], verts[3], EDGE3);
-    }
-    return Edge(verts[0], verts[0], verts[1], EDGE1);
-}
 } // namespace
 
-void updateContactGeometry(const ColliderPair &pair, const Eigen::Vector2f &gravityDirection)
+void updateContactGeometry(ColliderPair &pair, const Eigen::Vector2f &gravityDirection)
 {
     const Collider *colliderA = pair.getObjectA();
     const Collider *colliderB = pair.getObjectB();
 
-    if (colliderA->getTightMaxX() < colliderB->getTightMinX() ||
-        colliderB->getTightMaxX() < colliderA->getTightMinX() ||
-        colliderA->getTightMaxY() < colliderB->getTightMinY() ||
-        colliderB->getTightMaxY() < colliderA->getTightMinY())
+    if (!colliderA->overlapsTightBounds(*colliderB))
     {
         pair.clearCollisionNoEvent();
         return;
@@ -191,7 +134,7 @@ void updateContactGeometry(const ColliderPair &pair, const Eigen::Vector2f &grav
         return;
     }
 
-    // Analytical 2D OBB SAT: avoids virtual projectOntoAxis calls and 4-vertex projection loops.
+    // Analytical 2D OBB SAT: avoids virtual calls and 4-vertex projection loops.
     const auto *boxA = static_cast<const BoxCollider *>(colliderA);
     const auto *boxB = static_cast<const BoxCollider *>(colliderB);
     const auto &axesA = boxA->getAxes();
@@ -289,8 +232,8 @@ void calculateBoxContactPoints(Collision *collision, const BoxCollider *referenc
     const Eigen::Vector2f &normal = collision->getNormal();
 
     Eigen::Vector2f referenceEdgeVector;
-    const Edge referenceEdge = boxEdgeAndUnitTangent(referenceBox, normal, referenceEdgeVector);
-    const Edge incidentEdge = boxEdgeWithNormal(incidentBox, -normal);
+    const Edge referenceEdge = referenceBox->getSupportEdge(normal, &referenceEdgeVector);
+    const Edge incidentEdge = incidentBox->getSupportEdge(-normal);
 
     ClipVertex incidentVertices[2];
     incidentVertices[0] = ClipVertex(
@@ -324,7 +267,7 @@ void calculateBoxContactPoints(Collision *collision, const BoxCollider *referenc
         return;
     }
 
-    const float max = normal.dot(referenceEdge.max);
+    const float max = normal.dot(referenceEdge.v1);
 
     ClipPoints cp;
     float separations[2];

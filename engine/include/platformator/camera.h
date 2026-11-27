@@ -25,13 +25,11 @@ public:
 	Camera(GameObject *gameObject);
 	Camera(GameObject *gameObject, float x, float y, float w, float h);
 	Camera(GameObject *gameObject, float w, float h);
-	~Camera();
+	~Camera() override = default;
 	Component *clone() const override;
 
 	void render(Sprite *sprite, SDL_Renderer *renderer, int outputWidth, int outputHeight);
 	Eigen::Vector2f worldToScreenPoint(const Eigen::Vector2f &worldPoint, int outputWidth, int outputHeight) const;
-	Eigen::Vector2f worldToScreenSize(const Eigen::Vector2f &worldSize, int outputWidth, int outputHeight) const;
-	SDL_FRect worldToScreenRect(const SDL_FRect &worldRect, int outputWidth, int outputHeight) const;
 
 	SDL_FRect getCamera() const;
 	float getHeight() const;
@@ -51,7 +49,7 @@ private:
     platformator_detail::SpriteRenderView prepareRenderView(int outputWidth, int outputHeight,
                                                              bool cullingEligible) const;
     void renderWithView(Sprite *sprite, SDL_Renderer *renderer,
-                        const platformator_detail::SpriteRenderView &view, bool applyCulling = true) const;
+                        const platformator_detail::SpriteRenderView &view) const;
     const Eigen::Vector2f &getPublishedSpritePosition(Sprite *sprite) const;
     void prepareSpriteGeometry(Sprite *sprite, const platformator_detail::SpriteRenderView &view,
                                SDL_FRect &destination, float &angleDegrees) const;

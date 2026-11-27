@@ -9,8 +9,6 @@
 #include "core/objectpool.h"
 #include "platformator/animator.h"
 #include "platformator/audio.h"
-#include "platformator/camera.h"
-#include "platformator/runtime.h"
 #include "platformator/scene.h"
 #include "platformator/scriptcomponent.h"
 #include "platformator/template.h"
@@ -201,7 +199,7 @@ void GameManager::commitSceneTransition(SceneRequest selected)
     if (clearing)
     {
         nextFileId = 0;
-        platformator::Runtime::current().currentSceneFilePath.clear();
+        currentSceneFilePath.clear();
     }
 
     if (prepared)
@@ -223,7 +221,7 @@ void GameManager::commitSceneTransition(SceneRequest selected)
                 }
             }
         }
-        platformator::Runtime::current().currentSceneFilePath = std::move(prepared->path);
+        currentSceneFilePath = std::move(prepared->path);
         reconcilePending(error);
     }
     if (error)

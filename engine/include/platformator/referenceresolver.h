@@ -28,10 +28,6 @@ class ReferenceResolver
     {
         return false;
     }
-    virtual bool shouldResolveObjectReferences() const
-    {
-        return true;
-    }
     virtual bool isExternalObjectId(int) const
     {
         return false;

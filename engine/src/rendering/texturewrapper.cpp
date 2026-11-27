@@ -1,6 +1,4 @@
 #include "platformator/texturewrapper.h"
-#include "platformator/sprite.h"
-#include <algorithm>
 #include "core/runtimeaccess.h"
 
 TextureWrapper::TextureWrapper(SDL_Texture *texture, const std::string &filePath)

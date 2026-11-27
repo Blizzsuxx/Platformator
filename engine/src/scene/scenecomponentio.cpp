@@ -111,6 +111,12 @@ template <typename T> void pushComponentIfPresent(nlohmann::json &components, co
         components.push_back(*component);
     }
 }
+
+template <typename T> void deserializeWithActiveRuntime(const nlohmann::json &j, T &target)
+{
+    platformator_detail::ActiveReferenceResolver resolver(platformator::Runtime::current());
+    deserialize(j, target, resolver);
+}
 } // namespace
 
 // --- AnimationFrame & AnimationClip ---
@@ -168,26 +174,12 @@ void deserialize(const nlohmann::json &j, AnimationClip &clip, platformator::Ref
 
 void from_json(const nlohmann::json &j, AnimationFrame &frame)
 {
-    platformator_detail::ActiveReferenceResolver resolver(platformator::Runtime::current());
-    deserialize(j, frame, resolver);
+    deserializeWithActiveRuntime(j, frame);
 }
 
 void from_json(const nlohmann::json &j, AnimationClip &clip)
 {
-    platformator_detail::ActiveReferenceResolver resolver(platformator::Runtime::current());
-    deserialize(j, clip, resolver);
-}
-
-// --- Asset Wrappers ---
-
-void to_json(nlohmann::json &j, const TextureWrapper &textureWrapper)
-{
-    j = nlohmann::json{{"filePath", textureWrapper.getFilePath()}};
-}
-
-void to_json(nlohmann::json &j, const AudioWrapper &audioWrapper)
-{
-    j = nlohmann::json{{"filePath", audioWrapper.getFilePath()}};
+    deserializeWithActiveRuntime(j, clip);
 }
 
 // --- Animator ---
@@ -225,12 +217,6 @@ void deserialize(const nlohmann::json &j, Animator &animator, platformator::Refe
     }
 }
 
-void from_json(const nlohmann::json &j, Animator &animator)
-{
-    platformator_detail::ActiveReferenceResolver resolver(platformator::Runtime::current());
-    deserialize(j, animator, resolver);
-}
-
 // --- Audio ---
 
 void to_json(nlohmann::json &j, const Audio &audio)
@@ -251,17 +237,11 @@ void deserialize(const nlohmann::json &j, Audio &audio, platformator::ReferenceR
     audio.setAudio(filePath.empty() ? nullptr : resolver.loadAudio(filePath));
 
     audio.setGain(j.at("gain").get<float>());
-    audio.setLoopCount(j.at("loopCount").get<float>());
+    audio.setLoopCount(j.at("loopCount").get<int>());
 
     bool autoPlay;
     j.at("autoPlay").get_to(autoPlay);
     audio.setAutoPlay(autoPlay);
-}
-
-void from_json(const nlohmann::json &j, Audio &audio)
-{
-    platformator_detail::ActiveReferenceResolver resolver(platformator::Runtime::current());
-    deserialize(j, audio, resolver);
 }
 
 // --- Colliders ---
@@ -444,8 +424,7 @@ void deserialize(const nlohmann::json &j, Sprite &sprite, platformator::Referenc
 
 void from_json(const nlohmann::json &j, Sprite &sprite)
 {
-    platformator_detail::ActiveReferenceResolver resolver(platformator::Runtime::current());
-    deserialize(j, sprite, resolver);
+    deserializeWithActiveRuntime(j, sprite);
 }
 
 // --- GameObject ---
@@ -484,9 +463,4 @@ void to_json(nlohmann::json &j, const GameObject &gameObject)
     pushComponentIfPresent<ScriptComponent>(components, gameObject);
     pushComponentIfPresent<Camera>(components, gameObject);
     pushComponentIfPresent<Audio>(components, gameObject);
-}
-
-void from_json(const nlohmann::json &, GameObject &)
-{
-    throw std::logic_error("Deserialize GameObjects through Runtime::loadScene so their graph has an owner");
 }

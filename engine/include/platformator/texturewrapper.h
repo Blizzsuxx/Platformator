@@ -1,14 +1,10 @@
 #pragma once
 
-#include <cstddef>
 #include <string>
 
 #include <SDL3/SDL_render.h>
-#include <json.hpp>
 
 #include "platformator/baseobject.h"
-
-class Sprite;
 
 class TextureWrapper : public Asset
 {
@@ -84,5 +80,3 @@ struct TextureRegion
     SDL_FRect sourceRect{0.0f, 0.0f, 0.0f, 0.0f};
     bool hasSourceRect = false;
 };
-
-void to_json(nlohmann::json &j, const TextureWrapper &textureWrapper);

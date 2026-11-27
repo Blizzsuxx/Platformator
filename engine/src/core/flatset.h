@@ -4,7 +4,6 @@
 #include <cstddef>
 #include <functional>
 #include <iterator>
-#include <utility>
 
 #include "core/flathash.h"
 #include "core/flattable.h"
@@ -107,24 +106,9 @@ class FlatHashSet
         return table.erase(key) ? 1 : 0;
     }
 
-    void reserve(size_t expected)
-    {
-        table.reserve(expected);
-    }
-
     void clear() noexcept
     {
         table.clear();
-    }
-
-    void clearAndRelease() noexcept
-    {
-        table.clearAndRelease();
-    }
-
-    void swap(FlatHashSet &other) noexcept
-    {
-        table.swap(other.table);
     }
 
     const_iterator begin() const noexcept

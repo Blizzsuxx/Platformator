@@ -5,6 +5,7 @@
 #include <array>
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <optional>
 #include <vector>
 
@@ -64,7 +65,7 @@ class SDLWindow
     RenderCullingPolicy getRenderCullingPolicy() const noexcept;
     RenderFallbackCounts getObservedRenderFallbackCounts() const noexcept;
 
-    void handleSDLEvents(double deltaTime);
+    void handleSDLEvents();
     void setEditorKey(SDL_Scancode key, bool down) noexcept
     {
         if (key > SDL_SCANCODE_UNKNOWN && key < SDL_SCANCODE_COUNT)
@@ -116,7 +117,6 @@ class SDLWindow
     BenchmarkOrderTiming consumeBenchmarkOrderTiming() noexcept;
     BenchmarkOrderTiming consumeBenchmarkSelectionTiming() noexcept;
 #endif
-    void releaseRenderingStorage() noexcept;
     void clearSceneComponents() noexcept;
 
     bool shouldSimulateFrame() const;
@@ -153,6 +153,32 @@ class SDLWindow
         bool preparedOnce = false;
         bool orderDirty = true;
         bool preparedAll = false;
+
+        void invalidateForPopulationChange() noexcept
+        {
+            entries.clear();
+            orderDirty = true;
+#if PLATFORMATOR_ENABLE_BENCHMARK_ORDER_MODES
+            singleEditCandidateValid = false;
+#endif
+            preparedAll = false;
+        }
+
+        void releaseStorage() noexcept
+        {
+            std::vector<uint64_t>().swap(sequenceBySlot);
+            std::vector<SpriteDrawEntry>().swap(entries);
+            nextSequence = 1;
+            preparedMembershipRevision = 0;
+#if PLATFORMATOR_ENABLE_BENCHMARK_ORDER_MODES
+            singleEditSlot = 0;
+            benchmarkTiming = {};
+            singleEditCandidateValid = false;
+#endif
+            preparedOnce = false;
+            orderDirty = true;
+            preparedAll = false;
+        }
     };
 
     std::array<bool, SDL_SCANCODE_COUNT> editorKeys{};
@@ -163,9 +189,7 @@ class SDLWindow
     SDL_Renderer *renderer;
     AudioManager *audioManager = nullptr;
     Camera *mainCamera;
-    SDL_Event sdlEvent;
     DebugDraw &debugDraw;
-    const char *rendererName;
     WindowSettings windowSettings;
     int renderWidth;
     int renderHeight;
@@ -174,8 +198,6 @@ class SDLWindow
     bool advanceFrameRequested;
     bool editorSessionControlsEnabled = false;
     std::function<void(SDL_Renderer *, int, int)> editorSessionFrameCapture;
-    platformator_detail::RenderCullingMode requestedRenderCullingMode;
-    platformator_detail::RenderCullingMode effectiveRenderCullingMode;
     RenderFallbackCounts observedFallbackCounts{};
     std::unique_ptr<platformator_detail::RenderCullingState> renderCullingState;
     std::optional<SpriteDrawOrder> spriteDrawOrder;
@@ -186,12 +208,19 @@ class SDLWindow
     std::vector<Sprite *> spriteComponents;
     std::vector<SDL_Vertex> spriteBatchVertices;
     std::vector<int> spriteBatchIndices;
-    std::vector<std::function<void(SDL_Event, double)>> listeners;
 
     bool init();
+    bool pauseControlsEnabled() const noexcept;
     bool setPaused(bool value) noexcept;
     void close();
     void updateRenderSize();
+    void releaseRenderingStorage() noexcept;
+#if PLATFORMATOR_ENABLE_DEBUG_TOOLS
+    void handleDebugKeyEvent(SDL_Keycode key);
+#endif
+#if PLATFORMATOR_ENABLE_BENCHMARK_ORDER_MODES
+    bool trySingleEntryRepair(SpriteDrawOrder &order, size_t population);
+#endif
     bool prepareVisibleSelection(Camera *camera, const platformator_detail::SpriteRenderView &view);
     void prepareDrawOrder(bool useCachedSelection);
     void renderSpritesBatched(Camera *camera, const platformator_detail::SpriteRenderView &view,

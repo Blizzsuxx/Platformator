@@ -1,9 +1,6 @@
 #pragma once
 
-#include <cstdint>
 #include <string>
-
-#include <json.hpp>
 
 struct AnimationClip;
 class AudioManager;
@@ -14,7 +11,6 @@ class SDLWindow;
 class Template;
 class TextureWrapper;
 class PathManager;
-struct SDL_Surface;
 
 namespace platformator
 {
@@ -33,13 +29,7 @@ class RuntimeAccess
     static SDLWindow *window();
     static AudioManager *audioManager();
     static TextureWrapper *loadTexture(const std::string &filePath);
-    static TextureWrapper *findTexture(const std::string &filePath);
-    static std::uint64_t textureCacheBytes();
-    static TextureWrapper *reloadTexture(const std::string &filePath, SDL_Surface *preparedSurface);
     static AudioWrapper *loadAudio(const std::string &filePath);
-    static AnimationClip *findAnimationClip(const std::string &filePath);
-    static AnimationClip *reloadAnimationClip(const std::string &filePath,
-                                               const nlohmann::json &preparedDocument);
     static void freeTexture(TextureWrapper *textureWrapper);
     static void freeAudio(AudioWrapper *audioWrapper);
     static void freeAnimationClip(AnimationClip *animationClip);

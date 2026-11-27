@@ -1,17 +1,18 @@
 #pragma once
 
+#include <cstdint>
+#include <filesystem>
+#include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
-#include <SDL3/SDL.h>
-#include <functional>
-#include <filesystem>
 
-#include "platformator/runtimeoptions.h"
-#include "platformator/objecthandle.h"
+#include <SDL3/SDL.h>
+
 #include "platformator/collisiontypes.h"
-#include <cstdint>
-#include <optional>
+#include "platformator/objecthandle.h"
+#include "platformator/runtimeoptions.h"
 
 class BaseObject;
 class Camera;
@@ -82,6 +83,7 @@ class Runtime
     bool simulateAndRenderFrame(double timeDelta);
     // Invokes prePhysicsStepHook as a pre-physics step hook (after pending script
     // start() and before fixedUpdate/physics/update/lateUpdate/commitMutations).
+    void simulateFrameWithCustomCallback(double timeDelta, const std::function<void(double)> &prePhysicsStepHook);
     bool simulateAndRenderFrameWithCustomCallback(double timeDelta,
                                                   const std::function<void(double)> &prePhysicsStepHook);
     // Poll native or embedded Game view input. Call on the runtime owner thread.
@@ -93,9 +95,6 @@ class Runtime
     void setClearColor(const SDL_Color &color);
     void setClearColor(std::uint8_t r, std::uint8_t g, std::uint8_t b, std::uint8_t a = 255);
     const std::vector<GameObject *> &getAllGameObjects() const;
-    // Invokes prePhysicsStepHook as a pre-physics step hook (after pending script
-    // start() and before fixedUpdate/physics/update/lateUpdate/commitMutations).
-    void simulateFrameWithCustomCallback(double timeDelta, const std::function<void(double)> &prePhysicsStepHook);
 
     // Queries the synchronized physics world (Grid + AABB and published collider
     // geometry from the latest step commit, scene load, or idle reconciliation).
@@ -118,7 +117,6 @@ class Runtime
                                        bool includeTriggers = false) const;
 
   private:
-    friend class ::GameManager;
     friend class platformator_detail::RuntimeAccess;
 
     static Runtime *&activeRuntime();
@@ -127,7 +125,6 @@ class Runtime
     std::unique_ptr<PathManager> paths;
     std::unique_ptr<GameManager> gameManager;
     uint64_t smokeStepLimit = 0;
-    std::string currentSceneFilePath;
 };
 } // namespace platformator
 

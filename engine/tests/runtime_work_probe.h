@@ -26,7 +26,6 @@ struct WorkCounters
     size_t immediatePositionRefreshVisits = 0;
     size_t colliderSyncRequests = 0;
     size_t bodyParticipationEnqueues = 0;
-    size_t hierarchyRebuilds = 0;
     size_t transformVisits = 0;
     size_t reconciliations = 0;
     size_t geometryPairs = 0;
@@ -56,7 +55,6 @@ struct WorkCounters
     size_t renderCullingProxyCertifications = 0;
     size_t renderCullingCandidateVisits = 0;
     size_t renderCullingFullPopulationVisits = 0;
-    size_t renderCullingOrderWork = 0;
     size_t renderCullingCacheHits = 0;
     size_t renderCullingProjectionRebuilds = 0;
     size_t renderCullingNumericFallbacks = 0;
@@ -64,7 +62,6 @@ struct WorkCounters
     size_t renderCullingOwnedRecords = 0;
     size_t renderCullingOwnedRecordCapacity = 0;
     size_t renderCullingOwnedBytes = 0;
-    size_t renderCullingNumericRankSorts = 0;
     size_t visibleMembershipChecks = 0;
     size_t visibleMembershipChanges = 0;
     size_t spriteOrderPreparations = 0;

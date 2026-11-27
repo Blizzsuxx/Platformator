@@ -17,7 +17,7 @@ Audio::Audio() : Audio(nullptr)
 {
 }
 
-Audio::Audio(GameObject *gameObject, const char *filePath, float gain, bool autoPlay, float loopCount)
+Audio::Audio(GameObject *gameObject, const char *filePath, float gain, bool autoPlay, int loopCount)
     : Audio(gameObject, static_cast<AudioWrapper *>(nullptr), gain, autoPlay, loopCount)
 {
     if (filePath)
@@ -26,7 +26,7 @@ Audio::Audio(GameObject *gameObject, const char *filePath, float gain, bool auto
     }
 }
 
-Audio::Audio(GameObject *gameObject, AudioWrapper *audioWrapper, float gain, bool autoPlay, float loopCount)
+Audio::Audio(GameObject *gameObject, AudioWrapper *audioWrapper, float gain, bool autoPlay, int loopCount)
     : Component(gameObject, ComponentType::AUDIO), audioWrapper(nullptr), gain(gain), loopCount(loopCount),
       autoPlay(autoPlay)
 {
@@ -214,7 +214,6 @@ void Audio::finishPendingReplay()
     AudioWrapper::Reference pending(std::exchange(pendingReplay, nullptr));
     if (pending)
     {
-
         play(pending.get());
     }
 }
@@ -228,12 +227,12 @@ void Audio::setGain(float gain)
     }
 }
 
-void Audio::setLoopCount(float loopCount)
+void Audio::setLoopCount(int loopCount)
 {
     this->loopCount = loopCount;
 }
 
-float Audio::getLoopCount() const
+int Audio::getLoopCount() const
 {
     return loopCount;
 }

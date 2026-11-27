@@ -5,16 +5,11 @@
 
 namespace
 {
-    bool movingBody(const Rigidbody *body)
-    {
-        return body && body->getBodyType() != STATIC && !body->getIsSleeping();
-    }
-    bool isLiveContact(const ColliderPair *pair)
-    {
-        return pair->getCollision() && !pair->getObjectA()->isRetired() && !pair->getObjectB()->isRetired() &&
-               pair->getObjectA()->getGameObject()->getActive() &&
-               pair->getObjectB()->getGameObject()->getActive();
-    }
+bool isLiveContact(const ColliderPair *pair) noexcept
+{
+    return pair->getCollision() != nullptr && !pair->getObjectA()->isRetired() && !pair->getObjectB()->isRetired() &&
+           pair->getObjectA()->getGameObject()->getActive() && pair->getObjectB()->getGameObject()->getActive();
+}
 } // namespace
 
 void PhysicsManager::queueSupportDelta(Rigidbody *body, int delta)
@@ -29,16 +24,12 @@ void PhysicsManager::queueSupportDelta(Rigidbody *body, int delta)
     body->supportDelta += delta;
 }
 
-void PhysicsManager::reconcilePairSupport(const ColliderPair *pair)
+void PhysicsManager::reconcilePairSupport(ColliderPair *pair)
 {
     auto *collision = pair->getCollision();
     auto *a = pair->getObjectA()->getAttachedRigidbody();
     auto *b = pair->getObjectB()->getAttachedRigidbody();
-    const bool referenceIsA = collision && collision->getReferenceObject() == pair->getObjectA();
-    const bool supportsA = collision && (collision->supportState &
-                                         (referenceIsA ? Collision::SUPPORTS_REFERENCE : Collision::SUPPORTS_INCIDENT));
-    const bool supportsB = collision && (collision->supportState &
-                                         (referenceIsA ? Collision::SUPPORTS_INCIDENT : Collision::SUPPORTS_REFERENCE));
+    const auto [supportsA, supportsB] = pairSupportFlags(pair, collision);
     reconcileSupportContribution(pair->contributedSupportBodyA, supportsA ? a : nullptr);
     reconcileSupportContribution(pair->contributedSupportBodyB, supportsB ? b : nullptr);
 }
@@ -76,29 +67,29 @@ void PhysicsManager::flushSupportDeltas()
     reconcileChangedBodies();
 }
 
-void PhysicsManager::refreshContactParticipation(const ColliderPair *pair)
+void PhysicsManager::refreshContactParticipation(ColliderPair *pair)
 {
     const bool live = isLiveContact(pair);
     membership(contactPairs, pair, &ColliderPair::contactIndex, live);
     refreshSolverParticipation(pair, live);
 }
 
-void PhysicsManager::refreshSolverParticipation(const ColliderPair *pair, bool live)
+void PhysicsManager::refreshSolverParticipation(ColliderPair *pair, bool live)
 {
     const auto response = live ? pair->getCollision()->getResolutionType() : Collision::NONE_COLLISIONS;
     auto *rbA = live ? pair->getObjectA()->getAttachedRigidbody() : nullptr;
     auto *rbB = live ? pair->getObjectB()->getAttachedRigidbody() : nullptr;
-    const bool solve =
-        live && (response == Collision::DYNAMIC || response == Collision::KINEMATIC) && (movingBody(rbA) || movingBody(rbB));
+    const bool solve = live && (response == Collision::DYNAMIC || response == Collision::KINEMATIC) &&
+                       ((rbA != nullptr && rbA->isMovingBody()) || (rbB != nullptr && rbB->isMovingBody()));
 
     updatePersistentIslandContact(pair, solve, response, rbA, rbB);
 }
 
 void PhysicsManager::refreshSolverPairs(Collider *collider)
 {
-    if (const auto *pairs = grid.getTouchingPairs(collider))
+    if (auto *pairs = grid.getTouchingPairs(collider))
     {
-        for (auto *pair : *pairs)
+        for (ColliderPair *pair : *pairs)
         {
             PLATFORMATOR_WORK_ADD(solverRefreshPairs, 1);
             refreshSolverParticipation(pair, isLiveContact(pair));
@@ -108,17 +99,21 @@ void PhysicsManager::refreshSolverPairs(Collider *collider)
 
 void PhysicsManager::refreshResponse(Collider *collider)
 {
-    if (const auto *pairs = grid.getTouchingPairs(collider))
-        for (auto *pair : *pairs)
+    if (auto *pairs = grid.getTouchingPairs(collider))
+    {
+        for (ColliderPair *pair : *pairs)
         {
             if (auto *collision = pair->getCollision())
+            {
                 collision->updateSupportState(gravityVectorNormalized);
+            }
             reconcilePairSupport(pair);
             refreshContactParticipation(pair);
         }
+    }
 }
 
-void PhysicsManager::removePair(const ColliderPair *pair)
+void PhysicsManager::removePair(ColliderPair *pair)
 {
     // This is the explicit end boundary for contacts lost with their final cell witness.
     if (pair->getCollision())

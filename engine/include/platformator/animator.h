@@ -26,7 +26,6 @@ class Animator : public Component
 
     bool play(const AnimationClip *animationClip);
     void stop();
-    void pause();
     void resume();
     void setPlaybackSpeed(float playbackSpeed);
     void update(double timeDelta);
@@ -40,7 +39,7 @@ class Animator : public Component
     void addOnClipEndCallback(const std::function<void()> &callback);
 
   private:
-    const AnimationClip *currentAnimationClip;
+    Asset::Reference<AnimationClip> currentAnimationClip;
     size_t currentFrameIndex;
     double accumulatedTime;
     float playbackSpeed;
@@ -59,4 +58,3 @@ template <> struct ComponentTypeFor<Animator>
 };
 
 void to_json(nlohmann::json &j, const Animator &animator);
-void from_json(const nlohmann::json &j, Animator &animator);

@@ -48,19 +48,13 @@ constexpr ContactFeature makeContactFeature(EdgeNumber inEdge1, EdgeNumber outEd
 
 struct Edge
 {
-    Eigen::Vector2f max;
     Eigen::Vector2f v1;
     Eigen::Vector2f v2;
     EdgeNumber edgeNumber;
 
-    Edge(const Eigen::Vector2f &max, const Eigen::Vector2f &v1, const Eigen::Vector2f &v2, EdgeNumber edgeNumber)
-        : max(max), v1(v1), v2(v2), edgeNumber(edgeNumber)
+    Edge(const Eigen::Vector2f &v1, const Eigen::Vector2f &v2, EdgeNumber edgeNumber)
+        : v1(v1), v2(v2), edgeNumber(edgeNumber)
     {
-    }
-
-    Eigen::Vector2f getEdgeVector() const
-    {
-        return v2 - v1;
     }
 };
 
@@ -81,7 +75,7 @@ struct ClipVertex
 
 struct ClipPoints
 {
-    std::array<ClipVertex, 3> points;
+    std::array<ClipVertex, 2> points;
     size_t count;
 
     ClipPoints() : points(), count(0)
@@ -100,18 +94,6 @@ struct ClipPoints
     {
         add(ClipVertex(point, feature));
     }
-
-    void remove(size_t index)
-    {
-        if (index < count)
-        {
-            for (size_t i = index; i + 1 < count; ++i)
-            {
-                points[i] = points[i + 1];
-            }
-            --count;
-        }
-    }
 };
 
 struct ClipPointWithData
@@ -120,16 +102,15 @@ struct ClipPointWithData
     float separation;
     float accumulatedNormalImpulse;
     float accumulatedTangentImpulse;
-    float massNormal;
-    float massTangent;
-    float bias;
 
-    ClipPointWithData() : point(Eigen::Vector2f::Zero(), ContactFeature()), separation(0.0f), accumulatedNormalImpulse(0.0f), accumulatedTangentImpulse(0.0f), massNormal(0.0f), massTangent(0.0f), bias(0.0f)
+    ClipPointWithData()
+        : point(Eigen::Vector2f::Zero(), ContactFeature()), separation(0.0f), accumulatedNormalImpulse(0.0f),
+          accumulatedTangentImpulse(0.0f)
     {
     }
 
     explicit ClipPointWithData(const ClipVertex &point)
-        : point(point), separation(0.0f), accumulatedNormalImpulse(0.0f), accumulatedTangentImpulse(0.0f), massNormal(0.0f), massTangent(0.0f), bias(0.0f)
+        : point(point), separation(0.0f), accumulatedNormalImpulse(0.0f), accumulatedTangentImpulse(0.0f)
     {
     }
 };

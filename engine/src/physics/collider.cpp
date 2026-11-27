@@ -6,35 +6,30 @@
 #include <limits>
 #include <stdexcept>
 
+#include "benchmark/workprobe.h"
 #include "core/constants.h"
 #include "core/gamemanager.h"
-#include "physics/broadphase/localsortarray.h"
-#include "physics/broadphase/gridcell.h"
+#include "core/inputvalidation.h"
 #include "core/runtimeaccess.h"
-#include "physics/broadphase/segmentedintervallist.h"
 #include "platformator/rigidbody.h"
 #include "platformator/scriptcomponent.h"
-#include "platformator/collision.h"
-#include "benchmark/workprobe.h"
 
 Collider::Collider(GameObject *gameObject, ComponentType type, ColliderType colliderType)
     : Component(gameObject, type), collisionGroup(1), collisionMask(1), colliderType(colliderType), stateVersion(0),
-      offset(Eigen::Vector2f::Zero()), xProjections(this, 0.0f, 0.0f), yProjections(this, 0.0f, 0.0f),
-      physicsManagerIndex(SIZE_MAX), gridCellRange(), flags(static_cast<ColliderFlags>(0)), gridCellRangeCache(),
+      offset(Eigen::Vector2f::Zero()), physicsManagerIndex(SIZE_MAX), gridCellRange(),
+      flags(static_cast<ColliderFlags>(0)), gridCellRangeCache(),
       attachedRigidbody(gameObject ? gameObject->getComponent<Rigidbody>() : nullptr)
 {
 }
 
 Collider::Collider(ComponentType type, ColliderType colliderType)
     : Component(type), collisionGroup(1), collisionMask(1), colliderType(colliderType), stateVersion(0),
-      offset(Eigen::Vector2f::Zero()), xProjections(this, 0.0f, 0.0f), yProjections(this, 0.0f, 0.0f),
-      physicsManagerIndex(SIZE_MAX), gridCellRange(), flags(static_cast<ColliderFlags>(0)), gridCellRangeCache()
+      offset(Eigen::Vector2f::Zero()), physicsManagerIndex(SIZE_MAX), gridCellRange(),
+      flags(static_cast<ColliderFlags>(0)), gridCellRangeCache()
 {
 }
 
-Collider::~Collider()
-{
-}
+Collider::~Collider() = default;
 
 const Eigen::Vector2f &Collider::getOffset() const
 {
@@ -43,8 +38,7 @@ const Eigen::Vector2f &Collider::getOffset() const
 
 void Collider::setOffset(const Eigen::Vector2f &offset)
 {
-    if (!offset.allFinite())
-        throw std::invalid_argument("collider.offset must be finite");
+    platformator_detail::finite(offset, "collider.offset");
     if (this->offset == offset)
         return;
     this->offset = offset;
@@ -54,6 +48,22 @@ void Collider::setOffset(const Eigen::Vector2f &offset)
         invalidateFatBounds();
         scheduleSync();
     }
+}
+
+void Collider::notifyShapeChanged()
+{
+    if (getGameObject() == nullptr)
+    {
+        return;
+    }
+
+    if (attachedRigidbody != nullptr)
+    {
+        attachedRigidbody->refreshMomentOfInertiaCache();
+    }
+
+    invalidateFatBounds();
+    scheduleSync();
 }
 
 Eigen::Vector2f Collider::getWorldPosition() const
@@ -113,11 +123,6 @@ void Collider::prepareSyncFromCache(float cellSize)
     updateCollider();
     stateVersion++;
 
-    const float fatMinX = xProjections.getMin()->getProjectedPosition();
-    const float fatMaxX = xProjections.getMax()->getProjectedPosition();
-    const float fatMinY = yProjections.getMin()->getProjectedPosition();
-    const float fatMaxY = yProjections.getMax()->getProjectedPosition();
-
     if (fatBoundsValid && getIsRegisteredInGrid() && tightMinX >= fatMinX && tightMaxX <= fatMaxX &&
         tightMinY >= fatMinY && tightMaxY <= fatMaxY)
     {
@@ -154,10 +159,10 @@ void Collider::prepareSyncFromCache(float cellSize)
             newMinY += leadY;
     }
 
-    xProjections.getMin()->setProjectedPosition(newMinX);
-    xProjections.getMax()->setProjectedPosition(newMaxX);
-    yProjections.getMin()->setProjectedPosition(newMinY);
-    yProjections.getMax()->setProjectedPosition(newMaxY);
+    fatMinX = newMinX;
+    fatMaxX = newMaxX;
+    fatMinY = newMinY;
+    fatMaxY = newMaxY;
     fatBoundsValid = true;
     broadPhaseSyncNeeded = true;
     calculateGridCellRange(cellSize);
@@ -209,12 +214,6 @@ void Collider::setCollisionMask(const uint64_t collisionMask)
         platformator_detail::RuntimeAccess::physicsManager()->queueColliderSync(this);
 }
 
-void Collider::calculateGridCellRange()
-{
-    const auto *physics = platformator_detail::RuntimeAccess::physicsManager();
-    calculateGridCellRange(physics ? physics->getGridCellSize() : GRID_CELL_SIZE);
-}
-
 void Collider::calculateGridCellRange(float cellSize)
 {
     const auto cellIndex = [cellSize](float projection) {
@@ -225,12 +224,7 @@ void Collider::calculateGridCellRange(float cellSize)
         return static_cast<int>(index);
     };
 
-    const int minX = cellIndex(xProjections.getMin()->getProjectedPosition());
-    const int maxX = cellIndex(xProjections.getMax()->getProjectedPosition());
-    const int minY = cellIndex(yProjections.getMin()->getProjectedPosition());
-    const int maxY = cellIndex(yProjections.getMax()->getProjectedPosition());
-
-    gridCellRangeCache = GridCellRange(minX, maxX, minY, maxY);
+    gridCellRangeCache = GridCellRange(cellIndex(fatMinX), cellIndex(fatMaxX), cellIndex(fatMinY), cellIndex(fatMaxY));
 }
 
 void Collider::invalidateResponse()

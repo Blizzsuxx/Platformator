@@ -82,9 +82,18 @@ Resource *AssetStore::Cache<Resource>::replace(const std::string &request, const
     const auto found = entries.find(canonical);
     if (found == entries.end())
     {
-        Resource *published = publishAsset(entries, aliases, request, canonical, std::move(replacement));
-        aliases.rebind(request, canonical);
-        return published;
+        auto [it, inserted] = entries.emplace(canonical, std::move(replacement));
+        try
+        {
+            aliases.rebind(request, canonical);
+        }
+        catch (...)
+        {
+            if (inserted)
+                entries.erase(it);
+            throw;
+        }
+        return it->second.get();
     }
     if (found->second->getReferenceCount() != 0)
     {
@@ -164,14 +173,32 @@ Resource *AssetStore::loadCached(Cache<Resource> &cache, const std::string &file
     return cache.publish(filePath, resolved.canonicalPath, std::move(resource));
 }
 
-template <typename Resource, typename BuildFn>
-Resource *AssetStore::reloadCached(Cache<Resource> &cache, const std::string &filePath, BuildFn &&build)
+void AssetStore::requireIdleReloadBoundary() const
 {
     owner.assertCanMutate();
     if (!owner.isIdle())
     {
         throw std::logic_error("asset reload requires an idle Runtime owner boundary");
     }
+}
+
+std::unique_ptr<TextureWrapper> AssetStore::wrapTexture(SDL_Texture *rawTexture, const std::string &filePath,
+                                                        const std::string &canonicalPath) const
+{
+    std::unique_ptr<SDL_Texture, decltype(&SDL_DestroyTexture)> texture(rawTexture, SDL_DestroyTexture);
+    if (!texture)
+    {
+        throw std::runtime_error("Texture '" + filePath + "': " + SDL_GetError());
+    }
+    auto wrapper = std::make_unique<TextureWrapper>(texture.get(), canonicalPath);
+    texture.release();
+    return wrapper;
+}
+
+template <typename Resource, typename BuildFn>
+Resource *AssetStore::reloadCached(Cache<Resource> &cache, const std::string &filePath, BuildFn &&build)
+{
+    requireIdleReloadBoundary();
     const auto resolved = PathManager::getInstance().resolveAssetPath(filePath);
     std::unique_ptr<Resource> replacement = build(resolved);
     owner.tagAssetRuntime(*replacement);
@@ -182,20 +209,13 @@ TextureWrapper *AssetStore::loadTexture(const std::string &filePath, bool requir
 {
     return loadCached(textures, filePath, filePath, required, "Required texture path is empty",
                       [&](const auto &resolved) {
-                          if (!owner.getWindow()->getRenderer())
+                          SDL_Renderer *renderer = owner.getWindow()->getRenderer();
+                          if (!renderer)
                           {
                               throw std::runtime_error("Textures require a video renderer: " + filePath);
                           }
-                          std::unique_ptr<SDL_Texture, decltype(&SDL_DestroyTexture)> texture(
-                              IMG_LoadTexture(owner.getWindow()->getRenderer(), resolved.absolutePath.c_str()),
-                              SDL_DestroyTexture);
-                          if (!texture)
-                          {
-                              throw std::runtime_error("Texture '" + filePath + "': " + SDL_GetError());
-                          }
-                          auto wrapper = std::make_unique<TextureWrapper>(texture.get(), resolved.canonicalPath);
-                          texture.release();
-                          return wrapper;
+                          return wrapTexture(IMG_LoadTexture(renderer, resolved.absolutePath.c_str()), filePath,
+                                             resolved.canonicalPath);
                       });
 }
 
@@ -246,13 +266,9 @@ std::uint64_t AssetStore::textureCacheBytes() const noexcept
 
 TextureWrapper *AssetStore::reloadTexture(const std::string &filePath, SDL_Surface *preparedSurface)
 {
+    requireIdleReloadBoundary();
     if (filePath.empty() || preparedSurface == nullptr)
     {
-        owner.assertCanMutate();
-        if (!owner.isIdle())
-        {
-            throw std::logic_error("asset reload requires an idle Runtime owner boundary");
-        }
         throw std::invalid_argument("Prepared texture reload requires a path and decoded surface");
     }
     return reloadCached(textures, filePath, [&](const auto &resolved) {
@@ -261,15 +277,7 @@ TextureWrapper *AssetStore::reloadTexture(const std::string &filePath, SDL_Surfa
         {
             throw std::runtime_error("Textures require a video renderer: " + filePath);
         }
-        std::unique_ptr<SDL_Texture, decltype(&SDL_DestroyTexture)> texture(
-            SDL_CreateTextureFromSurface(renderer, preparedSurface), SDL_DestroyTexture);
-        if (!texture)
-        {
-            throw std::runtime_error("Texture '" + filePath + "': " + SDL_GetError());
-        }
-        auto replacement = std::make_unique<TextureWrapper>(texture.get(), resolved.canonicalPath);
-        texture.release();
-        return replacement;
+        return wrapTexture(SDL_CreateTextureFromSurface(renderer, preparedSurface), filePath, resolved.canonicalPath);
     });
 }
 
@@ -349,13 +357,9 @@ AnimationClip *AssetStore::findAnimationClip(const std::string &filePath)
 
 AnimationClip *AssetStore::reloadAnimationClip(const std::string &filePath, const nlohmann::json &preparedDocument)
 {
+    requireIdleReloadBoundary();
     if (filePath.empty())
     {
-        owner.assertCanMutate();
-        if (!owner.isIdle())
-        {
-            throw std::logic_error("asset reload requires an idle Runtime owner boundary");
-        }
         throw std::invalid_argument("Animation path is empty");
     }
     return reloadCached(animations, filePath, [&](const auto &resolved) {

@@ -22,29 +22,7 @@ struct AssetRequestAliases
     void add(const std::string &request, const std::string &canonical)
     {
         if (paths.find(request) != paths.end()) return;
-        auto [it, inserted] = reverse.try_emplace(canonical);
-        try
-        {
-            it->second.push_back(request);
-            try
-            {
-                paths.emplace(request, canonical);
-            }
-            catch (...)
-            {
-                it->second.pop_back();
-                throw;
-            }
-        }
-        catch (...)
-        {
-            if (inserted && it->second.empty())
-            {
-                reverse.erase(it);
-                shrinkIfSparse(reverse);
-            }
-            throw;
-        }
+        addReverseEntryWithRollback(request, canonical, [&] { paths.emplace(request, canonical); }, true);
     }
 
     void rebind(const std::string &request, const std::string &canonical)
@@ -59,22 +37,7 @@ struct AssetRequestAliases
             return;
 
         const std::string previousCanonical = existing->second;
-        auto [replacement, inserted] = reverse.try_emplace(canonical);
-        bool replacementAdded = false;
-        try
-        {
-            replacement->second.push_back(request);
-            replacementAdded = true;
-            existing->second = canonical;
-        }
-        catch (...)
-        {
-            if (replacementAdded)
-                replacement->second.pop_back();
-            if (inserted && replacement->second.empty())
-                reverse.erase(replacement);
-            throw;
-        }
+        addReverseEntryWithRollback(request, canonical, [&] { existing->second = canonical; }, false);
 
         auto previous = reverse.find(previousCanonical);
         if (previous != reverse.end())
@@ -104,6 +67,32 @@ struct AssetRequestAliases
     }
 
   private:
+    template <typename CommitFn>
+    void addReverseEntryWithRollback(const std::string &request, const std::string &canonical, CommitFn &&commit,
+                                     bool shrinkOnRollback)
+    {
+        auto [it, inserted] = reverse.try_emplace(canonical);
+        bool pushed = false;
+        try
+        {
+            it->second.push_back(request);
+            pushed = true;
+            commit();
+        }
+        catch (...)
+        {
+            if (pushed)
+                it->second.pop_back();
+            if (inserted && it->second.empty())
+            {
+                reverse.erase(it);
+                if (shrinkOnRollback)
+                    shrinkIfSparse(reverse);
+            }
+            throw;
+        }
+    }
+
     template <typename Map> static void shrinkIfSparse(Map &map) noexcept
     {
         // Keep small tables for normal churn; shrink geometrically after large peaks.

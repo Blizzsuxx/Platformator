@@ -131,19 +131,9 @@ class Rigidbody : public Component
     {
         return isRegisteredInPhysicsManager;
     }
-    Rigidbody *setIsRegisteredInPhysicsManager(bool isRegisteredInPhysicsManager)
-    {
-        this->isRegisteredInPhysicsManager = isRegisteredInPhysicsManager;
-        return this;
-    }
     size_t getPhysicsManagerIndex() const
     {
         return physicsManagerIndex;
-    }
-    Rigidbody *setPhysicsManagerIndex(size_t physicsManagerIndex)
-    {
-        this->physicsManagerIndex = physicsManagerIndex;
-        return this;
     }
 
     Rigidbody *refreshMomentOfInertiaCache();
@@ -151,6 +141,9 @@ class Rigidbody : public Component
                                    const Eigen::Vector2f &gravityVectorNormalized) const;
 
   private:
+    static constexpr uint8_t INTEGRATE_TRANSLATED = 1 << 0;
+    static constexpr uint8_t INTEGRATE_ROTATED = 1 << 1;
+
     Eigen::Vector2f velocity;
     Eigen::Vector2f force;
 
@@ -177,20 +170,36 @@ class Rigidbody : public Component
     size_t supportDeltaIndex = SIZE_MAX;
     size_t awakeDynamicIndex = SIZE_MAX, movingKinematicIndex = SIZE_MAX, sleepCandidateIndex = SIZE_MAX;
     size_t participationQueueIndex = SIZE_MAX;
-    Rigidbody *sleepParent = nullptr;
-    uint8_t sleepRank = 0;
-    bool islandQuiet = true;
-    double islandTimer = 0;
     int32_t solverIslandId = -1;
     size_t solverIslandBodyIndex = SIZE_MAX;
     uint32_t solverColorMask = 0;
+
+    bool isAwakeDynamic() const noexcept
+    {
+        return bodyType == BodyType::DYNAMIC && !sleeping;
+    }
+    bool isMovingKinematic() const noexcept
+    {
+        return bodyType == BodyType::KINEMATIC && (!velocity.isZero(0) || angularVelocity != 0.0f);
+    }
+    bool isMovingBody() const noexcept
+    {
+        return bodyType != BodyType::STATIC && !sleeping;
+    }
+    void setIsRegisteredInPhysicsManager(bool registered) noexcept
+    {
+        isRegisteredInPhysicsManager = registered;
+    }
+    void setPhysicsManagerIndex(size_t index) noexcept
+    {
+        physicsManagerIndex = index;
+    }
 
     void initialize();
     uint8_t integrateLocal(double timeDelta);
     uint8_t integrateDelta(float dx, float dy, float dAngle);
     void integrateForces(double timeDelta, const Eigen::Vector2f &gravityVector);
     void queueParticipationChange();
-    void applySolverImpulse(const Eigen::Vector2f &impulse, const Eigen::Vector2f &arm);
     float calculateAutomaticMomentOfInertia() const;
 };
 

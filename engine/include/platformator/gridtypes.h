@@ -4,7 +4,6 @@
 #include <climits>
 #include <cstddef>
 #include <cstdint>
-#include <functional>
 #include <utility>
 
 struct GridCellKey
@@ -61,11 +60,6 @@ struct GridCellRange
     bool operator==(const GridCellRange &other) const
     {
         return minX == other.minX && maxX == other.maxX && minY == other.minY && maxY == other.maxY;
-    }
-
-    bool operator!=(const GridCellRange &other) const
-    {
-        return !(*this == other);
     }
 
     bool intersects(const GridCellRange &other) const

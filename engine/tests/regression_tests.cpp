@@ -35,6 +35,7 @@
 #include "platformator/audio.h"
 #include "physics/broadphase/localsortarray.h"
 #include "core/pathmanager.h"
+#include "physics/physicsgeometry.h"
 #include "physics/physicsmanager.h"
 #include "core/runtimeaccess.h"
 #include "platformator/rigidbody.h"
@@ -271,8 +272,7 @@ class CollisionEventCounterBehavior : public Behavior
 
 std::filesystem::path makeRuntimeAssetPath(const std::string &fileName)
 {
-    return (std::filesystem::path(PathManager::getInstance().getAssetsRootAbsolutePath()) / "test_runtime" / fileName)
-        .lexically_normal();
+    return (PathManager::getInstance().getRoot() / "test_runtime" / fileName).lexically_normal();
 }
 
 std::string canonicalAssetPathForTest(const std::filesystem::path &assetPath)
@@ -431,7 +431,7 @@ void testClipSegmentFeaturePropagation()
                            ClipVertex(Eigen::Vector2f(2.0f, 0.0f), makeContactFeature(NO_EDGE, NO_EDGE, EDGE1, EDGE4))};
     ClipVertex output[2];
 
-    int outputCount = clipSegmentToLine(output, input, Eigen::Vector2f(1.0f, 0.0f), 0.0f, EDGE3);
+    int outputCount = physics_geometry::clipSegmentToLine(output, input, Eigen::Vector2f(1.0f, 0.0f), 0.0f, EDGE3);
 
     require(outputCount == 2, "Clip feature regression expected one retained endpoint and one clipped intersection.");
     require((output[0].point - input[1].point).squaredNorm() <= 1e-6f && output[0].feature.key == input[1].feature.key,
@@ -1794,7 +1794,7 @@ void testRotatedBoxSupportEdgeSelection()
     const auto &vertices = boxCollider->getVertices();
 
     auto verifySupportEdge = [&](const Eigen::Vector2f &normal, const char *label) {
-        Edge edge = boxCollider->getEdgeWithNormal(normal);
+        Edge edge = boxCollider->getSupportEdge(normal);
 
         float maxProjection = -std::numeric_limits<float>::infinity();
         for (const Eigen::Vector2f &vertex : vertices)
@@ -1809,9 +1809,7 @@ void testRotatedBoxSupportEdgeSelection()
                 std::string("Rotated support-edge regression chose a non-support second vertex for ") + label + ".");
     };
 
-    const std::vector<Eigen::Vector2f> normals = boxCollider->getNormals(boxCollider);
-    require(normals.size() == 2, "Rotated support-edge regression expected two box normals.");
-
+    const auto &normals = boxCollider->getAxes();
     verifySupportEdge(normals[0], "+x face normal");
     verifySupportEdge(-normals[0], "-x face normal");
     verifySupportEdge(normals[1], "+y face normal");
@@ -1903,12 +1901,9 @@ void testColliderOffsetAffectsGeometry()
     circleCollider->setOffset(Eigen::Vector2f(-6.0f, 4.0f));
     circleCollider->prepareSync();
 
-    Eigen::Vector2f xProjection = circleCollider->projectOntoAxis(X_AXIS);
-    Eigen::Vector2f yProjection = circleCollider->projectOntoAxis(Y_AXIS);
-
-    require(std::abs((xProjection.x() + xProjection.y()) * 0.5f - 74.0f) <= 1e-6f,
+    require(std::abs((circleCollider->getTightMinX() + circleCollider->getTightMaxX()) * 0.5f - 74.0f) <= 1e-6f,
             "Collider offset regression expected the circle collider X projection center to include its offset.");
-    require(std::abs((yProjection.x() + yProjection.y()) * 0.5f - 94.0f) <= 1e-6f,
+    require(std::abs((circleCollider->getTightMinY() + circleCollider->getTightMaxY()) * 0.5f - 94.0f) <= 1e-6f,
             "Collider offset regression expected the circle collider Y projection center to include its offset.");
 }
 

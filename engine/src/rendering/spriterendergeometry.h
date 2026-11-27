@@ -34,13 +34,17 @@ inline SDL_FRect makeSpriteRenderDestination(float worldX, float worldY, float w
             width * view.scaleX, height * view.scaleY};
 }
 
+inline bool isColorModulated(SDL_Color color) noexcept
+{
+    return color.r != 255 || color.g != 255 || color.b != 255 || color.a != 255;
+}
+
 inline bool submitSpriteRender(SDL_Renderer *renderer, SDL_Texture *texture,
                                const SDL_FRect *source, const SDL_FRect &destination,
                                float angleDegrees, SDL_FlipMode flip,
                                SDL_Color color = SDL_Color{255, 255, 255, 255})
 {
-    const bool modulated = texture != nullptr &&
-                           (color.r != 255 || color.g != 255 || color.b != 255 || color.a != 255);
+    const bool modulated = texture != nullptr && isColorModulated(color);
     Uint8 previousR = 255;
     Uint8 previousG = 255;
     Uint8 previousB = 255;
@@ -79,6 +83,21 @@ struct SpriteRenderBounds
     double maxX = 0.0;
     double maxY = 0.0;
 };
+
+inline bool spriteBoundsOverlap(const SpriteRenderBounds &a, const SpriteRenderBounds &b) noexcept
+{
+    return a.maxX >= b.minX && a.minX <= b.maxX && a.maxY >= b.minY && a.minY <= b.maxY;
+}
+
+inline std::size_t nextGeometricCapacity(std::size_t currentCapacity, std::size_t required) noexcept
+{
+    if (required <= currentCapacity)
+        return currentCapacity;
+    const std::size_t doubled = currentCapacity > std::numeric_limits<std::size_t>::max() / 2
+                                    ? std::numeric_limits<std::size_t>::max()
+                                    : currentCapacity * 2;
+    return std::max(required, std::max<std::size_t>(4, doubled));
+}
 
 struct SpriteRenderProjectionKey
 {
@@ -139,6 +158,17 @@ inline double absoluteMaximum(double current, float value)
     return std::max(current, std::abs(static_cast<double>(value)));
 }
 
+// Match SDL_RenderTextureRotated's degree-to-radian float conversion and float sin/cos.
+inline bool computeRotationSinCos(float angleDegrees, float &sine, float &cosine) noexcept
+{
+    const float radians = static_cast<float>((SDL_PI_D * static_cast<double>(angleDegrees)) / 180.0);
+    if (!std::isfinite(radians))
+        return false;
+    sine = SDL_sinf(radians);
+    cosine = SDL_cosf(radians);
+    return std::isfinite(sine) && std::isfinite(cosine);
+}
+
 inline bool makePaddedBounds(const SDL_FRect &destination, float angleDegrees, SpriteRenderBounds &bounds)
 {
     const float right = destination.x + destination.w;
@@ -160,16 +190,11 @@ inline bool makePaddedBounds(const SDL_FRect &destination, float angleDegrees, S
 
     if (angleDegrees != 0.0f)
     {
-        // Match SDL_RenderTextureRotated's degree-to-radian float conversion
-        // and float sin/cos used by its geometry path.
-        const float radians = static_cast<float>((SDL_PI_D * static_cast<double>(angleDegrees)) / 180.0);
-        if (!std::isfinite(radians))
-            return false;
-        const float sine = SDL_sinf(radians);
-        const float cosine = SDL_cosf(radians);
+        float sine = 0.0f;
+        float cosine = 1.0f;
         const float centerX = destination.x + destination.w * 0.5f;
         const float centerY = destination.y + destination.h * 0.5f;
-        if (!std::isfinite(sine) || !std::isfinite(cosine) || !std::isfinite(centerX) || !std::isfinite(centerY))
+        if (!computeRotationSinCos(angleDegrees, sine, cosine) || !std::isfinite(centerX) || !std::isfinite(centerY))
             return false;
 
         const float cornerX[4] = {destination.x, right, destination.x, right};
@@ -279,12 +304,7 @@ inline bool makeCertifiedSpriteRenderProxy(float worldX, float worldY, float wid
     float cosine = 1.0f;
     if (angleDegrees != 0.0f)
     {
-        const float radians = static_cast<float>((SDL_PI_D * static_cast<double>(angleDegrees)) / 180.0);
-        if (!std::isfinite(radians))
-            return false;
-        sine = SDL_sinf(radians);
-        cosine = SDL_cosf(radians);
-        if (!std::isfinite(sine) || !std::isfinite(cosine) || std::abs(sine) > 1.0f || std::abs(cosine) > 1.0f)
+        if (!computeRotationSinCos(angleDegrees, sine, cosine) || std::abs(sine) > 1.0f || std::abs(cosine) > 1.0f)
             return false;
     }
 

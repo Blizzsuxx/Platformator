@@ -7,32 +7,28 @@
 #include "platformator/texturewrapper.h"
 
 Animator::Animator(GameObject *gameObject)
-    : Component(gameObject, ComponentType::ANIMATOR), currentAnimationClip(nullptr), currentFrameIndex(0),
-      accumulatedTime(0.0f), playbackSpeed(1.0f), playing(false), gameManagerIndex(SIZE_MAX), onClipEndCallbacks()
+    : Component(gameObject, ComponentType::ANIMATOR), currentAnimationClip(), currentFrameIndex(0),
+      accumulatedTime(0.0), playbackSpeed(1.0f), playing(false), gameManagerIndex(SIZE_MAX), onClipEndCallbacks()
 {
 }
 
 Animator::Animator()
-    : Component(ComponentType::ANIMATOR), currentAnimationClip(nullptr), currentFrameIndex(0), accumulatedTime(0.0f),
+    : Component(ComponentType::ANIMATOR), currentAnimationClip(), currentFrameIndex(0), accumulatedTime(0.0),
       playbackSpeed(1.0f), playing(false), gameManagerIndex(SIZE_MAX), onClipEndCallbacks()
 {
 }
 
-Animator::~Animator()
-{
-    if (currentAnimationClip)
-        const_cast<AnimationClip *>(currentAnimationClip)->removeReferenceAndFreeIfNoReferences();
-}
+Animator::~Animator() = default;
 
 Component *Animator::clone() const
 {
     auto cloned = std::make_unique<Animator>();
     if (currentAnimationClip)
-        cloned->setCurrentClip(currentAnimationClip);
+        cloned->setCurrentClip(currentAnimationClip.get());
     cloned->setCurrentFrameIndex(currentFrameIndex);
     cloned->setPlaybackSpeed(playbackSpeed);
     if (playing && currentAnimationClip)
-        cloned->play(currentAnimationClip);
+        cloned->play(currentAnimationClip.get());
     return cloned.release();
 }
 
@@ -63,7 +59,7 @@ bool Animator::play(const AnimationClip *animationClip)
         return false;
     }
 
-    if (currentAnimationClip == animationClip)
+    if (currentAnimationClip.get() == animationClip)
     {
         if (playing)
         {
@@ -85,11 +81,6 @@ void Animator::stop()
     accumulatedTime = 0.0;
     playing = false;
     applyCurrentFrame();
-}
-
-void Animator::pause()
-{
-    playing = false;
 }
 
 void Animator::resume()
@@ -152,7 +143,7 @@ void Animator::applyCurrentFrame() const
 
 const AnimationClip *Animator::getCurrentClip() const
 {
-    return currentAnimationClip;
+    return currentAnimationClip.get();
 }
 
 double Animator::getCurrentFrameDuration() const
@@ -212,17 +203,12 @@ void Animator::setGameManagerIndex(size_t index)
 
 void Animator::setCurrentClip(const AnimationClip *clip)
 {
-    if (currentAnimationClip == clip)
+    if (currentAnimationClip.get() == clip)
     {
         return;
     }
 
-    if (clip)
-        const_cast<AnimationClip *>(clip)->addReference();
-    const auto *old = currentAnimationClip;
-    currentAnimationClip = clip;
-    if (old)
-        const_cast<AnimationClip *>(old)->removeReferenceAndFreeIfNoReferences();
+    currentAnimationClip = Asset::retain(const_cast<AnimationClip *>(clip));
     currentFrameIndex = 0;
     accumulatedTime = 0.0;
     if (clip != nullptr)

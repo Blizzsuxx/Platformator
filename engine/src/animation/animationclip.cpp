@@ -14,10 +14,7 @@ AnimationClip::AnimationClip(std::vector<AnimationFrame> frames, bool loop, std:
 {
 }
 
-AnimationClip::~AnimationClip()
-{
-    frames.clear();
-}
+AnimationClip::~AnimationClip() = default;
 
 bool is_valid_animation_frame_duration(double durationSeconds) noexcept
 {

@@ -140,10 +140,6 @@ struct AddRemoveScenarioState
 
 RuntimeOptions makeDefaultBenchmarkRuntimeOptions()
 {
-    // RuntimeOptions runtimeOptions{DEFAULT_SCENE_PATH, {}, {false, true, true, true, true}};
-    // runtimeOptions.windowSettings.headless = false;
-    // runtimeOptions.windowSettings.fullscreen = true;
-
     RuntimeOptions runtimeOptions{DEFAULT_SCENE_PATH, {}, {false, false, false, false, false}};
     runtimeOptions.windowSettings.headless = true;
     return runtimeOptions;
@@ -329,6 +325,26 @@ std::string formatIndexedName(const std::string &prefix, const size_t index)
     return buffer;
 }
 
+GameObject *configureBenchmarkBody(GameObject *object, const Eigen::Vector2f &velocity, const bool isTrigger,
+                                   const float friction, const float restitution, const float angularVelocity,
+                                   const bool attachSprite, const char *texturePath, const float spriteWidth,
+                                   const float spriteHeight)
+{
+    if (attachSprite)
+    {
+        object->addComponent<Sprite>(texturePath, spriteWidth, spriteHeight);
+    }
+
+    object->getComponent<Rigidbody>()
+        ->setVelocity(velocity)
+        ->setAngularVelocity(angularVelocity)
+        ->setFriction(friction)
+        ->setRestitution(restitution);
+
+    object->getComponent<Collider>()->setIsTrigger(isTrigger);
+    return object;
+}
+
 GameObject *createBenchmarkBox(platformator::Runtime &runtime, const std::string &name, const float x, const float y,
                                const float width, const float height, const BodyType bodyType, const bool gravity,
                                const Eigen::Vector2f &velocity, const bool isTrigger, const float friction = 0.0f,
@@ -340,20 +356,8 @@ GameObject *createBenchmarkBox(platformator::Runtime &runtime, const std::string
                              ->addComponent<Rigidbody>(bodyType, gravity)
                              ->addComponent<BoxCollider>(width, height)
                              ->setPosition(Eigen::Vector2f(x, y));
-
-    if (attachSprite)
-    {
-        object->addComponent<Sprite>("assets/textures/black_square.png", width, height);
-    }
-
-    object->getComponent<Rigidbody>()
-        ->setVelocity(velocity)
-        ->setAngularVelocity(angularVelocity)
-        ->setFriction(friction)
-        ->setRestitution(restitution);
-
-    object->getComponent<BoxCollider>()->setIsTrigger(isTrigger);
-    return object;
+    return configureBenchmarkBody(object, velocity, isTrigger, friction, restitution, angularVelocity, attachSprite,
+                                  "assets/textures/black_square.png", width, height);
 }
 
 GameObject *createBenchmarkCircle(platformator::Runtime &runtime, const std::string &name, const float x, const float y,
@@ -367,20 +371,8 @@ GameObject *createBenchmarkCircle(platformator::Runtime &runtime, const std::str
                              ->addComponent<Rigidbody>(bodyType, gravity)
                              ->addComponent<CircleCollider>(radius)
                              ->setPosition(Eigen::Vector2f(x, y));
-
-    if (attachSprite)
-    {
-        object->addComponent<Sprite>("assets/textures/red_circle.png", radius * 2.0f, radius * 2.0f);
-    }
-
-    object->getComponent<Rigidbody>()
-        ->setVelocity(velocity)
-        ->setAngularVelocity(angularVelocity)
-        ->setFriction(friction)
-        ->setRestitution(restitution);
-
-    object->getComponent<CircleCollider>()->setIsTrigger(isTrigger);
-    return object;
+    return configureBenchmarkBody(object, velocity, isTrigger, friction, restitution, angularVelocity, attachSprite,
+                                  "assets/textures/red_circle.png", radius * 2.0f, radius * 2.0f);
 }
 
 RigidBodyContainerScenarioSettings makeRigidBodyContainerScenarioSettings(const BenchmarkRunnerOptions &options)
@@ -581,12 +573,6 @@ Eigen::Vector2f calculateRigidBodyContainerInitialVelocity(const size_t spawnInd
                            verticalVelocityPattern[spawnIndex % verticalVelocityPattern.size()]);
 }
 
-Eigen::Vector2f calculateBroadPhaseStressInitialVelocity(const size_t spawnIndex)
-{
-    (void)spawnIndex;
-    return Eigen::Vector2f::Zero();
-}
-
 Eigen::Vector2f calculateBroadPhaseStressPhaseCenter(const BroadPhaseStressScenarioSettings &settings,
                                                      const size_t phaseIndex)
 {
@@ -611,32 +597,35 @@ float calculateRigidBodyContainerAngularVelocity(const size_t spawnIndex)
     return angularVelocityPattern[spawnIndex % angularVelocityPattern.size()];
 }
 
+void createEnclosureWalls(platformator::Runtime &runtime, float cx, float cy, float interiorWidth, float interiorHeight,
+                          float wallThickness, float floorExtraOffset, float friction, float restitution,
+                          bool attachSprites, const std::string &floorName, const std::string &ceilingName,
+                          const std::string &leftName, const std::string &rightName)
+{
+    const float halfWidth = interiorWidth * 0.5f;
+    const float halfHeight = interiorHeight * 0.5f;
+    const float horizontalWallWidth = interiorWidth + 2.0f * wallThickness;
+    const float verticalWallHeight = interiorHeight + 2.0f * wallThickness;
+    const Eigen::Vector2f zeroVelocity = Eigen::Vector2f::Zero();
+
+    createBenchmarkBox(runtime, floorName, cx, cy + halfHeight + wallThickness * 0.5f + floorExtraOffset,
+                       horizontalWallWidth, wallThickness, STATIC, false, zeroVelocity, false, friction, restitution,
+                       0.0f, attachSprites);
+    createBenchmarkBox(runtime, ceilingName, cx, cy - halfHeight - wallThickness * 0.5f, horizontalWallWidth,
+                       wallThickness, STATIC, false, zeroVelocity, false, friction, restitution, 0.0f, attachSprites);
+    createBenchmarkBox(runtime, leftName, cx - halfWidth - wallThickness * 0.5f, cy, wallThickness, verticalWallHeight,
+                       STATIC, false, zeroVelocity, false, friction, restitution, 0.0f, attachSprites);
+    createBenchmarkBox(runtime, rightName, cx + halfWidth + wallThickness * 0.5f, cy, wallThickness, verticalWallHeight,
+                       STATIC, false, zeroVelocity, false, friction, restitution, 0.0f, attachSprites);
+}
+
 void createRigidBodyContainerWalls(platformator::Runtime &runtime, const RigidBodyContainerScenarioSettings &settings,
                                    const RigidBodyContainerLayout &layout, const bool attachSprites)
 {
-    const float halfWidth = layout.interiorWidth * 0.5f;
-    const float halfHeight = layout.interiorHeight * 0.5f;
-    const float wallThickness = settings.wallThickness;
-    const float horizontalWallWidth = layout.interiorWidth + 2.0f * wallThickness;
-    const float verticalWallHeight = layout.interiorHeight + 2.0f * wallThickness;
-
-    createBenchmarkBox(runtime, "Container Floor", 0.0f,
-                       halfHeight + wallThickness * 0.5f +
-                           20.0f, // Add a small margin to prevent initial overlaps with spawned bodies
-                       horizontalWallWidth, wallThickness, STATIC, false, Eigen::Vector2f::Zero(), false,
-                       settings.friction, settings.restitution, 0.0f, attachSprites);
-
-    createBenchmarkBox(runtime, "Container Ceiling", 0.0f, -halfHeight - wallThickness * 0.5f, horizontalWallWidth,
-                       wallThickness, STATIC, false, Eigen::Vector2f::Zero(), false, settings.friction,
-                       settings.restitution, 0.0f, attachSprites);
-
-    createBenchmarkBox(runtime, "Container Left Wall", -halfWidth - wallThickness * 0.5f, 0.0f, wallThickness,
-                       verticalWallHeight, STATIC, false, Eigen::Vector2f::Zero(), false, settings.friction,
-                       settings.restitution, 0.0f, attachSprites);
-
-    createBenchmarkBox(runtime, "Container Right Wall", halfWidth + wallThickness * 0.5f, 0.0f, wallThickness,
-                       verticalWallHeight, STATIC, false, Eigen::Vector2f::Zero(), false, settings.friction,
-                       settings.restitution, 0.0f, attachSprites);
+    // Add a small floor margin (20.0f) to prevent initial overlaps with spawned bodies.
+    createEnclosureWalls(runtime, 0.0f, 0.0f, layout.interiorWidth, layout.interiorHeight, settings.wallThickness,
+                         20.0f, settings.friction, settings.restitution, attachSprites, "Container Floor",
+                         "Container Ceiling", "Container Left Wall", "Container Right Wall");
 }
 
 void printRigidBodyContainerScenarioDetails(const RigidBodyContainerScenarioSettings &settings,
@@ -709,12 +698,11 @@ void buildBroadPhaseStressScenario(platformator::Runtime &runtime, const Benchma
     {
         const Eigen::Vector2f position =
             phaseCenter + calculateBroadPhaseStressSpawnPosition(state.layout, state.settings, spawnIndex);
-        const Eigen::Vector2f velocity = calculateBroadPhaseStressInitialVelocity(spawnIndex + options.seed);
 
         GameObject *object =
             createBenchmarkBox(runtime, formatIndexedName("Dense Broad Mover", spawnIndex), position.x(), position.y(),
-                               state.settings.boxWidth, state.settings.boxHeight, STATIC, false, velocity, true, 0.0f,
-                               0.0f, 0.0f, options.renderFrames);
+                               state.settings.boxWidth, state.settings.boxHeight, STATIC, false,
+                               Eigen::Vector2f::Zero(), true, 0.0f, 0.0f, 0.0f, options.renderFrames);
 
         if (BoxCollider *collider = object->getComponent<BoxCollider>())
         {
@@ -1064,21 +1052,11 @@ void buildIdealWorldScenario(platformator::Runtime &runtime, const BenchmarkRunn
         const size_t cRow = chamberIndex / chamberCols;
         const float cx = worldOriginX + static_cast<float>(cCol) * chamberPitch;
         const float cy = worldOriginY + static_cast<float>(cRow) * chamberPitch;
-        const float halfInterior = 0.5f * chamberInterior;
-        const float fullSpan = chamberInterior + 2.0f * wallThickness;
-
-        createBenchmarkBox(runtime, formatIndexedName("Chamber Floor", chamberIndex), cx,
-                           cy + halfInterior + 0.5f * wallThickness, fullSpan, wallThickness, STATIC, false,
-                           Eigen::Vector2f::Zero(), false, friction, restitution, 0.0f, attachSprites);
-        createBenchmarkBox(runtime, formatIndexedName("Chamber Ceiling", chamberIndex), cx,
-                           cy - halfInterior - 0.5f * wallThickness, fullSpan, wallThickness, STATIC, false,
-                           Eigen::Vector2f::Zero(), false, friction, restitution, 0.0f, attachSprites);
-        createBenchmarkBox(runtime, formatIndexedName("Chamber Left", chamberIndex),
-                           cx - halfInterior - 0.5f * wallThickness, cy, wallThickness, fullSpan, STATIC, false,
-                           Eigen::Vector2f::Zero(), false, friction, restitution, 0.0f, attachSprites);
-        createBenchmarkBox(runtime, formatIndexedName("Chamber Right", chamberIndex),
-                           cx + halfInterior + 0.5f * wallThickness, cy, wallThickness, fullSpan, STATIC, false,
-                           Eigen::Vector2f::Zero(), false, friction, restitution, 0.0f, attachSprites);
+        createEnclosureWalls(runtime, cx, cy, chamberInterior, chamberInterior, wallThickness, 0.0f, friction,
+                             restitution, attachSprites, formatIndexedName("Chamber Floor", chamberIndex),
+                             formatIndexedName("Chamber Ceiling", chamberIndex),
+                             formatIndexedName("Chamber Left", chamberIndex),
+                             formatIndexedName("Chamber Right", chamberIndex));
 
         for (size_t localIndex = 0;
              localIndex < static_cast<size_t>(IDEAL_WORLD_BODIES_PER_CHAMBER) && spawned < totalBodies;
@@ -1258,14 +1236,18 @@ void configureScenarioCamera(platformator::Runtime &runtime, const BenchmarkRunn
         return;
     }
 
+    const auto applyRect = [&](const SDL_FRect &rect) {
+        mainCamera->setCamera(fitCameraRectToWindowAspect(rect, options.runtimeOptions.windowSettings));
+    };
+    const auto applyCentered = [&](float width, float height) {
+        applyRect(SDL_FRect{-0.5f * width, -0.5f * height, width, height});
+    };
+
     switch (options.scenario)
     {
     case BenchmarkScenario::BroadPhase: {
-        const float laneStepY = 80.0f;
         const float laneCount = static_cast<float>(std::max(1, options.broadPhaseElementCount));
-        const float cameraHeight = std::max(600.0f, laneCount * laneStepY + 320.0f);
-        mainCamera->setCamera(fitCameraRectToWindowAspect(
-            SDL_FRect{-2600.0f, -0.5f * cameraHeight, 5200.0f, cameraHeight}, options.runtimeOptions.windowSettings));
+        applyCentered(5200.0f, std::max(600.0f, laneCount * 80.0f + 320.0f));
         return;
     }
     case BenchmarkScenario::BroadPhaseStress: {
@@ -1273,33 +1255,21 @@ void configureScenarioCamera(platformator::Runtime &runtime, const BenchmarkRunn
         {
             return;
         }
-
-        const BroadPhaseStressScenarioSettings &settings = broadPhaseStressState->settings;
-        const BroadPhaseStressScenarioLayout &layout = broadPhaseStressState->layout;
-        const float cameraWidth = layout.width + 2.0f * (settings.phaseOffset + settings.cameraMargin);
-        const float cameraHeight = layout.height + 2.0f * (settings.phaseOffset + settings.cameraMargin);
-        mainCamera->setCamera(
-            fitCameraRectToWindowAspect(SDL_FRect{-0.5f * cameraWidth, -0.5f * cameraHeight, cameraWidth, cameraHeight},
-                                        options.runtimeOptions.windowSettings));
+        const float pad = 2.0f * (broadPhaseStressState->settings.phaseOffset + broadPhaseStressState->settings.cameraMargin);
+        applyCentered(broadPhaseStressState->layout.width + pad, broadPhaseStressState->layout.height + pad);
         return;
     }
     case BenchmarkScenario::NarrowPhase: {
         const NarrowPhaseScenarioLayout layout = calculateNarrowPhaseScenarioLayout(options);
-        const float cameraWidth = layout.lineWidth + 2.0f * layout.cameraMargin;
-        const float cameraHeight = layout.lineHeight + 2.0f * layout.cameraMargin;
-        mainCamera->setCamera(
-            fitCameraRectToWindowAspect(SDL_FRect{-0.5f * cameraWidth, -0.5f * cameraHeight, cameraWidth, cameraHeight},
-                                        options.runtimeOptions.windowSettings));
+        const float pad = 2.0f * layout.cameraMargin;
+        applyCentered(layout.lineWidth + pad, layout.lineHeight + pad);
         return;
     }
     case BenchmarkScenario::RigidBodyContainer: {
         const RigidBodyContainerScenarioSettings settings = makeRigidBodyContainerScenarioSettings(options);
         const RigidBodyContainerLayout layout = calculateRigidBodyContainerLayout(options);
-        const float cameraWidth = layout.interiorWidth + 2.0f * settings.wallThickness + 2.0f * settings.cameraMargin;
-        const float cameraHeight = layout.interiorHeight + 2.0f * settings.wallThickness + 2.0f * settings.cameraMargin;
-        mainCamera->setCamera(
-            fitCameraRectToWindowAspect(SDL_FRect{-0.5f * cameraWidth, -0.5f * cameraHeight, cameraWidth, cameraHeight},
-                                        options.runtimeOptions.windowSettings));
+        const float pad = 2.0f * (settings.wallThickness + settings.cameraMargin);
+        applyCentered(layout.interiorWidth + pad, layout.interiorHeight + pad);
         return;
     }
     case BenchmarkScenario::AddAndRemove:
@@ -1308,14 +1278,8 @@ void configureScenarioCamera(platformator::Runtime &runtime, const BenchmarkRunn
         {
             return;
         }
-
-        const AddRemoveScenarioSettings &settings = addRemoveState->settings;
-        const AddRemoveScenarioLayout &layout = addRemoveState->layout;
-        const float cameraWidth = layout.width + 2.0f * settings.cameraMargin;
-        const float cameraHeight = layout.height + 2.0f * settings.cameraMargin;
-        mainCamera->setCamera(
-            fitCameraRectToWindowAspect(SDL_FRect{-0.5f * cameraWidth, -0.5f * cameraHeight, cameraWidth, cameraHeight},
-                                        options.runtimeOptions.windowSettings));
+        const float pad = 2.0f * addRemoveState->settings.cameraMargin;
+        applyCentered(addRemoveState->layout.width + pad, addRemoveState->layout.height + pad);
         return;
     }
     case BenchmarkScenario::PersistentContacts: {
@@ -1325,9 +1289,7 @@ void configureScenarioCamera(platformator::Runtime &runtime, const BenchmarkRunn
         const float maxX = static_cast<float>(cols - 1) * 80.0f + 5.0f;
         const float maxY = static_cast<float>(rows - 1) * 80.0f + 4.0f;
         const float pad = 40.0f;
-        mainCamera->setCamera(fitCameraRectToWindowAspect(
-            SDL_FRect{-pad, -pad, std::max(120.0f, maxX + 2.0f * pad), std::max(120.0f, maxY + 2.0f * pad)},
-            options.runtimeOptions.windowSettings));
+        applyRect(SDL_FRect{-pad, -pad, std::max(120.0f, maxX + 2.0f * pad), std::max(120.0f, maxY + 2.0f * pad)});
         return;
     }
     case BenchmarkScenario::IdealWorld: {
@@ -1335,19 +1297,15 @@ void configureScenarioCamera(platformator::Runtime &runtime, const BenchmarkRunn
         const size_t cols =
             std::max<size_t>(1, static_cast<size_t>(std::ceil(std::sqrt(static_cast<double>(chamberCount)))));
         const size_t rows = std::max<size_t>(1, (chamberCount + cols - 1) / cols);
-        const float w = static_cast<float>(cols) * 600.0f + 400.0f;
-        const float h = static_cast<float>(rows) * 600.0f + 400.0f;
-        mainCamera->setCamera(
-            fitCameraRectToWindowAspect(SDL_FRect{-0.5f * w, -0.5f * h, w, h}, options.runtimeOptions.windowSettings));
+        applyCentered(static_cast<float>(cols) * 600.0f + 400.0f, static_cast<float>(rows) * 600.0f + 400.0f);
         return;
     }
     case BenchmarkScenario::LargePyramid:
     case BenchmarkScenario::ManyPyramids:
     case BenchmarkScenario::Smash: {
         const auto rect = findBox2DScenario(options.scenario)->cameraMeters;
-        mainCamera->setCamera(fitCameraRectToWindowAspect(
-            SDL_FRect{rect.x * box2dUnitsPerMeter, rect.y * box2dUnitsPerMeter,
-                      rect.w * box2dUnitsPerMeter, rect.h * box2dUnitsPerMeter}, options.runtimeOptions.windowSettings));
+        applyRect(SDL_FRect{rect.x * box2dUnitsPerMeter, rect.y * box2dUnitsPerMeter, rect.w * box2dUnitsPerMeter,
+                            rect.h * box2dUnitsPerMeter});
         return;
     }
     case BenchmarkScenario::None:

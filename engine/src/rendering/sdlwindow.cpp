@@ -2,24 +2,22 @@
 #include "audio/audiomanager.h"
 
 #include <algorithm>
-#include <cassert>
-#include <chrono>
 #include <cstdlib>
-#include <limits>
 #include <memory>
 #include <stdexcept>
 #include <string>
 #include <string_view>
 #include <utility>
 
-#include <SDL3/SDL_properties.h>
-
-#include "core/gamemanager.h"
-#include "core/runtimeaccess.h"
-#include "platformator/sprite.h"
 #include "benchmark/benchmark.h"
-#include "rendering/spriterendergeometry.h"
 #include "benchmark/workprobe.h"
+#include "rendering/spriterendergeometry.h"
+#if PLATFORMATOR_ENABLE_DEBUG_TOOLS
+#include "core/runtimeaccess.h"
+#include "physics/physicsmanager.h"
+#include "platformator/boxcollider.h"
+#include "platformator/circlecollider.h"
+#endif
 
 namespace
 {
@@ -112,10 +110,12 @@ const char *SDLWindow::effectiveRenderPolicyName(const RenderCullingPolicy &poli
 SDLWindow::RenderCullingPolicy SDLWindow::getRenderCullingPolicy() const noexcept
 {
     RenderCullingPolicy policy;
-    policy.requestedMode = requestedRenderCullingMode;
-    policy.effectiveMode = effectiveRenderCullingMode;
+    policy.requestedMode = platformator_detail::RenderCullingMode::CachedLinear;
     policy.cullingEnabled = windowSettings.enableRenderCulling;
     policy.headless = windowSettings.headless || renderer == nullptr;
+    policy.effectiveMode = (!policy.headless && policy.cullingEnabled)
+                               ? platformator_detail::RenderCullingMode::CachedLinear
+                               : platformator_detail::RenderCullingMode::SubmitAll;
     return policy;
 }
 
@@ -125,18 +125,15 @@ SDLWindow::RenderFallbackCounts SDLWindow::getObservedRenderFallbackCounts() con
 }
 
 SDLWindow::SDLWindow(const WindowSettings &windowSettings, const DebugSettings &debugSettings)
-    : window(nullptr), renderer(nullptr), audioManager(nullptr), mainCamera(nullptr), sdlEvent(),
-      debugDraw(DebugDraw::getInstance()), rendererName(nullptr), windowSettings(windowSettings),
+    : window(nullptr), renderer(nullptr), audioManager(nullptr), mainCamera(nullptr),
+      debugDraw(DebugDraw::getInstance()), windowSettings(windowSettings),
       renderWidth(windowSettings.width), renderHeight(windowSettings.height), quit(false),
       paused(debugSettings.startPaused), advanceFrameRequested(false),
-      requestedRenderCullingMode(resolveRequestedRenderCullingModeFromEnvironment()),
-      effectiveRenderCullingMode((!windowSettings.headless && windowSettings.enableRenderCulling)
-                                     ? requestedRenderCullingMode
-                                     : platformator_detail::RenderCullingMode::SubmitAll),
-      renderCullingState(), spriteComponents(), listeners()
+      renderCullingState(), spriteComponents()
 {
     try
     {
+        const RenderCullingPolicy cullingPolicy = resolveRenderCullingPolicy(windowSettings);
 #if PLATFORMATOR_ENABLE_DEBUG_TOOLS
         debugDraw.setSettings(debugSettings);
 #else
@@ -153,56 +150,13 @@ SDLWindow::SDLWindow(const WindowSettings &windowSettings, const DebugSettings &
         {
             spriteDrawOrder.emplace();
             publishOrderCapacityObservation();
-            if (effectiveRenderCullingMode == platformator_detail::RenderCullingMode::CachedLinear)
+            if (cullingPolicy.effectiveMode == platformator_detail::RenderCullingMode::CachedLinear)
             {
                 renderCullingState = std::make_unique<platformator_detail::RenderCullingState>();
                 renderCullingState->publishCapacityObservation();
                 PLATFORMATOR_RENDER_CULLING_ADD(renderCullingStateCreations, 1);
             }
         }
-
-#if PLATFORMATOR_ENABLE_DEBUG_TOOLS
-        listeners.push_back([this](SDL_Event event, double) {
-            if (event.type != SDL_EVENT_KEY_DOWN)
-            {
-                return;
-            }
-
-            switch (event.key.key)
-            {
-            case SDLK_F1:
-                debugDraw.toggleShowColliders();
-                break;
-            case SDLK_F2:
-                debugDraw.toggleShowCollisionPoints();
-                break;
-            case SDLK_F3:
-                debugDraw.toggleShowCollisionNormals();
-                break;
-            case SDLK_F4:
-                debugDraw.toggleShowGridCells();
-                break;
-            case SDLK_F5:
-                if (setPaused(!paused))
-                    PLATFORMATOR_LOG("Simulation: %s\n", paused ? "paused" : "running");
-                else
-                    PLATFORMATOR_LOG("Could not change game pause state: %s\n", SDL_GetError());
-                break;
-            case SDLK_F6:
-                if (paused)
-                {
-                    advanceFrameRequested = true;
-                    PLATFORMATOR_LOG("Advancing one frame\n");
-                }
-                break;
-            case SDLK_F9:
-                debugDraw.toggleShowFps();
-                break;
-            default:
-                break;
-            }
-        });
-#endif
     }
     catch (...)
     {
@@ -222,7 +176,6 @@ bool SDLWindow::init()
     {
         if (!SDL_Init(SDL_INIT_EVENTS))
             return false;
-        rendererName = "Headless";
         renderWidth = std::max(1, windowSettings.width);
         renderHeight = std::max(1, windowSettings.height);
         return true;
@@ -277,7 +230,7 @@ bool SDLWindow::init()
 
     updateRenderSize();
 
-    rendererName = SDL_GetRendererName(renderer);
+    const char *rendererName = SDL_GetRendererName(renderer);
     if (rendererName == nullptr)
     {
         rendererName = "Unknown Renderer";
@@ -308,33 +261,73 @@ void SDLWindow::close()
     }
 
     mainCamera = nullptr;
-    rendererName = nullptr;
 
     SDL_Quit();
 }
 
-void SDLWindow::handleSDLEvents(double deltaTime)
+#if PLATFORMATOR_ENABLE_DEBUG_TOOLS
+void SDLWindow::handleDebugKeyEvent(SDL_Keycode key)
+{
+    switch (key)
+    {
+    case SDLK_F1:
+        debugDraw.toggleShowColliders();
+        break;
+    case SDLK_F2:
+        debugDraw.toggleShowCollisionPoints();
+        break;
+    case SDLK_F3:
+        debugDraw.toggleShowCollisionNormals();
+        break;
+    case SDLK_F4:
+        debugDraw.toggleShowGridCells();
+        break;
+    case SDLK_F5:
+        if (setPaused(!paused))
+            PLATFORMATOR_LOG("Simulation: %s\n", paused ? "paused" : "running");
+        else
+            PLATFORMATOR_LOG("Could not change game pause state: %s\n", SDL_GetError());
+        break;
+    case SDLK_F6:
+        if (paused)
+        {
+            advanceFrameRequested = true;
+            PLATFORMATOR_LOG("Advancing one frame\n");
+        }
+        break;
+    case SDLK_F9:
+        debugDraw.toggleShowFps();
+        break;
+    default:
+        break;
+    }
+}
+#endif
+
+void SDLWindow::handleSDLEvents()
 {
     if (windowSettings.headless)
     {
         return;
     }
 
-    while (SDL_PollEvent(&sdlEvent) != 0)
+    SDL_Event event{};
+    while (SDL_PollEvent(&event) != 0)
     {
-        if (sdlEvent.type == SDL_EVENT_QUIT)
+        if (event.type == SDL_EVENT_QUIT)
         {
             quit = true;
         }
-        else if (sdlEvent.type == SDL_EVENT_WINDOW_RESIZED || sdlEvent.type == SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED)
+        else if (event.type == SDL_EVENT_WINDOW_RESIZED || event.type == SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED)
         {
             updateRenderSize();
         }
-
-        for (const auto &listener : listeners)
+#if PLATFORMATOR_ENABLE_DEBUG_TOOLS
+        else if (event.type == SDL_EVENT_KEY_DOWN)
         {
-            listener(sdlEvent, deltaTime);
+            handleDebugKeyEvent(event.key.key);
         }
+#endif
     }
 }
 
@@ -352,58 +345,45 @@ void SDLWindow::render()
     SDL_SetRenderDrawColor(renderer, windowSettings.clearColor.r, windowSettings.clearColor.g,
                            windowSettings.clearColor.b, windowSettings.clearColor.a);
     SDL_RenderClear(renderer);
-    if (!mainCamera)
+    if (mainCamera != nullptr)
     {
-        PLATFORMATOR_RENDER_BEFORE_PRESENT(renderer, renderWidth, renderHeight);
-        if (editorSessionFrameCapture)
-            editorSessionFrameCapture(renderer, renderWidth, renderHeight);
-        SDL_RenderPresent(renderer);
-        return;
-    }
-
 #if PLATFORMATOR_ENABLE_DEBUG_TOOLS
-    PhysicsManager *physicsManager = platformator_detail::RuntimeAccess::physicsManager();
-    if (shouldSimulateFrame())
-    {
-        for (const auto &cellEntry : physicsManager->getGrid().getCells())
+        if (PhysicsManager *physicsManager = platformator_detail::RuntimeAccess::physicsManager();
+            physicsManager != nullptr && shouldSimulateFrame())
         {
-            debugDraw.addGridCellDebugObject(cellEntry.first);
-        }
-    }
-#endif
-
-#if PLATFORMATOR_ENABLE_DEBUG_TOOLS
-    for (Collider *collider : physicsManager->getColliders())
-    {
-        if (collider != nullptr && shouldSimulateFrame())
-        {
-            if (collider->getColliderType() == ColliderType::BoxCollider)
+            for (const auto &cellEntry : physicsManager->getGrid().getCells())
             {
-                debugDraw.addBoxColliderDebugObject(*(BoxCollider *)collider);
+                debugDraw.addGridCellDebugObject(cellEntry.first);
             }
-            else if (collider->getColliderType() == ColliderType::CircleCollider)
+            for (Collider *collider : physicsManager->getColliders())
             {
-                debugDraw.addCircleColliderDebugObject(*(CircleCollider *)collider);
+                if (collider == nullptr)
+                    continue;
+                if (collider->getColliderType() == ColliderType::BoxCollider)
+                    debugDraw.addBoxColliderDebugObject(*static_cast<const BoxCollider *>(collider));
+                else if (collider->getColliderType() == ColliderType::CircleCollider)
+                    debugDraw.addCircleColliderDebugObject(*static_cast<const CircleCollider *>(collider));
             }
         }
-    }
 #endif
 
-    bool cullingEligible = false;
-    if (windowSettings.enableRenderCulling)
-    {
-        PLATFORMATOR_RENDER_ELIGIBILITY_CHECK();
-        cullingEligible = hasDefaultRenderMapping(renderer, renderWidth, renderHeight);
-    }
-    const auto renderView = mainCamera->prepareRenderView(renderWidth, renderHeight, cullingEligible);
+        bool cullingEligible = false;
+        if (windowSettings.enableRenderCulling)
+        {
+            PLATFORMATOR_RENDER_ELIGIBILITY_CHECK();
+            cullingEligible = hasDefaultRenderMapping(renderer, renderWidth, renderHeight);
+        }
+        const auto renderView = mainCamera->prepareRenderView(renderWidth, renderHeight, cullingEligible);
 
-    const bool useCachedSelection = renderCullingState && prepareVisibleSelection(mainCamera, renderView);
-    prepareDrawOrder(useCachedSelection);
-    renderSpritesBatched(mainCamera, renderView, useCachedSelection);
+        const bool useCachedSelection = renderCullingState && prepareVisibleSelection(mainCamera, renderView);
+        prepareDrawOrder(useCachedSelection);
+        renderSpritesBatched(mainCamera, renderView, useCachedSelection);
 
 #if PLATFORMATOR_ENABLE_DEBUG_TOOLS
-    debugDraw.render(renderer, mainCamera, renderWidth, renderHeight);
+        debugDraw.render(renderer, renderView);
 #endif
+    }
+
     PLATFORMATOR_RENDER_BEFORE_PRESENT(renderer, renderWidth, renderHeight);
     if (editorSessionFrameCapture)
         editorSessionFrameCapture(renderer, renderWidth, renderHeight);
@@ -472,34 +452,29 @@ bool SDLWindow::isRunning() const
     return !quit;
 }
 
-bool SDLWindow::shouldUseFixedStepDelta() const
+bool SDLWindow::pauseControlsEnabled() const noexcept
 {
 #if PLATFORMATOR_ENABLE_DEBUG_TOOLS
-    return paused;
+    return true;
 #else
-    return editorSessionControlsEnabled && paused;
+    return editorSessionControlsEnabled;
 #endif
+}
+
+bool SDLWindow::shouldUseFixedStepDelta() const
+{
+    return pauseControlsEnabled() && paused;
 }
 
 bool SDLWindow::shouldSimulateFrame() const
 {
-    if (editorSessionControlsEnabled)
-        return !paused || advanceFrameRequested;
-#if PLATFORMATOR_ENABLE_DEBUG_TOOLS
-    return !paused || advanceFrameRequested;
-#else
-    return true;
-#endif
+    return !pauseControlsEnabled() || !paused || advanceFrameRequested;
 }
 
 void SDLWindow::clearAdvanceFrameRequest()
 {
-#if PLATFORMATOR_ENABLE_DEBUG_TOOLS
-    advanceFrameRequested = false;
-#else
-    if (editorSessionControlsEnabled)
+    if (pauseControlsEnabled())
         advanceFrameRequested = false;
-#endif
 }
 
 bool SDLWindow::enableEditorSessionControls() noexcept
@@ -522,10 +497,7 @@ bool SDLWindow::setEditorSessionPaused(bool value) noexcept
 
 bool SDLWindow::setPaused(bool value) noexcept
 {
-    bool pauseAudio = value;
-#if !PLATFORMATOR_ENABLE_DEBUG_TOOLS
-    pauseAudio = editorSessionControlsEnabled && value;
-#endif
+    const bool pauseAudio = pauseControlsEnabled() && value;
     if (audioManager != nullptr && !audioManager->setPaused(pauseAudio))
     {
         return false;

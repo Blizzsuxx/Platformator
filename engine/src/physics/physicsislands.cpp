@@ -59,7 +59,7 @@ void PhysicsManager::clearIslandColorGraph(PersistentIsland &island)
     {
         body->solverColorMask = 0;
     }
-    for (const ColliderPair *pair : island.contacts)
+    for (ColliderPair *pair : island.contacts)
     {
         pair->solverColor = 0xFFu;
         pair->solverColorSlot = UINT32_MAX;
@@ -67,7 +67,7 @@ void PhysicsManager::clearIslandColorGraph(PersistentIsland &island)
     island.colorGraph.reset();
 }
 
-void PhysicsManager::insertContactIntoColorGraph(IslandColorGraph &graph, const ColliderPair *pair)
+void PhysicsManager::insertContactIntoColorGraph(IslandColorGraph &graph, ColliderPair *pair)
 {
     if (pair->solverColor != 0xFFu)
     {
@@ -100,7 +100,7 @@ void PhysicsManager::insertContactIntoColorGraph(IslandColorGraph &graph, const 
     bucket.push_back(pair);
 }
 
-void PhysicsManager::removeContactFromColorGraph(IslandColorGraph &graph, const ColliderPair *pair)
+void PhysicsManager::removeContactFromColorGraph(IslandColorGraph &graph, ColliderPair *pair)
 {
     const uint8_t color = pair->solverColor;
     if (color == 0xFFu)
@@ -114,7 +114,7 @@ void PhysicsManager::removeContactFromColorGraph(IslandColorGraph &graph, const 
         const uint32_t last = static_cast<uint32_t>(bucket.size() - 1);
         if (slot != last)
         {
-            const ColliderPair *moved = bucket[last];
+            ColliderPair *moved = bucket[last];
             bucket[slot] = moved;
             moved->solverColorSlot = slot;
         }
@@ -149,7 +149,7 @@ void PhysicsManager::ensureIslandColorGraph(PersistentIsland &island)
     {
         body->solverColorMask = 0;
     }
-    for (const ColliderPair *pair : island.contacts)
+    for (ColliderPair *pair : island.contacts)
     {
         pair->solverColor = 0xFFu;
         pair->solverColorSlot = UINT32_MAX;
@@ -167,21 +167,12 @@ void PhysicsManager::setPersistentIslandActive(PersistentIsland &island, bool ac
             activeIslandIds.push_back(island.id);
         }
     }
-    else
+    else if (island.activeListIndex != SIZE_MAX)
     {
-        if (island.activeListIndex != SIZE_MAX)
-        {
-            const size_t removeIdx = island.activeListIndex;
-            const size_t lastIdx = activeIslandIds.size() - 1;
-            if (removeIdx != lastIdx)
-            {
-                const int32_t movedId = activeIslandIds[lastIdx];
-                activeIslandIds[removeIdx] = movedId;
-                persistentIslands[static_cast<size_t>(movedId)].activeListIndex = removeIdx;
-            }
-            activeIslandIds.pop_back();
-            island.activeListIndex = SIZE_MAX;
-        }
+        swapRemoveIndexed(
+            activeIslandIds, island.id,
+            [&](int32_t id) { return persistentIslands[static_cast<size_t>(id)].activeListIndex; },
+            [&](int32_t id, size_t idx) { persistentIslands[static_cast<size_t>(id)].activeListIndex = idx; });
     }
 }
 
@@ -196,7 +187,7 @@ void PhysicsManager::recyclePersistentIsland(int32_t islandId)
         body->solverIslandBodyIndex = SIZE_MAX;
         body->solverColorMask = 0;
     }
-    for (const ColliderPair *pair : island.contacts)
+    for (ColliderPair *pair : island.contacts)
     {
         pair->solverIslandId = -1;
         pair->solverIslandContactIndex = SIZE_MAX;
@@ -239,17 +230,8 @@ void PhysicsManager::detachBodyFromPersistentIsland(Rigidbody *body)
     }
     PersistentIsland &island = persistentIslands[static_cast<size_t>(islandId)];
     clearIslandColorGraph(island);
-    const size_t removeIdx = body->solverIslandBodyIndex;
-    const size_t lastIdx = island.bodies.size() - 1;
-    if (removeIdx != lastIdx)
-    {
-        Rigidbody *moved = island.bodies[lastIdx];
-        island.bodies[removeIdx] = moved;
-        moved->solverIslandBodyIndex = removeIdx;
-    }
-    island.bodies.pop_back();
+    membership(island.bodies, body, &Rigidbody::solverIslandBodyIndex, false);
     body->solverIslandId = -1;
-    body->solverIslandBodyIndex = SIZE_MAX;
     body->solverColorMask = 0;
 
     if (island.bodies.empty() || island.contacts.empty())
@@ -293,7 +275,7 @@ int32_t PhysicsManager::mergePersistentIslands(int32_t islandIdA, int32_t island
         body->solverColorMask = 0;
         keep.bodies.push_back(body);
     }
-    for (const ColliderPair *pair : drop.contacts)
+    for (ColliderPair *pair : drop.contacts)
     {
         pair->solverIslandId = keepId;
         pair->solverIslandContactIndex = keep.contacts.size();
@@ -316,7 +298,7 @@ int32_t PhysicsManager::mergePersistentIslands(int32_t islandIdA, int32_t island
     return keepId;
 }
 
-void PhysicsManager::removeContactFromPersistentIsland(const ColliderPair *pair)
+void PhysicsManager::removeContactFromPersistentIsland(ColliderPair *pair)
 {
     const int32_t islandId = pair->solverIslandId;
     if (islandId == -1)
@@ -328,17 +310,8 @@ void PhysicsManager::removeContactFromPersistentIsland(const ColliderPair *pair)
     {
         removeContactFromColorGraph(*island.colorGraph, pair);
     }
-    const size_t removeIdx = pair->solverIslandContactIndex;
-    const size_t lastIdx = island.contacts.size() - 1;
-    if (removeIdx != lastIdx)
-    {
-        const ColliderPair *moved = island.contacts[lastIdx];
-        island.contacts[removeIdx] = moved;
-        moved->solverIslandContactIndex = removeIdx;
-    }
-    island.contacts.pop_back();
+    membership(island.contacts, pair, &ColliderPair::solverIslandContactIndex, false);
     pair->solverIslandId = -1;
-    pair->solverIslandContactIndex = SIZE_MAX;
 
     if (island.contacts.empty())
     {
@@ -350,7 +323,7 @@ void PhysicsManager::removeContactFromPersistentIsland(const ColliderPair *pair)
     }
 }
 
-void PhysicsManager::updatePersistentIslandContact(const ColliderPair *pair, bool solve,
+void PhysicsManager::updatePersistentIslandContact(ColliderPair *pair, bool solve,
                                                    Collision::CollisionType response, Rigidbody *rbA, Rigidbody *rbB)
 {
     if (!solve)
@@ -540,15 +513,17 @@ void PhysicsManager::splitPersistentIsland(int32_t islandId)
     // Separate bodies and contacts across connected components, preserving relative contact order
     // and keeping the largest component's existing color graph intact.
     splitRemainingContacts.assign(island.contacts.begin(), island.contacts.end());
-    std::vector<Rigidbody *> oldBodies;
-    oldBodies.swap(island.bodies);
+    splitOldBodies.clear();
+    splitOldBodies.swap(island.bodies);
     island.contacts.clear();
     const bool hadSleeping = island.hasSleepingEndpoint;
     island.hasSleepingEndpoint = false;
 
-    std::vector<size_t> componentContactCounts(static_cast<size_t>(componentCount), 0);
-    for (const ColliderPair *pair : splitRemainingContacts)
+    splitComponentContactCounts.assign(static_cast<size_t>(componentCount), 0);
+    splitContactComponents.resize(splitRemainingContacts.size());
+    for (size_t i = 0; i < splitRemainingContacts.size(); ++i)
     {
+        const ColliderPair *pair = splitRemainingContacts[i];
         auto *rbA = pair->getObjectA()->getAttachedRigidbody();
         auto *rbB = pair->getObjectB()->getAttachedRigidbody();
         int32_t comp = -1;
@@ -560,9 +535,10 @@ void PhysicsManager::splitPersistentIsland(int32_t islandId)
         {
             comp = splitComponentOfBody[rbB->solverIslandBodyIndex];
         }
+        splitContactComponents[i] = comp;
         if (comp >= 0)
         {
-            ++componentContactCounts[static_cast<size_t>(comp)];
+            ++splitComponentContactCounts[static_cast<size_t>(comp)];
         }
     }
 
@@ -570,7 +546,7 @@ void PhysicsManager::splitPersistentIsland(int32_t islandId)
     size_t primaryContactCount = 0;
     for (int32_t comp = 0; comp < componentCount; ++comp)
     {
-        const size_t count = componentContactCounts[static_cast<size_t>(comp)];
+        const size_t count = splitComponentContactCounts[static_cast<size_t>(comp)];
         if (count > primaryContactCount)
         {
             primaryContactCount = count;
@@ -582,7 +558,7 @@ void PhysicsManager::splitPersistentIsland(int32_t islandId)
     bool reusedPrimary = false;
     for (int32_t comp = 0; comp < componentCount; ++comp)
     {
-        if (componentContactCounts[static_cast<size_t>(comp)] == 0)
+        if (splitComponentContactCounts[static_cast<size_t>(comp)] == 0)
         {
             continue;
         }
@@ -604,34 +580,21 @@ void PhysicsManager::splitPersistentIsland(int32_t islandId)
         clearIslandColorGraph(primaryIsland);
     }
 
-    // Remove only detached contacts from the primary island's color graph while body solverIslandId
-    // still reflects the pre-split island so component lookup is O(1).
     if (preservedColorGraph != nullptr)
     {
-        for (const ColliderPair *pair : splitRemainingContacts)
+        for (size_t i = 0; i < splitRemainingContacts.size(); ++i)
         {
-            auto *rbA = pair->getObjectA()->getAttachedRigidbody();
-            auto *rbB = pair->getObjectB()->getAttachedRigidbody();
-            int32_t comp = -1;
-            if (rbA != nullptr && rbA->solverIslandId == islandId)
+            if (splitContactComponents[i] != primaryComp)
             {
-                comp = splitComponentOfBody[rbA->solverIslandBodyIndex];
-            }
-            else if (rbB != nullptr && rbB->solverIslandId == islandId)
-            {
-                comp = splitComponentOfBody[rbB->solverIslandBodyIndex];
-            }
-            if (comp != primaryComp)
-            {
-                removeContactFromColorGraph(*preservedColorGraph, pair);
+                removeContactFromColorGraph(*preservedColorGraph, splitRemainingContacts[i]);
             }
         }
     }
 
     // Re-home bodies (components with 0 contacts detach cleanly).
-    for (size_t i = 0; i < oldBodies.size(); ++i)
+    for (size_t i = 0; i < splitOldBodies.size(); ++i)
     {
-        Rigidbody *body = oldBodies[i];
+        Rigidbody *body = splitOldBodies[i];
         const int32_t comp = splitComponentOfBody[i];
         const int32_t targetId = splitComponentIslandIds[static_cast<size_t>(comp)];
         body->solverIslandId = -1;
@@ -647,29 +610,25 @@ void PhysicsManager::splitPersistentIsland(int32_t islandId)
     }
 
     // Re-home contacts preserving relative order.
-    for (const ColliderPair *pair : splitRemainingContacts)
+    for (size_t i = 0; i < splitRemainingContacts.size(); ++i)
     {
-        auto *rbA = pair->getObjectA()->getAttachedRigidbody();
-        auto *rbB = pair->getObjectB()->getAttachedRigidbody();
-        int32_t targetId = -1;
-        if (rbA != nullptr && rbA->solverIslandId != -1)
-        {
-            targetId = rbA->solverIslandId;
-        }
-        else if (rbB != nullptr && rbB->solverIslandId != -1)
-        {
-            targetId = rbB->solverIslandId;
-        }
+        ColliderPair *pair = splitRemainingContacts[i];
+        const int32_t comp = splitContactComponents[i];
+        const int32_t targetId = comp >= 0 ? splitComponentIslandIds[static_cast<size_t>(comp)] : -1;
         if (targetId != -1)
         {
             PersistentIsland &target = persistentIslands[static_cast<size_t>(targetId)];
             pair->solverIslandId = targetId;
             pair->solverIslandContactIndex = target.contacts.size();
             target.contacts.push_back(pair);
-            if (hadSleeping &&
-                ((rbA != nullptr && rbA->getIsSleeping()) || (rbB != nullptr && rbB->getIsSleeping())))
+            if (hadSleeping)
             {
-                target.hasSleepingEndpoint = true;
+                auto *rbA = pair->getObjectA()->getAttachedRigidbody();
+                auto *rbB = pair->getObjectB()->getAttachedRigidbody();
+                if ((rbA != nullptr && rbA->getIsSleeping()) || (rbB != nullptr && rbB->getIsSleeping()))
+                {
+                    target.hasSleepingEndpoint = true;
+                }
             }
             setPersistentIslandActive(target, true);
         }
@@ -725,16 +684,12 @@ void PhysicsManager::wakePersistentIslandEndpoints()
             continue;
         }
         bool stillHasSleeping = false;
-        for (const ColliderPair *pair : island.contacts)
+        for (ColliderPair *pair : island.contacts)
         {
-            auto *collision = pair->getCollision();
-            if (collision == nullptr)
-            {
-                continue;
-            }
-            auto *rbA = collision->getReferenceObject()->getAttachedRigidbody();
-            auto *rbB = collision->getIncidentObject()->getAttachedRigidbody();
-            if (rbA == nullptr || rbB == nullptr)
+            Collision *collision = nullptr;
+            Rigidbody *rbA = nullptr;
+            Rigidbody *rbB = nullptr;
+            if (!extractSolverPair(pair, collision, rbA, rbB))
             {
                 continue;
             }

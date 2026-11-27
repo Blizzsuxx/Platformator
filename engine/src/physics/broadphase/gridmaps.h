@@ -4,12 +4,14 @@
 #include <cstdint>
 #include <functional>
 #include <iterator>
+#include <type_traits>
 #include <vector>
 
-#include "core/flathash.h"
 #include "core/flatmap.h"
+#include "core/membership.h"
 #include "core/slotpool.h"
 #include "physics/broadphase/gridcell.h"
+#include "physics/broadphase/projectionproxy.h"
 #include "physics/colliderpair.h"
 
 class Grid;
@@ -28,43 +30,43 @@ class FlatCellMap
         }
     };
 
-    class iterator
+    template <bool IsConst> class Iterator
     {
       public:
         using iterator_category = std::forward_iterator_tag;
-        using value_type = Node;
+        using value_type = std::conditional_t<IsConst, const Node, Node>;
         using difference_type = std::ptrdiff_t;
-        using pointer = Node *;
-        using reference = Node &;
+        using pointer = value_type *;
+        using reference = value_type &;
 
-        explicit iterator(Node *const *ptr = nullptr) noexcept : ptr(ptr)
+        explicit Iterator(Node *const *ptr = nullptr) noexcept : ptr(ptr)
         {
         }
 
-        Node &operator*() const noexcept
+        reference operator*() const noexcept
         {
             return **ptr;
         }
-        Node *operator->() const noexcept
+        pointer operator->() const noexcept
         {
             return *ptr;
         }
-        iterator &operator++() noexcept
+        Iterator &operator++() noexcept
         {
             ++ptr;
             return *this;
         }
-        iterator operator++(int) noexcept
+        Iterator operator++(int) noexcept
         {
-            iterator copy = *this;
+            Iterator copy = *this;
             ++ptr;
             return copy;
         }
-        bool operator==(const iterator &other) const noexcept
+        bool operator==(const Iterator &other) const noexcept
         {
             return ptr == other.ptr;
         }
-        bool operator!=(const iterator &other) const noexcept
+        bool operator!=(const Iterator &other) const noexcept
         {
             return ptr != other.ptr;
         }
@@ -73,50 +75,8 @@ class FlatCellMap
         Node *const *ptr;
     };
 
-    class const_iterator
-    {
-      public:
-        using iterator_category = std::forward_iterator_tag;
-        using value_type = const Node;
-        using difference_type = std::ptrdiff_t;
-        using pointer = const Node *;
-        using reference = const Node &;
-
-        explicit const_iterator(Node *const *ptr = nullptr) noexcept : ptr(ptr)
-        {
-        }
-
-        const Node &operator*() const noexcept
-        {
-            return **ptr;
-        }
-        const Node *operator->() const noexcept
-        {
-            return *ptr;
-        }
-        const_iterator &operator++() noexcept
-        {
-            ++ptr;
-            return *this;
-        }
-        const_iterator operator++(int) noexcept
-        {
-            const_iterator copy = *this;
-            ++ptr;
-            return copy;
-        }
-        bool operator==(const const_iterator &other) const noexcept
-        {
-            return ptr == other.ptr;
-        }
-        bool operator!=(const const_iterator &other) const noexcept
-        {
-            return ptr != other.ptr;
-        }
-
-      private:
-        Node *const *ptr;
-    };
+    using iterator = Iterator<false>;
+    using const_iterator = Iterator<true>;
 
     FlatCellMap() = default;
     ~FlatCellMap()
@@ -183,10 +143,10 @@ class FlatCellMap
                 created = nodePool.create(key, owner);
             }
 
-            created->activeIndex = activeNodes.size();
             try
             {
                 activeNodes.push_back(created);
+                created->activeIndex = activeNodes.size() - 1;
             }
             catch (...)
             {
@@ -207,16 +167,7 @@ class FlatCellMap
             return false;
         }
 
-        const size_t removeIdx = node->activeIndex;
-        const size_t lastIdx = activeNodes.size() - 1;
-        if (removeIdx != lastIdx)
-        {
-            Node *moved = activeNodes[lastIdx];
-            activeNodes[removeIdx] = moved;
-            moved->activeIndex = removeIdx;
-        }
-        activeNodes.pop_back();
-        node->activeIndex = SIZE_MAX;
+        membership(activeNodes, node, &Node::activeIndex, false);
 
         if (recycledNodes.size() < maxRecycled)
         {
@@ -276,24 +227,19 @@ class FlatCandidatePairPool
         return table.size();
     }
 
-    bool empty() const noexcept
+    ColliderPair *find(Collider *a, Collider *b) const noexcept
     {
-        return table.empty();
+        return table.find(PairKey(a, b));
     }
 
-    const ColliderPair *find(Collider *a, Collider *b) const noexcept
+    ColliderPair *findOrEmplace(Collider *origA, Collider *origB)
     {
-        return table.find(canonicalKey(a, b));
-    }
-
-    const ColliderPair *findOrEmplace(Collider *origA, Collider *origB)
-    {
-        return table.findOrEmplace(canonicalKey(origA, origB), [&]() { return pairPool.create(origA, origB); });
+        return table.findOrEmplace(PairKey(origA, origB), [&]() { return pairPool.create(origA, origB); });
     }
 
     bool erase(Collider *a, Collider *b) noexcept
     {
-        ColliderPair *pair = table.extract(canonicalKey(a, b));
+        ColliderPair *pair = table.extract(PairKey(a, b));
         if (pair == nullptr)
         {
             return false;
@@ -316,27 +262,8 @@ class FlatCandidatePairPool
     }
 
   private:
-    struct PairKey
-    {
-        Collider *a = nullptr;
-        Collider *b = nullptr;
-
-        bool operator==(const PairKey &) const noexcept = default;
-    };
-
-    struct PairKeyHash
-    {
-        size_t operator()(const PairKey &key) const noexcept
-        {
-            return platformator_detail::hashPointerPair(key.a, key.b);
-        }
-    };
-
-    static PairKey canonicalKey(Collider *a, Collider *b) noexcept
-    {
-        return a <= b ? PairKey{a, b} : PairKey{b, a};
-    }
+    using PairKey = platformator_detail::CanonicalColliderPairKey;
 
     platformator_detail::ChunkedSlotPool<ColliderPair, 64, 1024> pairPool;
-    FlatHashMap<PairKey, ColliderPair *, PairKeyHash, std::equal_to<PairKey>, 64> table;
+    FlatHashMap<PairKey, ColliderPair *, PairKey::Hash, std::equal_to<PairKey>, 64> table;
 };

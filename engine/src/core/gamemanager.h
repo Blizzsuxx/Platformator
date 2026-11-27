@@ -25,13 +25,11 @@ class ScriptComponent;
 
 namespace platformator
 {
-class ReferenceResolver;
 class Runtime;
 } // namespace platformator
 
 namespace platformator_detail
 {
-class AssetStore;
 class RuntimeAccess;
 } // namespace platformator_detail
 
@@ -90,7 +88,7 @@ class GameManager
         Phase previous;
     };
 
-    GameManager(GameManager &) = delete;
+    GameManager(const GameManager &) = delete;
     GameManager &operator=(const GameManager &) = delete;
 
     GameManager(const WindowSettings &windowSettings, const DebugSettings &debugSettings);
@@ -126,16 +124,21 @@ class GameManager
 
     void loop(const std::function<bool(SDLWindow &)> &ownerThreadService = {},
               const std::function<void(std::uint64_t)> &afterSimulationStep = {});
-    void simulateFrame(double timeDelta);
-    bool simulateAndRenderFrame(double timeDelta);
+    void runSimulationStep(double timeDelta, const std::function<void(double)> &customCallback = {});
+    bool simulateAndRenderFrame(double timeDelta, const std::function<void(double)> &customCallback = {});
 
     platformator_detail::AssetStore &assetStore() noexcept
     {
         return assets;
     }
-    const platformator_detail::AssetStore &assetStore() const noexcept
+
+    const std::string &getCurrentSceneFilePath() const noexcept
     {
-        return assets;
+        return currentSceneFilePath;
+    }
+    void setCurrentSceneFilePath(std::string path) noexcept
+    {
+        currentSceneFilePath = std::move(path);
     }
 
     void loadScene(const Scene &scene);
@@ -158,6 +161,7 @@ class GameManager
     std::uint64_t simulationStepNumber = 0;
 
     std::optional<SceneRequest> pendingSceneRequest;
+    std::string currentSceneFilePath;
     bool preparingScene = false;
     int64_t nextFileId = 0;
 
@@ -188,6 +192,8 @@ class GameManager
 
     // Object & scene lifecycle
     void assignFileId(BaseObject &object);
+    void registerIdentity(BaseObject &object, platformator_detail::ObjectKind kind);
+    void assertIdleMainThread() const;
     void createMainCameraIfNoMainCameraExists();
     [[noreturn]] void throwCannotMutate() const;
     void registerGameObjectSubtree(GameObject *gameObject);
@@ -226,8 +232,4 @@ class GameManager
     void cancelScriptStart(ScriptComponent *script);
 
     const std::vector<GameObject *> &getGameObjects() const;
-    void runSimulationStep(double timeDelta);
-    void simulateFrameWithCustomCallback(const std::function<void(double)> &customCallback, double timeDelta);
-    void runSimulationStepWithCustomCallback(const std::function<void(double)> &customCallback, double timeDelta);
-    bool simulateAndRenderFrameWithCustomCallback(const std::function<void(double)> &customCallback, double timeDelta);
 };

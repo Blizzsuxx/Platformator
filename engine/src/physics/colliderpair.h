@@ -15,59 +15,63 @@ class ColliderPair
     ColliderPair(const ColliderPair &) = delete;
     ColliderPair &operator=(const ColliderPair &) = delete;
 
-    Collision *getCollision() const
+    Collision *getCollision() noexcept
     {
         return hasCollision ? &collisionStorage : nullptr;
     }
-    Collision *getOrCreateCollisionNoEvent() const;
+    const Collision *getCollision() const noexcept
+    {
+        return hasCollision ? &collisionStorage : nullptr;
+    }
+    Collision *getOrCreateCollisionNoEvent();
 
-    void updateCachedCollisionVersions() const
+    void updateCachedCollisionVersions() noexcept
     {
         objectAStateVersion = objectA ? objectA->getStateVersion() : static_cast<uint64_t>(-1);
         objectBStateVersion = objectB ? objectB->getStateVersion() : static_cast<uint64_t>(-1);
     }
-    bool shouldUpdate() const
+    bool shouldUpdate() const noexcept
     {
         const uint64_t currentObjectAVersion = objectA ? objectA->getStateVersion() : static_cast<uint64_t>(-1);
         const uint64_t currentObjectBVersion = objectB ? objectB->getStateVersion() : static_cast<uint64_t>(-1);
         return currentObjectAVersion != objectAStateVersion || currentObjectBVersion != objectBStateVersion;
     }
-    void clearCollisionNoEvent() const;
+    void clearCollisionNoEvent() noexcept;
 
-    bool getIsQueuedForNarrowPhase() const
+    bool getIsQueuedForNarrowPhase() const noexcept
     {
         return narrowPhaseQueueIndex != SIZE_MAX;
     }
-    size_t getNarrowPhaseQueueIndex() const
+    size_t getNarrowPhaseQueueIndex() const noexcept
     {
         return narrowPhaseQueueIndex;
     }
-    void setNarrowPhaseQueueIndex(size_t index) const
+    void setNarrowPhaseQueueIndex(size_t index) noexcept
     {
         narrowPhaseQueueIndex = index;
     }
-    size_t getAdjacencyIndexA() const
+    size_t getAdjacencyIndexA() const noexcept
     {
         return adjacencyIndexA;
     }
-    void setAdjacencyIndexA(size_t index) const
+    void setAdjacencyIndexA(size_t index) noexcept
     {
         adjacencyIndexA = index;
     }
-    size_t getAdjacencyIndexB() const
+    size_t getAdjacencyIndexB() const noexcept
     {
         return adjacencyIndexB;
     }
-    void setAdjacencyIndexB(size_t index) const
+    void setAdjacencyIndexB(size_t index) noexcept
     {
         adjacencyIndexB = index;
     }
 
-    Collider *getObjectA() const
+    Collider *getObjectA() const noexcept
     {
         return objectA;
     }
-    Collider *getObjectB() const
+    Collider *getObjectB() const noexcept
     {
         return objectB;
     }
@@ -77,54 +81,38 @@ class ColliderPair
         return solverIslandId != -1 || kinematicSolverIndex != SIZE_MAX;
     }
 
-    int getWitnessCount() const
+    int getWitnessCount() const noexcept
     {
         return witnessCount;
     }
-    void addToWitnessCount(int delta) const
+    void addToWitnessCount(int delta) noexcept
     {
         witnessCount += delta;
     }
-
-    bool operator==(const ColliderPair &other) const
-    {
-        return (objectA == other.objectA && objectB == other.objectB) ||
-               (objectA == other.objectB && objectB == other.objectA);
-    }
-
-    class HashFunction
-    {
-      public:
-        size_t operator()(const ColliderPair &collision) const
-        {
-            const auto a = collision.objectA->getHandle(), b = collision.objectB->getHandle();
-            return std::hash<uint64_t>{}((uint64_t(a.slot) << 32) ^ b.slot ^ a.generation ^ (b.generation << 1));
-        }
-    };
 
   private:
     Collider *objectA;
     Collider *objectB;
 
-    mutable Collision collisionStorage;
-    mutable uint64_t objectAStateVersion;
-    mutable uint64_t objectBStateVersion;
-    mutable size_t narrowPhaseQueueIndex;
-    mutable size_t adjacencyIndexA;
-    mutable size_t adjacencyIndexB;
-    mutable int witnessCount;
-    mutable size_t contactIndex = SIZE_MAX;
-    mutable int32_t solverIslandId = -1;
-    mutable size_t solverIslandContactIndex = SIZE_MAX;
-    mutable size_t kinematicSolverIndex = SIZE_MAX;
-    mutable uint32_t solverColorSlot = UINT32_MAX;
-    mutable uint8_t solverColor = 0xFFu;
-    mutable bool hasCollision = false;
-    mutable bool resultHadContact = false;
+    Collision collisionStorage;
+    uint64_t objectAStateVersion;
+    uint64_t objectBStateVersion;
+    size_t narrowPhaseQueueIndex;
+    size_t adjacencyIndexA;
+    size_t adjacencyIndexB;
+    int witnessCount;
+    size_t contactIndex = SIZE_MAX;
+    int32_t solverIslandId = -1;
+    size_t solverIslandContactIndex = SIZE_MAX;
+    size_t kinematicSolverIndex = SIZE_MAX;
+    uint32_t solverColorSlot = UINT32_MAX;
+    uint8_t solverColor = 0xFFu;
+    bool hasCollision = false;
+    bool resultHadContact = false;
 #if PLATFORMATOR_ENABLE_WORK_PROBES
-    mutable bool resultTestedGeometry = false;
+    bool resultTestedGeometry = false;
 #endif
     // Exact recipients of this pair's applied-or-queued support credit, not current component caches.
-    mutable Rigidbody *contributedSupportBodyA = nullptr;
-    mutable Rigidbody *contributedSupportBodyB = nullptr;
+    Rigidbody *contributedSupportBodyA = nullptr;
+    Rigidbody *contributedSupportBodyB = nullptr;
 };

@@ -3,6 +3,10 @@
 #include "core/runtimeaccess.h"
 #include "physics/broadphase/gridcell.h"
 #include "physics/physicsmanager.h"
+#include "platformator/boxcollider.h"
+#include "platformator/circlecollider.h"
+#include "platformator/collision.h"
+#include "rendering/spriterendergeometry.h"
 #include <cmath>
 #include <cstdio>
 #include <numbers>
@@ -10,14 +14,22 @@
 #if PLATFORMATOR_ENABLE_DEBUG_TOOLS
 
 DebugDraw::DebugDraw()
-    : debugObjectsBuffer(), showColliders(true), showCollisionPoints(true), showCollisionNormals(true),
-      showGridCells(true), showFps(false), hasLastFrameTime(false), lastFrameTime(), fpsSampleAccumSeconds(0.0),
+    : debugObjectsBuffer(), showColliders(false), showCollisionPoints(false), showCollisionNormals(false),
+      showGridCells(false), showFps(false), hasLastFrameTime(false), lastFrameTime(), fpsSampleAccumSeconds(0.0),
       fpsSampleFrames(0), displayedFps(0.0), displayedFrameMs(0.0)
 {
 }
 
-DebugDraw::~DebugDraw()
+void DebugDraw::resetFpsSampling(bool clearDisplayed) noexcept
 {
+    hasLastFrameTime = false;
+    fpsSampleAccumSeconds = 0.0;
+    fpsSampleFrames = 0;
+    if (clearDisplayed)
+    {
+        displayedFps = 0.0;
+        displayedFrameMs = 0.0;
+    }
 }
 
 void DebugDraw::setSettings(const DebugSettings &debugSettings)
@@ -27,18 +39,22 @@ void DebugDraw::setSettings(const DebugSettings &debugSettings)
     showCollisionNormals = debugSettings.showCollisionNormals;
     showGridCells = debugSettings.showGridCells;
     showFps = debugSettings.showFps;
-    hasLastFrameTime = false;
-    fpsSampleAccumSeconds = 0.0;
-    fpsSampleFrames = 0;
-    displayedFps = 0.0;
-    displayedFrameMs = 0.0;
+    resetFpsSampling(true);
 }
 
-void DebugDraw::render(SDL_Renderer *renderer, Camera *camera, int outputWidth, int outputHeight)
+void DebugDraw::render(SDL_Renderer *renderer, const platformator_detail::SpriteRenderView &view)
 {
     SDL_BlendMode prevBlend;
     SDL_GetRenderDrawBlendMode(renderer, &prevBlend);
     SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
+
+    const auto drawSegment = [&](const Eigen::Vector2f &v1, const Eigen::Vector2f &v2) {
+        const float x1 = (v1.x() - view.cameraX) * view.scaleX;
+        const float y1 = (v1.y() - view.cameraY) * view.scaleY;
+        const float x2 = (v2.x() - view.cameraX) * view.scaleX;
+        const float y2 = (v2.y() - view.cameraY) * view.scaleY;
+        SDL_RenderLine(renderer, x1, y1, x2, y2);
+    };
 
     for (const DebugObject &debugObject : debugObjectsBuffer)
     {
@@ -48,30 +64,16 @@ void DebugDraw::render(SDL_Renderer *renderer, Camera *camera, int outputWidth, 
 
         if (debugObject.closed)
         {
-            // Draw as a closed polygon (colliders)
             for (size_t i = 0; i < vertices.size(); i++)
             {
-                const Eigen::Vector2f &v1 = vertices[i];
-                const Eigen::Vector2f &v2 = vertices[(i + 1) % vertices.size()];
-
-                Eigen::Vector2f screenV1 = camera->worldToScreenPoint(v1, outputWidth, outputHeight);
-                Eigen::Vector2f screenV2 = camera->worldToScreenPoint(v2, outputWidth, outputHeight);
-
-                SDL_RenderLine(renderer, screenV1.x(), screenV1.y(), screenV2.x(), screenV2.y());
+                drawSegment(vertices[i], vertices[(i + 1) % vertices.size()]);
             }
         }
         else
         {
-            // Draw as individual line segments (pairs of points)
             for (size_t i = 0; i + 1 < vertices.size(); i += 2)
             {
-                const Eigen::Vector2f &v1 = vertices[i];
-                const Eigen::Vector2f &v2 = vertices[i + 1];
-
-                Eigen::Vector2f screenV1 = camera->worldToScreenPoint(v1, outputWidth, outputHeight);
-                Eigen::Vector2f screenV2 = camera->worldToScreenPoint(v2, outputWidth, outputHeight);
-
-                SDL_RenderLine(renderer, screenV1.x(), screenV1.y(), screenV2.x(), screenV2.y());
+                drawSegment(vertices[i], vertices[i + 1]);
             }
         }
     }
@@ -82,7 +84,6 @@ void DebugDraw::render(SDL_Renderer *renderer, Camera *camera, int outputWidth, 
     }
 
     SDL_SetRenderDrawBlendMode(renderer, prevBlend);
-    // clearDebugObjects();
 }
 
 void DebugDraw::renderFpsOverlay(SDL_Renderer *renderer)
@@ -158,12 +159,6 @@ void DebugDraw::renderFpsOverlay(SDL_Renderer *renderer)
 
     SDL_SetRenderScale(renderer, prevScaleX, prevScaleY);
     SDL_SetRenderDrawColor(renderer, prevR, prevG, prevB, prevA);
-}
-
-void DebugDraw::addDebugObject(const std::vector<Eigen::Vector2f> &vertices, Uint8 r, Uint8 g, Uint8 b, Uint8 a,
-                               bool closed)
-{
-    debugObjectsBuffer.emplace_back(vertices, r, g, b, a, closed);
 }
 
 void DebugDraw::addDebugObject(std::vector<Eigen::Vector2f> &&vertices, Uint8 r, Uint8 g, Uint8 b, Uint8 a, bool closed)
@@ -322,9 +317,7 @@ void DebugDraw::toggleShowFps()
     showFps = !showFps;
     if (showFps)
     {
-        hasLastFrameTime = false;
-        fpsSampleAccumSeconds = 0.0;
-        fpsSampleFrames = 0;
+        resetFpsSampling(false);
     }
 }
 

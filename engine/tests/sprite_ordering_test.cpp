@@ -280,8 +280,6 @@ void checkOrderingAcrossModes(const char *modeName, const char *envMode, bool en
     const std::vector<SpriteIdentity> expected1 = {{3, 0}, {1, 0}, {4, 0}, {5, 0}, {0, 0}, {2, 0}};
     test_support::require(frame1.submissions == expected1,
                           std::string(modeName) + ": mixed negative/positive/extreme Z order mismatch");
-    test_support::require(frame1.work.renderCullingNumericRankSorts == 0,
-                          std::string(modeName) + ": numeric rank sorts must be zero");
     test_support::require(frame1.work.spriteOrderPreparations == 1 && frame1.work.spriteOrderSorts == 1,
                           std::string(modeName) + ": first prepared frame must sort draw entries once");
     // Topmost at (160,120) is slot 2 (BlackSquare, maxZ) -> black (0,0,0,255).

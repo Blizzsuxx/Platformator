@@ -4,11 +4,18 @@
 #include <stdexcept>
 #include <string>
 
+#include <Eigen/Dense>
+
 namespace platformator_detail
 {
 inline void finite(float value, const char *field)
 {
     if (!std::isfinite(value))
+        throw std::invalid_argument(std::string(field) + " must be finite");
+}
+inline void finite(const Eigen::Vector2f &value, const char *field)
+{
+    if (!value.allFinite())
         throw std::invalid_argument(std::string(field) + " must be finite");
 }
 inline void positive(float value, const char *field)

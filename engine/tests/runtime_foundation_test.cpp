@@ -393,7 +393,7 @@ namespace
                 event.type = SDL_EVENT_KEY_DOWN;
                 event.key.key = SDLK_F5;
                 require(SDL_PushEvent(&event), "F5 pause event must queue");
-                window->handleSDLEvents(dt);
+                window->handleSDLEvents();
             }
             require(SDL_AudioDevicePaused(device) == value, "Audio device must follow game pause");
         };

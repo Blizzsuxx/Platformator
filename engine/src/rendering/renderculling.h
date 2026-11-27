@@ -41,7 +41,6 @@ class RenderCullingState
     void appendRecord(platformator::ObjectHandle spriteHandle);
     void removeRecord(RecordIndex index);
     void markDirty(RecordIndex index, platformator::ObjectHandle spriteHandle) noexcept;
-    void cancelDirty(RecordIndex index) noexcept;
     RecordIndex dirtyCount() const;
     RecordIndex dirtyAt(RecordIndex index) const;
     void clearDirtyQueue() noexcept;
@@ -62,10 +61,11 @@ class RenderCullingState
     bool validateMembershipInvariants() const;
     RecordIndex recordCount() const;
     Record &recordAt(RecordIndex index);
-    const Record &recordAt(RecordIndex index) const;
     void publishCapacityObservation() const;
 
   private:
+    void cancelDirty(RecordIndex index) noexcept;
+    void removeVisiblePosition(RecordIndex rank, RecordIndex position) noexcept;
     // One record and queue-position sentinel per registered Sprite slot. Rank
     // is the vector index, matching Sprite::windowIndex; no second membership
     // registry or per-Sprite cache state is maintained.

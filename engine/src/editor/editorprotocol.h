@@ -18,7 +18,6 @@ inline constexpr std::size_t MaximumEventBytes = 256U * 1024U;
 inline constexpr std::size_t MaximumQueuedMessages = 64;
 inline constexpr std::size_t MaximumQueuedBytes = 1024U * 1024U;
 inline constexpr std::size_t ReliableEventReserveBytes = 16U * 1024U;
-inline constexpr std::size_t MaximumInspectionPageBytes = MaximumEventBytes;
 
 enum class Direction
 {
@@ -56,6 +55,7 @@ struct Message
     std::uint64_t runtimeSerial = 0;
     std::string type;
     nlohmann::json body = nlohmann::json::object();
+    std::size_t frameBytes = 0;
 };
 
 struct DecodeResult
@@ -126,7 +126,6 @@ class SequenceTracker
 {
   public:
     bool accept(std::uint64_t sequence) noexcept;
-    std::uint64_t last() const noexcept { return last_; }
     void reset() noexcept { last_ = 0; }
 
   private:

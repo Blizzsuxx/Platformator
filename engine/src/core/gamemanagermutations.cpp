@@ -118,7 +118,7 @@ void GameManager::queueReconciliation(Component *component)
 {
     component->callbackEligible = false;
     // Notify PhysicsManager immediately so bodies retired or deactivated during
-    // StepHook/FixedUpdate are ejected by reconcileChangedBodies() before applyPhysics().
+    // StepHook/FixedUpdate are ejected by reconcileChangedBodies() before stepDynamics().
     if (component->getType() == RIGID_BODY && static_cast<Rigidbody *>(component)->getIsRegisteredInPhysicsManager())
     {
         physicsManager->queueBodyParticipationChange(static_cast<Rigidbody *>(component));

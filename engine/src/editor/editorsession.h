@@ -19,9 +19,7 @@ struct SDL_Renderer;
 
 namespace platformator
 {
-
-using editor_session::EmbeddedInputKind;
-using editor_session::EmbeddedInputEvent;
+class Runtime;
 
 // Child-side owner-thread protocol endpoint. Construction validates and takes
 // ownership of the three inherited descriptors before Runtime is created.
@@ -42,7 +40,6 @@ class EditorSessionService
     void simulation_step_completed(std::uint64_t runtimeSerial,
                                   std::uint64_t stepNumber) noexcept;
     void finish(std::uint64_t runtimeSerial) noexcept;
-    const std::string &last_error() const noexcept { return lastError_; }
     std::span<std::byte> frame_mapping() noexcept;
 
   private:
@@ -62,6 +59,9 @@ class EditorSessionService
     bool handle_list_objects(const editor_session::Message &message, std::uint64_t runtimeSerial);
     bool handle_inspect_object(const editor_session::Message &message, std::uint64_t runtimeSerial);
     bool enqueue_inspection_event(std::string type, nlohmann::json body, std::uint64_t runtimeSerial);
+    bool begin_inspection_request(const editor_session::Message &message, std::uint64_t runtimeSerial,
+                                  const char *responseEvent, bool resetSnapshotOnStale,
+                                  Runtime *&outRuntime, bool &outOk);
     void reset_hierarchy_snapshot() noexcept;
     bool pump_impl(std::uint64_t runtimeSerial, ::SDLWindow *window);
     void capture_frame(std::uint64_t runtimeSerial, ::SDL_Renderer *renderer,

@@ -1335,7 +1335,6 @@ void run(const Options &options)
         ADD_CULLING_WORK_FIELD(renderCullingBoundsRefreshes);
         ADD_CULLING_WORK_FIELD(renderCullingCandidateVisits);
         ADD_CULLING_WORK_FIELD(renderCullingFullPopulationVisits);
-        ADD_CULLING_WORK_FIELD(renderCullingOrderWork);
         ADD_CULLING_WORK_FIELD(renderCullingCacheHits);
         ADD_CULLING_WORK_FIELD(renderCullingProjectionRebuilds);
         ADD_CULLING_WORK_FIELD(renderCullingNumericFallbacks);
@@ -1713,7 +1712,6 @@ void run(const Options &options)
         {"bounds_refreshes", resourceCullingWork.renderCullingBoundsRefreshes},
         {"candidate_visits", resourceCullingWork.renderCullingCandidateVisits},
         {"full_population_visits", resourceCullingWork.renderCullingFullPopulationVisits},
-        {"order_work", resourceCullingWork.renderCullingOrderWork},
         {"cache_hits", resourceCullingWork.renderCullingCacheHits},
         {"projection_rebuilds", resourceCullingWork.renderCullingProjectionRebuilds},
         {"numeric_fallbacks", resourceCullingWork.renderCullingNumericFallbacks},

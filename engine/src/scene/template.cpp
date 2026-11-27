@@ -5,18 +5,18 @@
 
 #include "core/gamemanager.h"
 #include "core/inputvalidation.h"
+#include "core/runtimeaccess.h"
 #include "platformator/animationclip.h"
 #include "platformator/audiowrapper.h"
 #include "platformator/behavior.h"
-#include "platformator/referenceresolver.h"
 #include "platformator/scriptcomponent.h"
 #include "platformator/texturewrapper.h"
-#include "core/runtimeaccess.h"
+#include "scene/referenceresolver.h"
 #include "scene/scenebuilder.h"
 
 namespace
 {
-class TemplateBuildResolver final : public platformator::ReferenceResolver
+class TemplateBuildResolver final : public platformator_detail::RuntimeReferenceResolver
 {
   public:
     TemplateBuildResolver(GameManager &manager,
@@ -26,14 +26,10 @@ class TemplateBuildResolver final : public platformator::ReferenceResolver
                           std::vector<Asset::Reference<AudioWrapper>> &audio,
                           std::vector<Asset::Reference<AnimationClip>> &clips,
                           std::vector<Asset::Reference<Template>> &nestedTemplates)
-        : manager(manager), protoKinds(protoKinds), invalidInternalReferenceError(invalidInternalReferenceError),
-          textures(textures), audio(audio), clips(clips), nestedTemplates(nestedTemplates)
+        : RuntimeReferenceResolver(manager), protoKinds(protoKinds),
+          invalidInternalReferenceError(invalidInternalReferenceError), textures(textures), audio(audio), clips(clips),
+          nestedTemplates(nestedTemplates)
     {
-    }
-
-    bool shouldResolveObjectReferences() const override
-    {
-        return true;
     }
 
     bool allowDeferredInternalReferenceError() const override
@@ -64,21 +60,21 @@ class TemplateBuildResolver final : public platformator::ReferenceResolver
 
     TextureWrapper *loadTexture(const std::string &path) override
     {
-        TextureWrapper *loaded = manager.assetStore().loadTexture(path, true);
+        TextureWrapper *loaded = RuntimeReferenceResolver::loadTexture(path);
         textures.push_back(Asset::retain(loaded));
         return loaded;
     }
 
     AudioWrapper *loadAudio(const std::string &path) override
     {
-        AudioWrapper *loaded = manager.assetStore().loadAudio(path, true);
+        AudioWrapper *loaded = RuntimeReferenceResolver::loadAudio(path);
         audio.push_back(Asset::retain(loaded));
         return loaded;
     }
 
     AnimationClip *loadAnimationClip(const std::string &path) override
     {
-        AnimationClip *loaded = manager.assetStore().loadAnimationClip(path, *this, true);
+        AnimationClip *loaded = RuntimeReferenceResolver::loadAnimationClip(path);
         clips.push_back(Asset::retain(loaded));
         return loaded;
     }
@@ -102,7 +98,6 @@ class TemplateBuildResolver final : public platformator::ReferenceResolver
     }
 
   private:
-    GameManager &manager;
     const std::unordered_map<int, platformator_detail::ObjectKind> &protoKinds;
     std::optional<std::string> &invalidInternalReferenceError;
     std::vector<Asset::Reference<TextureWrapper>> &textures;
@@ -112,11 +107,11 @@ class TemplateBuildResolver final : public platformator::ReferenceResolver
     std::unordered_set<std::string> deferredCyclicPaths;
 };
 
-class CloneReferenceResolver final : public platformator::ReferenceResolver
+class CloneReferenceResolver final : public platformator_detail::RuntimeReferenceResolver
 {
   public:
     CloneReferenceResolver(GameManager &manager, const std::unordered_map<int, BaseObject *> &protoIdToClone)
-        : manager(manager), protoIdToClone(protoIdToClone)
+        : RuntimeReferenceResolver(manager), protoIdToClone(protoIdToClone)
     {
     }
 
@@ -138,28 +133,7 @@ class CloneReferenceResolver final : public platformator::ReferenceResolver
         return manager.resolveHandle(handle, kind);
     }
 
-    TextureWrapper *loadTexture(const std::string &path) override
-    {
-        return manager.assetStore().loadTexture(path, true);
-    }
-
-    AudioWrapper *loadAudio(const std::string &path) override
-    {
-        return manager.assetStore().loadAudio(path, true);
-    }
-
-    AnimationClip *loadAnimationClip(const std::string &path) override
-    {
-        return manager.assetStore().loadAnimationClip(path, *this, true);
-    }
-
-    Template *loadTemplate(const std::string &path) override
-    {
-        return manager.assetStore().loadTemplate(path, true);
-    }
-
   private:
-    GameManager &manager;
     const std::unordered_map<int, BaseObject *> &protoIdToClone;
 };
 } // namespace
@@ -235,10 +209,6 @@ void Template::loadFromJsonDocument(const nlohmann::json &document, GameManager 
         throw std::invalid_argument("Template document must contain a root object");
 
     const auto &rootRecord = document["root"];
-    if (document.contains("name") && document["name"].is_string())
-        name = document["name"].get<std::string>();
-    else if (rootRecord.contains("name") && rootRecord["name"].is_string())
-        name = rootRecord["name"].get<std::string>();
 
     std::unordered_set<int> fileIds;
     int64_t nextFileId = 0;
@@ -311,8 +281,8 @@ GameObject *Template::instantiateImpl(std::optional<Eigen::Vector2f> worldPositi
             throw std::invalid_argument("Parent GameObject must be live in the active runtime");
     }
 
-    if (worldPosition.has_value() && !worldPosition->allFinite())
-        throw std::invalid_argument("worldPosition must be finite");
+    if (worldPosition.has_value())
+        platformator_detail::finite(*worldPosition, "worldPosition");
     if (worldRotation.has_value())
         platformator_detail::finite(*worldRotation, "worldRotation");
 

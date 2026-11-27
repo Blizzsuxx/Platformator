@@ -1,7 +1,7 @@
 #include "physics/physicsmanager.h"
 
-#include "core/membership.h"
 #include "benchmark/workprobe.h"
+#include "core/membership.h"
 
 void PhysicsManager::queueBodyParticipationChange(Rigidbody *body)
 {
@@ -17,18 +17,7 @@ void PhysicsManager::queueBodyParticipationChange(Rigidbody *body)
 
 void PhysicsManager::cancelBodyParticipationChange(Rigidbody *body)
 {
-    if (body->participationQueueIndex == SIZE_MAX)
-    {
-        return;
-    }
-
-    const auto index = body->participationQueueIndex;
-    auto *moved = pendingBodyChanges.back();
-
-    pendingBodyChanges[index] = moved;
-    moved->participationQueueIndex = index;
-    pendingBodyChanges.pop_back();
-    body->participationQueueIndex = SIZE_MAX;
+    membership(pendingBodyChanges, body, &Rigidbody::participationQueueIndex, false);
 }
 
 void PhysicsManager::reconcileBodyParticipation(Rigidbody *body)
@@ -37,21 +26,11 @@ void PhysicsManager::reconcileBodyParticipation(Rigidbody *body)
     const bool live =
         body->getIsRegisteredInPhysicsManager() && !body->isRetired() && body->getGameObject()->getActive();
 
-    const bool awake = live && body->getBodyType() == DYNAMIC && !body->getIsSleeping();
+    const bool awake = live && body->isAwakeDynamic();
     membership(awakeDynamicBodies, body, &Rigidbody::awakeDynamicIndex, awake);
-    membership(movingKinematicBodies, body, &Rigidbody::movingKinematicIndex,
-               live && body->getBodyType() == KINEMATIC &&
-                   (!body->getVelocity().isZero(0) || body->getAngularVelocity() != 0));
-
-    const bool previouslyEligible = body->sleepCandidateIndex != SIZE_MAX;
+    membership(movingKinematicBodies, body, &Rigidbody::movingKinematicIndex, live && body->isMovingKinematic());
     membership(sleepCandidates, body, &Rigidbody::sleepCandidateIndex,
                awake && (body->hasSupportContact() || !body->getGravity()));
-
-    if (!previouslyEligible && body->sleepCandidateIndex != SIZE_MAX)
-    {
-        // Impact waking can admit this candidate after the integration reset.
-        resetSleepIsland(body);
-    }
 
     if (auto *collider = body->getGameObject()->getComponent<Collider>())
     {
@@ -61,51 +40,6 @@ void PhysicsManager::reconcileBodyParticipation(Rigidbody *body)
     if ((!live || body->getBodyType() != DYNAMIC) && body->solverIslandId != -1)
     {
         detachBodyFromPersistentIsland(body);
-    }
-}
-
-Rigidbody *PhysicsManager::findSleepRoot(Rigidbody *body)
-{
-    auto *root = body;
-    while (root->sleepParent != root)
-    {
-        root = root->sleepParent;
-    }
-
-    // Compress the traversed path for subsequent lookups in this step.
-    while (body->sleepParent != body)
-    {
-        auto *next = body->sleepParent;
-        body->sleepParent = root;
-        body = next;
-    }
-    return root;
-}
-
-void PhysicsManager::mergeSleepIslands(Rigidbody *a, Rigidbody *b)
-{
-    if (a->sleepCandidateIndex == SIZE_MAX || b->sleepCandidateIndex == SIZE_MAX)
-    {
-        return;
-    }
-
-    a = findSleepRoot(a);
-    b = findSleepRoot(b);
-
-    if (a == b)
-    {
-        return;
-    }
-
-    if (a->sleepRank < b->sleepRank)
-    {
-        std::swap(a, b);
-    }
-
-    b->sleepParent = a;
-    if (a->sleepRank == b->sleepRank)
-    {
-        ++a->sleepRank;
     }
 }
 

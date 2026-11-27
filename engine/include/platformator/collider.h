@@ -10,222 +10,10 @@
 
 class Collider;
 class Rigidbody;
-class LocalSortArray;
 class GridCell;
-class SegmentedIntervalList;
 class Collision;
 class ColliderPair;
 class Grid;
-class AABB;
-
-class BoundingRadiusProjection
-{
-  public:
-    BoundingRadiusProjection() : collider(nullptr), projectedPosition(0.0f), isMaxima(false)
-    {
-    }
-    BoundingRadiusProjection(Collider *collider, float projectedPosition, bool isEnd)
-        : collider(collider), projectedPosition(projectedPosition), isMaxima(isEnd)
-    {
-    }
-    ~BoundingRadiusProjection() = default;
-
-    Collider *getCollider()
-    {
-        return collider;
-    }
-    float getProjectedPosition() const
-    {
-        return projectedPosition;
-    }
-    bool getIsMaxima() const
-    {
-        return isMaxima;
-    }
-
-    void setCollider(Collider *collider)
-    {
-        this->collider = collider;
-    }
-    void setProjectedPosition(float projectedPosition)
-    {
-        this->projectedPosition = projectedPosition;
-    }
-    void setIsMaxima(bool isMaxima)
-    {
-        this->isMaxima = isMaxima;
-    }
-
-    bool operator==(const BoundingRadiusProjection &other) const
-    {
-        return projectedPosition == other.projectedPosition && isMaxima == other.isMaxima;
-    }
-    bool operator!=(const BoundingRadiusProjection &other) const
-    {
-        return !(*this == other);
-    }
-    bool operator<(const BoundingRadiusProjection &other) const
-    {
-        return projectedPosition < other.projectedPosition ||
-               (projectedPosition == other.projectedPosition && !isMaxima && other.isMaxima);
-    }
-    bool operator>(const BoundingRadiusProjection &other) const
-    {
-        return projectedPosition > other.projectedPosition ||
-               (projectedPosition == other.projectedPosition && isMaxima && !other.isMaxima);
-    }
-    bool operator<=(const BoundingRadiusProjection &other) const
-    {
-        return *this < other || *this == other;
-    }
-    bool operator>=(const BoundingRadiusProjection &other) const
-    {
-        return *this > other || *this == other;
-    }
-
-  private:
-    Collider *collider;
-    float projectedPosition;
-    bool isMaxima;
-};
-
-class BoundingRadiusProjectionProxy
-{
-  public:
-    static constexpr uint8_t INVALID_CHUNK_INDEX = 0xFFu;
-
-    BoundingRadiusProjectionProxy(BoundingRadiusProjection *projection, LocalSortArray *chunk)
-        : projection(projection), chunk(chunk), cachedProjectedPosition(projection->getProjectedPosition()),
-          chunkIndex(INVALID_CHUNK_INDEX), isMaxima(projection->getIsMaxima())
-    {
-    }
-    ~BoundingRadiusProjectionProxy() = default;
-
-    BoundingRadiusProjection *getProjection() const
-    {
-        return projection;
-    }
-    LocalSortArray *getChunk() const
-    {
-        return chunk;
-    }
-    size_t getChunkIndex() const
-    {
-        return chunkIndex == INVALID_CHUNK_INDEX ? SIZE_MAX : static_cast<size_t>(chunkIndex);
-    }
-
-    void setChunk(LocalSortArray *chunk)
-    {
-        this->chunk = chunk;
-        if (chunk == nullptr)
-        {
-            chunkIndex = INVALID_CHUNK_INDEX;
-        }
-    }
-    void setChunkIndex(size_t chunkIndex)
-    {
-        this->chunkIndex = chunkIndex == SIZE_MAX ? INVALID_CHUNK_INDEX : static_cast<uint8_t>(chunkIndex);
-    }
-    void updateCachedProjectedPosition()
-    {
-        cachedProjectedPosition = projection->getProjectedPosition();
-    }
-
-    Collider *getCollider()
-    {
-        return projection->getCollider();
-    }
-    float getProjectedPosition() const
-    {
-        return projection->getProjectedPosition();
-    }
-    bool getIsMaxima() const
-    {
-        return isMaxima;
-    }
-    float getCachedProjectedPosition() const
-    {
-        return cachedProjectedPosition;
-    }
-
-    bool operator==(const BoundingRadiusProjectionProxy &other) const
-    {
-        return cachedProjectedPosition == other.cachedProjectedPosition && isMaxima == other.isMaxima;
-    }
-    bool operator!=(const BoundingRadiusProjectionProxy &other) const
-    {
-        return !(*this == other);
-    }
-    bool operator<(const BoundingRadiusProjectionProxy &other) const
-    {
-        return cachedProjectedPosition < other.cachedProjectedPosition ||
-               (cachedProjectedPosition == other.cachedProjectedPosition && !isMaxima && other.isMaxima);
-    }
-    bool operator>(const BoundingRadiusProjectionProxy &other) const
-    {
-        return cachedProjectedPosition > other.cachedProjectedPosition ||
-               (cachedProjectedPosition == other.cachedProjectedPosition && isMaxima && !other.isMaxima);
-    }
-    bool operator<=(const BoundingRadiusProjectionProxy &other) const
-    {
-        return *this < other || *this == other;
-    }
-    bool operator>=(const BoundingRadiusProjectionProxy &other) const
-    {
-        return *this > other || *this == other;
-    }
-
-  private:
-    BoundingRadiusProjection *projection;
-    LocalSortArray *chunk;
-    float cachedProjectedPosition;
-    uint8_t chunkIndex;
-    bool isMaxima;
-};
-
-class BoundingRadiusProjectionAxis
-{
-  public:
-    BoundingRadiusProjectionAxis(Collider *collider, float min, float max)
-        : min(BoundingRadiusProjection(collider, min, false)),
-          max(BoundingRadiusProjection(collider, max, true))
-    {
-    }
-    ~BoundingRadiusProjectionAxis() = default;
-
-    BoundingRadiusProjection *getMin()
-    {
-        return &min;
-    }
-    BoundingRadiusProjection *getMax()
-    {
-        return &max;
-    }
-
-    bool operator==(const BoundingRadiusProjectionAxis &other) const
-    {
-        return min == other.min && max == other.max;
-    }
-    bool operator!=(const BoundingRadiusProjectionAxis &other) const
-    {
-        return !(*this == other);
-    }
-
-  private:
-    BoundingRadiusProjection min;
-    BoundingRadiusProjection max;
-};
-
-struct BoundingRadiusProjectionAxisBinding
-{
-    BoundingRadiusProjectionProxy minProxy;
-    BoundingRadiusProjectionProxy maxProxy;
-
-    explicit BoundingRadiusProjectionAxisBinding(BoundingRadiusProjectionAxis *axis)
-        : minProxy(axis->getMin(), nullptr), maxProxy(axis->getMax(), nullptr)
-    {
-    }
-};
 
 enum class ColliderType
 {
@@ -236,8 +24,8 @@ enum class ColliderType
 enum ColliderFlags : uint8_t
 {
     IS_TRIGGER = 1 << 0,
-    IS_REGISTERED_IN_GRID = 1 << 4,
-    IS_REGISTERED_IN_PHYSICS_MANAGER = 1 << 5
+    IS_REGISTERED_IN_GRID = 1 << 1,
+    IS_REGISTERED_IN_PHYSICS_MANAGER = 1 << 2
 };
 
 class Collider : public Component
@@ -260,19 +48,25 @@ class Collider : public Component
     {
         return attachedRigidbody;
     }
-    virtual Eigen::Vector2f projectOntoAxis(const Eigen::Vector2f &axis) const = 0;
-    virtual std::vector<Eigen::Vector2f> getNormals(const Collider *other) const = 0;
 
     void triggerCollisionEnter(const Collision *collision, Collider *other, double timeDelta) const;
     void triggerCollisionExit(Collider *other, double timeDelta) const;
 
-    BoundingRadiusProjectionAxis *getXProjections()
+    float getFatMinX() const noexcept
     {
-        return &xProjections;
+        return fatMinX;
     }
-    BoundingRadiusProjectionAxis *getYProjections()
+    float getFatMaxX() const noexcept
     {
-        return &yProjections;
+        return fatMaxX;
+    }
+    float getFatMinY() const noexcept
+    {
+        return fatMinY;
+    }
+    float getFatMaxY() const noexcept
+    {
+        return fatMaxY;
     }
     float getTightMinX() const noexcept
     {
@@ -289,6 +83,19 @@ class Collider : public Component
     float getTightMaxY() const noexcept
     {
         return tightMaxY;
+    }
+    bool overlapsTightBounds(float minX, float maxX, float minY, float maxY) const noexcept
+    {
+        return tightMaxX >= minX && tightMinX <= maxX && tightMaxY >= minY && tightMinY <= maxY;
+    }
+    bool overlapsTightBounds(const Collider &other) const noexcept
+    {
+        return overlapsTightBounds(other.tightMinX, other.tightMaxX, other.tightMinY, other.tightMaxY);
+    }
+    bool overlapsFatBounds(const Collider &other) const noexcept
+    {
+        return fatMaxX >= other.fatMinX && fatMinX <= other.fatMaxX && fatMaxY >= other.fatMinY &&
+               fatMinY <= other.fatMaxY;
     }
 
     uint64_t getCollisionGroup() const
@@ -339,7 +146,6 @@ class Collider : public Component
     {
         return gridCellRange;
     }
-    void calculateGridCellRange();
     void calculateGridCellRange(float cellSize);
     const GridCellRange &getGridCellRangeCache() const
     {
@@ -350,42 +156,14 @@ class Collider : public Component
     {
         return (flags & IS_REGISTERED_IN_GRID) != 0;
     }
-    void setIsRegisteredInGrid(bool isRegisteredInGrid)
-    {
-        if (isRegisteredInGrid)
-        {
-            flags = static_cast<ColliderFlags>(flags | IS_REGISTERED_IN_GRID);
-        }
-        else
-        {
-            flags = static_cast<ColliderFlags>(flags & ~IS_REGISTERED_IN_GRID);
-        }
-    }
     bool getIsRegisteredInPhysicsManager() const
     {
         return (flags & IS_REGISTERED_IN_PHYSICS_MANAGER) != 0;
-    }
-    void setIsRegisteredInPhysicsManager(bool isRegisteredInPhysicsManager)
-    {
-        if (isRegisteredInPhysicsManager)
-        {
-            flags = static_cast<ColliderFlags>(flags | IS_REGISTERED_IN_PHYSICS_MANAGER);
-        }
-        else
-        {
-            flags = static_cast<ColliderFlags>(flags & ~IS_REGISTERED_IN_PHYSICS_MANAGER);
-        }
     }
     size_t getPhysicsManagerIndex() const
     {
         return physicsManagerIndex;
     }
-    void setPhysicsManagerIndex(size_t physicsManagerIndex)
-    {
-        this->physicsManagerIndex = physicsManagerIndex;
-    }
-
-    virtual Edge getEdgeWithNormal(const Eigen::Vector2f &normal) const = 0;
 
   protected:
     uint64_t collisionGroup;
@@ -396,8 +174,10 @@ class Collider : public Component
     Eigen::Vector2f offset;
     Eigen::Vector2f cachedWorldPosition = Eigen::Vector2f::Zero();
 
-    BoundingRadiusProjectionAxis xProjections;
-    BoundingRadiusProjectionAxis yProjections;
+    float fatMinX = 0.0f;
+    float fatMaxX = 0.0f;
+    float fatMinY = 0.0f;
+    float fatMaxY = 0.0f;
     float tightMinX = 0.0f;
     float tightMaxX = 0.0f;
     float tightMinY = 0.0f;
@@ -422,6 +202,8 @@ class Collider : public Component
         broadPhaseSyncNeeded = true;
     }
 
+    void notifyShapeChanged();
+
     void updateGridCellRange()
     {
         gridCellRange = gridCellRangeCache;
@@ -436,6 +218,22 @@ class Collider : public Component
         Filter = 2,
         Response = 4
     };
+
+    void setIsRegisteredInGrid(bool isRegisteredInGrid) noexcept
+    {
+        flags = static_cast<ColliderFlags>(isRegisteredInGrid ? (flags | IS_REGISTERED_IN_GRID)
+                                                              : (flags & ~IS_REGISTERED_IN_GRID));
+    }
+    void setIsRegisteredInPhysicsManager(bool isRegisteredInPhysicsManager) noexcept
+    {
+        flags = static_cast<ColliderFlags>(isRegisteredInPhysicsManager ? (flags | IS_REGISTERED_IN_PHYSICS_MANAGER)
+                                                                        : (flags & ~IS_REGISTERED_IN_PHYSICS_MANAGER));
+    }
+    void setPhysicsManagerIndex(size_t index) noexcept
+    {
+        physicsManagerIndex = index;
+    }
+
     uint8_t dirty = Geometry;
     bool desiredInGrid = false;
     bool fatBoundsValid = false;
@@ -445,7 +243,7 @@ class Collider : public Component
     GridCell *cachedCells[MAX_CACHED_GRID_CELLS] = {};
     uint8_t cachedCellCount = 0;
     Rigidbody *attachedRigidbody = nullptr;
-    std::vector<const ColliderPair *> adjacentPairs;
+    std::vector<ColliderPair *> adjacentPairs;
     void prepareSyncFromCache();
     void prepareSyncFromCache(float cellSize);
 };

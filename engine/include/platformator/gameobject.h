@@ -16,7 +16,6 @@
 
 class GameManager;
 class GameObject;
-class Scene;
 class SceneBuildContext;
 
 enum ComponentType
@@ -34,7 +33,6 @@ enum ComponentType
 class Component : public BaseObject
 {
     friend class GameManager;
-    friend class Template;
 
   public:
     Component(GameObject *gameObject, ComponentType type);
@@ -78,7 +76,7 @@ class GameObject : public BaseObject
   public:
     PLATFORMATOR_DECLARE_POOLED_ALLOCATORS()
 
-    GameObject(GameObject &) = delete;
+    GameObject(const GameObject &) = delete;
     GameObject &operator=(const GameObject &) = delete;
 
     float getRotation() const;
@@ -120,7 +118,7 @@ class GameObject : public BaseObject
         return parent;
     }
 
-    Component *getComponent(const ComponentType &componentType) const
+    Component *getComponent(ComponentType componentType) const
     {
         return components[componentType];
     }
@@ -147,13 +145,9 @@ class GameObject : public BaseObject
     GameObject *setTag(const std::string &tag);
 
     void addComponent(Component *component);
-    bool removeComponent(const ComponentType &componentType);
+    bool removeComponent(ComponentType componentType);
     void addChild(GameObject *child);
     bool removeChild(GameObject *child);
-    bool getIsMarkedForDeletion() const
-    {
-        return isRetired();
-    }
     void destroy();
 
   private:
@@ -191,16 +185,14 @@ class GameObject : public BaseObject
     void attachComponent(Component *component);
     void flushMutations();
     Component *getColliderByShape(bool box) const;
-    GameObject *setGameManagerIteratorIndex(size_t index)
+    void setGameManagerIteratorIndex(size_t index)
     {
         gameManagerIteratorIndex = index;
-        return this;
     }
     bool getIsRegisteredInGameManager() const
     {
         return getLifecycle() == ObjectLifecycle::Live;
     }
-    void addComponentsToGameManager();
 };
 
 template <typename T> struct ComponentTypeFor;
@@ -234,4 +226,4 @@ template <typename T, typename... Args> GameObject *GameObject::addComponent(Arg
 }
 
 void to_json(nlohmann::json &j, const GameObject &gameObject);
-void from_json(const nlohmann::json &j, GameObject &gameObject);
+void from_json(const nlohmann::json &j, GameObject &gameObject) = delete;

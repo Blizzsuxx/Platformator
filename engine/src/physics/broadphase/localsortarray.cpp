@@ -1,5 +1,7 @@
 #include "physics/broadphase/localsortarray.h"
 
+#include <algorithm>
+
 #include "buildconfig.h"
 #include "physics/broadphase/segmentedintervallist.h"
 
@@ -62,20 +64,16 @@ void LocalSortArray::initFromSplit(LocalSortArray *other)
 
         if (isMaxima[i])
         {
-            other->addCheckpointInternal(array[i]->getCollider());
+            other->checkpoints.insert(array[i]->getCollider());
         }
         else
         {
-            other->removeCheckpointInternal(array[i]->getCollider());
+            other->checkpoints.erase(array[i]->getCollider());
         }
     }
 }
 
-LocalSortArray::~LocalSortArray()
-{
-}
-
-size_t LocalSortArray::add(BoundingRadiusProjectionProxy *element)
+size_t LocalSortArray::add(platformator_detail::ProjectionProxy *element)
 {
     if (size == MAX_CHUNK_SIZE)
     {
@@ -103,19 +101,14 @@ size_t LocalSortArray::add(BoundingRadiusProjectionProxy *element)
     return index;
 }
 
-BoundingRadiusProjectionProxy *LocalSortArray::pop()
-{
-    return remove(size - 1);
-}
-
-BoundingRadiusProjectionProxy *LocalSortArray::remove(size_t index)
+platformator_detail::ProjectionProxy *LocalSortArray::remove(size_t index)
 {
     if (index >= size)
     {
         return nullptr;
     }
 
-    BoundingRadiusProjectionProxy *removed = array[index];
+    platformator_detail::ProjectionProxy *removed = array[index];
     removed->setChunk(nullptr);
 
     for (size_t i = index; i < size - 1; i++)
@@ -130,19 +123,6 @@ BoundingRadiusProjectionProxy *LocalSortArray::remove(size_t index)
     return removed;
 }
 
-size_t LocalSortArray::remove(BoundingRadiusProjectionProxy *element)
-{
-    size_t index = find(element);
-
-    if (index < size && array[index] == element)
-    {
-        remove(index);
-        return index;
-    }
-
-    return SIZE_MAX;
-}
-
 void LocalSortArray::addCheckpoint(Collider *collider)
 {
     if (checkpointCache.erase(collider) != 0)
@@ -150,27 +130,15 @@ void LocalSortArray::addCheckpoint(Collider *collider)
         return;
     }
 
-    addCheckpointInternal(collider);
-}
-
-void LocalSortArray::addCheckpointInternal(Collider *collider)
-{
     checkpoints.insert(collider);
 }
 
 void LocalSortArray::removeCheckpoint(Collider *collider)
 {
-    size_t numberOfErasedMembers = removeCheckpointInternal(collider);
-
-    if (numberOfErasedMembers == 0)
+    if (checkpoints.erase(collider) == 0)
     {
         checkpointCache.insert(collider);
     }
-}
-
-size_t LocalSortArray::removeCheckpointInternal(Collider *collider)
-{
-    return checkpoints.erase(collider);
 }
 
 size_t LocalSortArray::binarySearch(float pos, bool maxFlag) const noexcept
@@ -181,8 +149,7 @@ size_t LocalSortArray::binarySearch(float pos, bool maxFlag) const noexcept
     while (low < high)
     {
         const size_t mid = low + ((high - low) >> 1);
-        const float midPos = positions[mid];
-        if (midPos < pos || (midPos == pos && !isMaxima[mid] && maxFlag))
+        if (platformator_detail::isProjectionKeyLess(positions[mid], isMaxima[mid] != 0, pos, maxFlag))
         {
             low = mid + 1;
         }
@@ -210,7 +177,7 @@ LocalSortArray *LocalSortArray::tryMergeWithRightChunk()
         std::copy(rightChunk->isMaxima, rightChunk->isMaxima + rightSize, isMaxima + size);
         for (size_t i = 0; i < rightSize; i++)
         {
-            BoundingRadiusProjectionProxy *element = rightChunk->array[i];
+            platformator_detail::ProjectionProxy *element = rightChunk->array[i];
             element->setChunk(this);
             element->setChunkIndex(size + i);
             array[size + i] = element;
@@ -238,10 +205,10 @@ LocalSortArray *LocalSortArray::tryMergeWithRightChunk()
 
 LocalSortArray *LocalSortArray::tryMergeWithLeftChunk()
 {
-    LocalSortArray *leftChunk = getLeftChunk();
-    if (leftChunk != nullptr)
+    LocalSortArray *left = getLeftChunk();
+    if (left != nullptr)
     {
-        return leftChunk->tryMergeWithRightChunk();
+        return left->tryMergeWithRightChunk();
     }
 
     return nullptr;

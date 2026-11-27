@@ -10,9 +10,9 @@
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
+#include <oneapi/tbb/global_control.h>
 #include <sstream>
 #include <thread>
-#include <oneapi/tbb/global_control.h>
 #if defined(__unix__)
 #include <sys/utsname.h>
 #endif
@@ -35,6 +35,18 @@ constexpr std::array<const char *, BENCHMARK_COUNTER_COUNT> counterNames = {"obj
                                                                             "queued_remove_count",
                                                                             "collision_enter_event_count",
                                                                             "collision_exit_event_count"};
+template <typename T> void appendRingSample(std::vector<T> &ring, size_t &nextIndex, const T &value)
+{
+    if (ring.size() < ring.capacity())
+    {
+        ring.push_back(value);
+    }
+    else
+    {
+        ring[nextIndex] = value;
+        nextIndex = (nextIndex + 1) % ring.size();
+    }
+}
 std::string dependencyVersion(int version)
 {
     return std::to_string(SDL_VERSIONNUM_MAJOR(version)) + '.' + std::to_string(SDL_VERSIONNUM_MINOR(version)) + '.' +
@@ -146,13 +158,7 @@ void BenchmarkRecorder::endFrame()
     assert(frameActive);
     currentFrame.scopeDurationsNanoseconds[static_cast<size_t>(BenchmarkScopeId::CompleteStep)] =
         std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - frameStartTime).count();
-    if (frames.size() < frames.capacity())
-        frames.push_back(currentFrame);
-    else
-    {
-        frames[nextFrame] = currentFrame;
-        nextFrame = (nextFrame + 1) % frames.size();
-    }
+    appendRingSample(frames, nextFrame, currentFrame);
     ++totalSteps;
     frameActive = false;
 }
@@ -165,27 +171,19 @@ void BenchmarkRecorder::leaveScope(BenchmarkScopeId scope, uint64_t elapsed)
     auto &active = activeScopes[static_cast<size_t>(scope)];
     assert(active);
     --active;
-    addScopeDuration(scope, elapsed);
+    if (scope == BenchmarkScopeId::Render)
+    {
+        ++totalRenders;
+        appendRingSample(renders, nextRender, elapsed);
+    }
+    else if (frameActive)
+    {
+        currentFrame.scopeDurationsNanoseconds[static_cast<size_t>(scope)] += elapsed;
+    }
 }
 bool BenchmarkRecorder::scopeActive(BenchmarkScopeId scope) const
 {
     return scope == BenchmarkScopeId::CompleteStep ? frameActive : activeScopes[static_cast<size_t>(scope)] != 0;
-}
-void BenchmarkRecorder::addScopeDuration(BenchmarkScopeId scope, uint64_t elapsed)
-{
-    if (scope == BenchmarkScopeId::Render)
-    {
-        ++totalRenders;
-        if (renders.size() < renders.capacity())
-            renders.push_back(elapsed);
-        else
-        {
-            renders[nextRender] = elapsed;
-            nextRender = (nextRender + 1) % renders.size();
-        }
-    }
-    else if (frameActive)
-        currentFrame.scopeDurationsNanoseconds[static_cast<size_t>(scope)] += elapsed;
 }
 void BenchmarkRecorder::setCounter(BenchmarkCounterId counter, int64_t value)
 {
@@ -197,17 +195,26 @@ void BenchmarkRecorder::addCounter(BenchmarkCounterId counter, int64_t delta)
     if (frameActive)
         currentFrame.counters[static_cast<size_t>(counter)] += delta;
 }
-void BenchmarkRecorder::setCsvOutputPath(const std::string &path)
-{
-    csvOutputPath = path;
-}
-void BenchmarkRecorder::clearCsvOutputPath()
-{
-    csvOutputPath.clear();
-}
 void BenchmarkRecorder::updateMetadata(const nlohmann::json &fields)
 {
     metadata.update(fields);
+}
+std::vector<double> BenchmarkRecorder::collectScopeMilliseconds(size_t scope) const
+{
+    std::vector<double> values;
+    if (scope == static_cast<size_t>(BenchmarkScopeId::Render))
+    {
+        values.reserve(renders.size());
+        for (auto value : renders)
+            values.push_back(value / 1e6);
+    }
+    else
+    {
+        values.reserve(frames.size());
+        for (const auto &frame : frames)
+            values.push_back(frame.scopeDurationsNanoseconds[scope] / 1e6);
+    }
+    return values;
 }
 nlohmann::json BenchmarkRecorder::manifest() const
 {
@@ -259,7 +266,7 @@ nlohmann::json BenchmarkRecorder::manifest() const
 }
 void BenchmarkRecorder::writeOutputs(const std::string &requestedPath) const
 {
-    const std::filesystem::path path(requestedPath.empty() ? csvOutputPath : requestedPath);
+    const std::filesystem::path path(requestedPath);
     if (path.empty())
         throw std::invalid_argument("Benchmark CSV output path is empty");
     if (frames.empty())
@@ -272,14 +279,7 @@ void BenchmarkRecorder::writeOutputs(const std::string &requestedPath) const
         summary << std::setprecision(12) << "schema_version,category,name,samples,avg,median,p95,p99,min,max,unit\n";
         for (size_t scope = 0; scope < BENCHMARK_SCOPE_COUNT; ++scope)
         {
-            std::vector<double> values;
-            values.reserve(frames.size());
-            if (scope == static_cast<size_t>(BenchmarkScopeId::Render))
-                for (auto value : renders)
-                    values.push_back(value / 1e6);
-            else
-                for (const auto &frame : frames)
-                    values.push_back(frame.scopeDurationsNanoseconds[scope] / 1e6);
+            auto values = collectScopeMilliseconds(scope);
             const auto stats = statistics(values);
             summary << "3,scope," << scopeNames[scope] << ',' << values.size() << ',' << stats.average << ','
                     << stats.median << ',' << stats.p95 << ',' << stats.p99 << ',' << stats.minimum << ','
@@ -345,34 +345,22 @@ void BenchmarkRecorder::printSummary(FILE *output) const
                  renders.size());
     for (size_t scope = 0; scope < BENCHMARK_SCOPE_COUNT; ++scope)
     {
-        std::vector<double> values;
-        values.reserve(frames.size());
-        if (scope == static_cast<size_t>(BenchmarkScopeId::Render))
-            for (auto value : renders)
-                values.push_back(value / 1e6);
-        else
-            for (const auto &frame : frames)
-                values.push_back(frame.scopeDurationsNanoseconds[scope] / 1e6);
+        auto values = collectScopeMilliseconds(scope);
         const auto stats = statistics(values);
         std::fprintf(output, "[Benchmark][Scope] %s avg_ms=%.6f median_ms=%.6f p95_ms=%.6f samples=%zu\n",
-                     scopeNames[scope], stats.average, stats.median, stats.p95,
-                     scope == static_cast<size_t>(BenchmarkScopeId::Render) ? renders.size() : frames.size());
+                     scopeNames[scope], stats.average, stats.median, stats.p95, values.size());
     }
 }
-BenchmarkScopeTimer::BenchmarkScopeTimer(BenchmarkScopeId scope, bool enabled) : scope(scope), enabled(enabled)
+BenchmarkScopeTimer::BenchmarkScopeTimer(BenchmarkScopeId scope)
+    : scope(scope), started(std::chrono::steady_clock::now())
 {
-    if (enabled)
-    {
-        started = std::chrono::steady_clock::now();
-        BenchmarkRecorder::getInstance().enterScope(scope);
-    }
+    BenchmarkRecorder::getInstance().enterScope(scope);
 }
 BenchmarkScopeTimer::~BenchmarkScopeTimer()
 {
-    if (enabled)
-        BenchmarkRecorder::getInstance().leaveScope(
-            scope,
-            std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - started).count());
+    BenchmarkRecorder::getInstance().leaveScope(
+        scope,
+        std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - started).count());
 }
 } // namespace platformator_detail
 #endif

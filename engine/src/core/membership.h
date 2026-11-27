@@ -32,7 +32,7 @@ inline void membership(std::vector<T *> &list, T *item, size_t std::remove_const
 }
 
 template <typename T, typename GetIndex, typename SetIndex>
-inline void swapRemoveIndexed(std::vector<T *> &list, T *item, GetIndex &&getIndex, SetIndex &&setIndex)
+inline void swapRemoveIndexed(std::vector<T> &list, T item, GetIndex &&getIndex, SetIndex &&setIndex)
 {
     const size_t removeIndex = getIndex(item);
     if (removeIndex == SIZE_MAX)
@@ -42,7 +42,7 @@ inline void swapRemoveIndexed(std::vector<T *> &list, T *item, GetIndex &&getInd
     const size_t lastIndex = list.size() - 1;
     if (removeIndex != lastIndex)
     {
-        T *moved = list.back();
+        T moved = list.back();
         list[removeIndex] = moved;
         setIndex(moved, removeIndex);
     }

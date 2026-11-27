@@ -178,6 +178,7 @@ DecodeResult StreamDecoder::feed(std::span<const std::uint8_t> bytes)
             std::string validationError;
             if (!validate_message(message, direction_, validationError))
                 throw std::runtime_error(validationError);
+            message.frameBytes = expectedFrameBytes_;
             result.messages.push_back(std::move(message));
         }
         catch (const std::exception &error)

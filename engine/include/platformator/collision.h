@@ -1,8 +1,6 @@
 #pragma once
 
 #include <cstdint>
-#include <functional>
-#include <utility>
 
 #include "platformator/collider.h"
 
@@ -23,51 +21,26 @@ class Collision
 
     Collision();
     Collision(Collider *colliderA, Collider *colliderB);
-    Collision(const Eigen::Vector2f &normal, const ClipPointsWithData &contactPoints,
-              Collider *colliderA, Collider *colliderB);
-    ~Collision();
+    ~Collision() = default;
 
     const Eigen::Vector2f &getNormal() const;
-    ClipPointsWithData &getContactPoints() const;
-    float getFriction() const;
-    float getRestitution() const;
+    const ClipPointsWithData &getContactPoints() const;
+    ClipPointsWithData &getContactPoints();
 
     const Collider *getReferenceObject() const;
     const Collider *getIncidentObject() const;
 
     CollisionType getResolutionType() const;
-    void updateSupportState(const Eigen::Vector2f &gravityVector) const;
-    void clearSupportState() const;
+    void updateSupportState(const Eigen::Vector2f &gravityVector);
+    void clearSupportState();
 
-    void setNormal(const Eigen::Vector2f &normal) const;
-    void setContactPoints(const ClipPoints &contactPoints) const;
-    void setReferenceObject(const Collider *colliderA) const;
-    void setIncidentObject(const Collider *colliderB) const;
+    void setNormal(const Eigen::Vector2f &normal);
+    void setContactPoints(const ClipPoints &contactPoints);
+    void setReferenceObject(const Collider *colliderA);
+    void setIncidentObject(const Collider *colliderB);
 
     bool isVerticalCollision() const;
     bool isHorizontalCollision() const;
-
-    bool operator==(const Collision &other) const;
-    bool operator!=(const Collision &other) const;
-
-    class HashFunction
-    {
-      public:
-        size_t operator()(const Collision &collision) const
-        {
-            const Collider *objectA = collision.getReferenceObject();
-            const Collider *objectB = collision.getIncidentObject();
-
-            if (objectA > objectB)
-            {
-                std::swap(objectA, objectB);
-            }
-
-            size_t hash1 = std::hash<const Collider *>()(objectA);
-            size_t hash2 = std::hash<const Collider *>()(objectB);
-            return hash1 ^ (hash2 << 1);
-        }
-    };
 
     enum SupportState : uint8_t
     {
@@ -78,9 +51,9 @@ class Collision
     };
 
   private:
-    mutable Eigen::Vector2f normal;
-    mutable ClipPointsWithData contactPoints;
-    mutable const Collider *referenceObject;
-    mutable const Collider *incidentObject;
-    mutable uint8_t supportState;
+    Eigen::Vector2f normal;
+    ClipPointsWithData contactPoints;
+    const Collider *referenceObject;
+    const Collider *incidentObject;
+    uint8_t supportState;
 };

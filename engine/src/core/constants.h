@@ -31,6 +31,9 @@ constexpr float GRAVITY_VECTOR_X = 0.0f;
 constexpr float GRAVITY_VECTOR_Y = 98.10f;
 
 constexpr size_t COLLISION_SOLVER_ITERATIONS = 10;
+constexpr size_t COLLISION_SOLVER_SUBSTEPS = 4;
+constexpr float CONTACT_HERTZ = 30.0f;
+constexpr float CONTACT_DAMPING_RATIO = 10.0f;
 constexpr float COLLISION_ALLOWED_PENETRATION = 0.01f;
 constexpr float COLLISION_BIAS_FACTOR = 0.2f;
 constexpr float RESTITUTION_VELOCITY_THRESHOLD = 1.0f;

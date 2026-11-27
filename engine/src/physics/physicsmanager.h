@@ -45,6 +45,7 @@ public:
 
     void applyPhysics(double timeDelta);
     void applyMovement(double timeDelta);
+    void stepDynamics(double timeDelta);
 
     void checkForCollisions();
     void resolveCollisions(double timeDelta);
@@ -137,20 +138,59 @@ private:
     size_t countAwakeDynamicBodies() const;
 #endif
 
+    void commitMovedBodies(double timeDelta, bool useSolverDeltas);
+
+    struct SoftStepParams
+    {
+        float dt = 0.0f;
+        float h = 0.0f;
+        float invH = 0.0f;
+        float biasRate = 0.0f;
+        float massScale = 1.0f;
+        float impulseScale = 0.0f;
+        float negMaxPushSpeed = -35.0f;
+        float slop = 0.01f;
+        float restitutionThreshold = 1.0f;
+        size_t subSteps = 4;
+        bool integrateForces = true;
+        bool commitPositions = true;
+    };
+
+    struct SolverBodyForce
+    {
+        float accelX = 0.0f;
+        float accelY = 0.0f;
+        float angAccel = 0.0f;
+        uint8_t isDynamic = 0;
+    };
+
+    struct SolverBodyDelta
+    {
+        float dx = 0.0f;
+        float dy = 0.0f;
+        float dAngle = 0.0f;
+    };
+
     struct SolverBodyState
     {
         Eigen::Vector2f velocity = Eigen::Vector2f::Zero();
         float angularVelocity = 0.0f;
+        Eigen::Vector2f deltaPosition = Eigen::Vector2f::Zero();
+        float deltaAngle = 0.0f;
         float inverseMass = 0.0f;
         float inverseMomentOfInertia = 0.0f;
     };
 
-    struct alignas(16) WideBodyVel
+    struct alignas(16) WideBodyState
     {
         float vx = 0.0f;
         float vy = 0.0f;
         float w = 0.0f;
-        float pad = 0.0f;
+        float pad0 = 0.0f;
+        float dpX = 0.0f;
+        float dpY = 0.0f;
+        float dAngle = 0.0f;
+        float pad1 = 0.0f;
     };
 
     struct IslandWorkUnit
@@ -173,21 +213,21 @@ private:
         Eigen::Vector2f rB[2] = {Eigen::Vector2f::Zero(), Eigen::Vector2f::Zero()};
         float massNormal[2] = {0.0f, 0.0f};
         float massTangent[2] = {0.0f, 0.0f};
-        float bias[2] = {0.0f, 0.0f};
+        float baseSeparation[2] = {0.0f, 0.0f};
+        float relativeVelocity[2] = {0.0f, 0.0f};
         float accumulatedNormalImpulse[2] = {0.0f, 0.0f};
         float accumulatedTangentImpulse[2] = {0.0f, 0.0f};
-        Eigen::Matrix2f normalK = Eigen::Matrix2f::Zero();
-        Eigen::Matrix2f normalMass = Eigen::Matrix2f::Zero();
         float solverFriction = 0.0f;
+        float solverRestitution = 0.0f;
         uint8_t pointCount = 0;
-        bool blockSolve = false;
     };
 
     struct IslandSolverScratch
     {
         std::vector<SolverConstraint> constraints;
         std::vector<SolverBodyState> bodies;
-        std::vector<WideBodyVel> wideBodies;
+        std::vector<WideBodyState> wideBodies;
+        std::vector<SolverBodyForce> bodyForces;
         std::vector<std::pair<size_t, Rigidbody *>> writableBodies;
     };
 
@@ -237,23 +277,28 @@ private:
     static void insertContactIntoColorGraph(IslandColorGraph &graph, const ColliderPair *pair);
     static void removeContactFromColorGraph(IslandColorGraph &graph, const ColliderPair *pair);
     static void ensureIslandColorGraph(PersistentIsland &island);
-    bool solveColoredIsland(PersistentIsland &island, float inverseTimeDelta, bool allowParallel);
+    SoftStepParams makeSoftStepParams(double timeDelta, bool integrateForces, bool commitPositions) const noexcept;
+    SolverBodyForce makeBodyForce(const Rigidbody *rb) const noexcept;
+    bool solveColoredIsland(PersistentIsland &island, const SoftStepParams &params, bool allowParallel);
 
-    void prepareSolverConstraint(const SolverPreStepJob &job, float inverseTimeDelta,
+    void prepareSolverConstraint(const SolverPreStepJob &job, const SoftStepParams &params,
                                  SolverConstraint &outConstraint) const;
     static void applyWarmStart(const SolverConstraint &constraint, SolverBodyState &bodyA, SolverBodyState &bodyB) noexcept;
-    static void resolveCollision(SolverConstraint &constraint, SolverBodyState &bodyA, SolverBodyState &bodyB) noexcept;
+    static void solveConstraintSoft(SolverConstraint &constraint, SolverBodyState &bodyA, SolverBodyState &bodyB,
+                                    const SoftStepParams &params, bool useBias) noexcept;
+    static void applyRestitutionSoft(SolverConstraint &constraint, SolverBodyState &bodyA, SolverBodyState &bodyB,
+                                     const SoftStepParams &params) noexcept;
     static void storeConstraintImpulses(const SolverConstraint &constraint) noexcept;
-    void solvePersistentIsland(const PersistentIsland &island, float inverseTimeDelta,
+    void solvePersistentIsland(const PersistentIsland &island, const SoftStepParams &params,
                                IslandSolverScratch &scratch);
-    bool solvePersistentIslandGroup8(const int32_t *islandIds, size_t groupSize, float inverseTimeDelta,
+    bool solvePersistentIslandGroup8(const int32_t *islandIds, size_t groupSize, const SoftStepParams &params,
                                      IslandSolverScratch &scratch);
     void buildIslandWorkUnits();
-    void executeIslandWorkUnits(size_t beginUnit, size_t endUnit, float inverseTimeDelta,
+    void executeIslandWorkUnits(size_t beginUnit, size_t endUnit, const SoftStepParams &params,
                                 IslandSolverScratch &scratch);
-    void solveConstraintIterations(float inverseTimeDelta);
-    void solveConstraintsSerial(float inverseTimeDelta);
-    void solveIslands(float inverseTimeDelta, size_t totalContacts);
+    void solveConstraintIterations(const SoftStepParams &params);
+    void solveConstraintsSerial(const SoftStepParams &params);
+    void solveIslands(const SoftStepParams &params, size_t totalContacts);
     void resolveKinematicCollision(const Collision *collision, Rigidbody *rbA, Rigidbody *rbB);
     void resolveKinematicBodyAgainstNormal(Rigidbody *rigidBody, const Eigen::Vector2f &approachNormal,
                                            float correctionDistance);
@@ -279,7 +324,10 @@ private:
     std::vector<SolverConstraint> solverConstraints;
     std::vector<uint32_t> solverBodyLocalIndices;
     std::vector<SolverBodyState> solverBodyStates;
-    std::vector<WideBodyVel> solverWideBodyVels;
+    std::vector<WideBodyState> solverWideBodyStates;
+    std::vector<SolverBodyForce> solverBodyForces;
+    std::vector<SolverBodyDelta> solverBodyDeltas;
+    std::vector<uint8_t> solverBodyIntegrated;
     std::vector<std::pair<size_t, Rigidbody *>> solverTouchedWritableBodies;
     std::vector<int32_t> bucketedIslandIds;
     std::vector<IslandWorkUnit> islandWorkUnits;

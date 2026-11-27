@@ -382,9 +382,7 @@ void GameManager::runSimulationStepWithCustomCallback(const std::function<void(d
                 synchronizeTransforms();
                 physicsManager->checkForCollisions();
                 physicsManager->reconcileChangedBodies();
-                physicsManager->applyPhysics(timeDelta);
-                physicsManager->resolveCollisions(timeDelta);
-                physicsManager->applyMovement(timeDelta);
+                physicsManager->stepDynamics(timeDelta);
                 synchronizeTransforms();
             });
         });

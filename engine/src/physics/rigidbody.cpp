@@ -291,10 +291,17 @@ void Rigidbody::integrateForces(double timeDelta, const Eigen::Vector2f &gravity
 
 uint8_t Rigidbody::integrateLocal(double timeDelta)
 {
+    return integrateDelta(static_cast<float>(velocity.x() * timeDelta), static_cast<float>(velocity.y() * timeDelta),
+                          static_cast<float>(static_cast<double>(angularVelocity) * timeDelta));
+}
+
+uint8_t Rigidbody::integrateDelta(float dx, float dy, float dAngle)
+{
     this->force = Eigen::Vector2f(0.0f, 0.0f);
     this->torque = 0.0f;
 
-    const bool translated = !velocity.isZero(0), rotated = angularVelocity != 0;
+    const bool translated = dx != 0.0f || dy != 0.0f;
+    const bool rotated = dAngle != 0.0f;
     if (!translated && !rotated)
     {
         return 0;
@@ -302,12 +309,13 @@ uint8_t Rigidbody::integrateLocal(double timeDelta)
     auto *object = getGameObject();
     if (translated)
     {
-        object->position += velocity * timeDelta;
+        object->position.x() += dx;
+        object->position.y() += dy;
     }
     if (rotated)
     {
         constexpr double twoPi = 2.0 * std::numbers::pi;
-        const double nextRotation = static_cast<double>(object->rotation) + static_cast<double>(angularVelocity) * timeDelta;
+        const double nextRotation = static_cast<double>(object->rotation) + static_cast<double>(dAngle);
         object->rotation =
             static_cast<float>((nextRotation > -twoPi && nextRotation < twoPi) ? nextRotation : std::fmod(nextRotation, twoPi));
         object->sinRotation = std::sin(object->rotation);

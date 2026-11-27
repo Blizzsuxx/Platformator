@@ -52,6 +52,11 @@ void PhysicsManager::applyPhysics(double timeDelta)
 
 void PhysicsManager::applyMovement(double timeDelta)
 {
+    commitMovedBodies(timeDelta, false);
+}
+
+void PhysicsManager::commitMovedBodies(double timeDelta, bool useSolverDeltas)
+{
     const size_t totalMoving = awakeDynamicBodies.size() + movingKinematicBodies.size();
     PLATFORMATOR_WORK_ADD(movingBodies, totalMoving);
     if (totalMoving == 0)
@@ -81,9 +86,27 @@ void PhysicsManager::applyMovement(double timeDelta)
         }
     };
 
-    const auto integrateAndClassify = [&](Rigidbody *body, Collider *&outFastCollider) -> uint8_t {
+    const auto integrateAndClassify = [&](Rigidbody *body, bool isDynamic, Collider *&outFastCollider) -> uint8_t {
         outFastCollider = nullptr;
-        const uint8_t changes = body->integrateLocal(timeDelta);
+        uint8_t changes = 0;
+        if (useSolverDeltas && isDynamic)
+        {
+            const size_t regIdx = body->getPhysicsManagerIndex();
+            if (regIdx < solverBodyIntegrated.size() && solverBodyIntegrated[regIdx] != 0)
+            {
+                const SolverBodyDelta &delta = solverBodyDeltas[regIdx];
+                changes = body->integrateDelta(delta.dx, delta.dy, delta.dAngle);
+            }
+            else
+            {
+                body->integrateForces(timeDelta, gravityVector);
+                changes = body->integrateLocal(timeDelta);
+            }
+        }
+        else
+        {
+            changes = body->integrateLocal(timeDelta);
+        }
         if (changes == 0)
         {
             return 0;
@@ -124,9 +147,9 @@ void PhysicsManager::applyMovement(double timeDelta)
 
     if (totalMoving < BODY_INTEGRATION_PARALLEL_THRESHOLD)
     {
-        const auto processOne = [&](Rigidbody *body) {
+        const auto processOne = [&](Rigidbody *body, bool isDynamic) {
             Collider *fastCollider = nullptr;
-            const uint8_t flags = integrateAndClassify(body, fastCollider);
+            const uint8_t flags = integrateAndClassify(body, isDynamic, fastCollider);
             if (flags == 0)
             {
                 return;
@@ -155,11 +178,11 @@ void PhysicsManager::applyMovement(double timeDelta)
         };
         for (auto *body : awakeDynamicBodies)
         {
-            processOne(body);
+            processOne(body, true);
         }
         for (auto *body : movingKinematicBodies)
         {
-            processOne(body);
+            processOne(body, false);
         }
         return;
     }
@@ -168,8 +191,9 @@ void PhysicsManager::applyMovement(double timeDelta)
     movedFastColliders.resize(totalMoving);
     const size_t awakeCount = awakeDynamicBodies.size();
     tbb::parallel_for(size_t(0), totalMoving, [&](size_t i) {
-        auto *body = i < awakeCount ? awakeDynamicBodies[i] : movingKinematicBodies[i - awakeCount];
-        movedBodyChanges[i] = integrateAndClassify(body, movedFastColliders[i]);
+        const bool isDynamic = i < awakeCount;
+        auto *body = isDynamic ? awakeDynamicBodies[i] : movingKinematicBodies[i - awakeCount];
+        movedBodyChanges[i] = integrateAndClassify(body, isDynamic, movedFastColliders[i]);
     });
 
     for (size_t i = 0; i < totalMoving; ++i)

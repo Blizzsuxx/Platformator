@@ -187,6 +187,7 @@ class Rigidbody : public Component
 
     void initialize();
     uint8_t integrateLocal(double timeDelta);
+    uint8_t integrateDelta(float dx, float dy, float dAngle);
     void integrateForces(double timeDelta, const Eigen::Vector2f &gravityVector);
     void queueParticipationChange();
     void applySolverImpulse(const Eigen::Vector2f &impulse, const Eigen::Vector2f &arm);

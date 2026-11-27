@@ -77,6 +77,7 @@ void CircleCollider::setRadius(const float radius)
         rigidbodyComponent->refreshMomentOfInertiaCache();
     }
 
+    invalidateFatBounds();
     scheduleSync();
 }
 
@@ -127,7 +128,9 @@ void CircleCollider::generateProjections()
 void CircleCollider::updateCollider()
 {
     publishedRadius = getRadius();
-    generateProjections();
+    const Eigen::Vector2f &position = getCachedWorldPosition();
+    setTightBounds(position.x() - publishedRadius, position.x() + publishedRadius, position.y() - publishedRadius,
+                   position.y() + publishedRadius);
 }
 
 Edge CircleCollider::getEdgeWithNormal(const Eigen::Vector2f &normal) const

@@ -165,6 +165,16 @@ void updateContactGeometry(const ColliderPair &pair, const Eigen::Vector2f &grav
 {
     const Collider *colliderA = pair.getObjectA();
     const Collider *colliderB = pair.getObjectB();
+
+    if (colliderA->getTightMaxX() < colliderB->getTightMinX() ||
+        colliderB->getTightMaxX() < colliderA->getTightMinX() ||
+        colliderA->getTightMaxY() < colliderB->getTightMinY() ||
+        colliderB->getTightMaxY() < colliderA->getTightMinY())
+    {
+        pair.clearCollisionNoEvent();
+        return;
+    }
+
     const ColliderType typeA = colliderA->getColliderType();
     const ColliderType typeB = colliderB->getColliderType();
 

@@ -86,12 +86,13 @@ void PhysicsManager::refreshContactParticipation(const ColliderPair *pair)
 void PhysicsManager::refreshSolverParticipation(const ColliderPair *pair, bool live)
 {
     const auto response = live ? pair->getCollision()->getResolutionType() : Collision::NONE_COLLISIONS;
-    const bool solve = live &&
-                       (response == Collision::DYNAMIC || response == Collision::KINEMATIC) &&
-                       (movingBody(pair->getObjectA()->getGameObject()->getComponent<Rigidbody>()) ||
-                        movingBody(pair->getObjectB()->getGameObject()->getComponent<Rigidbody>()));
+    auto *rbA = live ? pair->getObjectA()->getGameObject()->getComponent<Rigidbody>() : nullptr;
+    auto *rbB = live ? pair->getObjectB()->getGameObject()->getComponent<Rigidbody>() : nullptr;
+    const bool solve =
+        live && (response == Collision::DYNAMIC || response == Collision::KINEMATIC) && (movingBody(rbA) || movingBody(rbB));
 
     membership(solverPairs, pair, &ColliderPair::solverIndex, solve);
+    updatePersistentIslandContact(pair, solve, response, rbA, rbB);
 }
 
 void PhysicsManager::refreshSolverPairs(Collider *collider)
@@ -127,4 +128,5 @@ void PhysicsManager::removePair(const ColliderPair *pair)
     reconcileSupportContribution(pair->contributedSupportBodyB, nullptr);
     membership(contactPairs, pair, &ColliderPair::contactIndex, false);
     membership(solverPairs, pair, &ColliderPair::solverIndex, false);
+    updatePersistentIslandContact(pair, false, Collision::NONE_COLLISIONS, nullptr, nullptr);
 }

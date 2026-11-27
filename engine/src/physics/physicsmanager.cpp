@@ -37,10 +37,7 @@ void PhysicsManager::applyPhysics(double timeDelta)
     {
         return;
     }
-    const auto integrateBody = [&](Rigidbody *body) {
-        resetSleepIsland(body);
-        body->integrateForces(timeDelta, gravityVector);
-    };
+    const auto integrateBody = [&](Rigidbody *body) { body->integrateForces(timeDelta, gravityVector); };
     if (awakeDynamicBodies.size() < BODY_INTEGRATION_PARALLEL_THRESHOLD)
     {
         for (auto *body : awakeDynamicBodies)
@@ -326,6 +323,8 @@ void PhysicsManager::clearAll()
         body->participationQueueIndex = SIZE_MAX;
         body->supportDeltaIndex = SIZE_MAX;
         body->supportDelta = 0;
+        body->solverIslandId = -1;
+        body->solverIslandBodyIndex = SIZE_MAX;
     }
     for (Rigidbody *body : pendingBodyChanges)
     {
@@ -335,6 +334,8 @@ void PhysicsManager::clearAll()
     {
         body->supportDeltaIndex = SIZE_MAX;
         body->supportDelta = 0;
+        body->solverIslandId = -1;
+        body->solverIslandBodyIndex = SIZE_MAX;
     }
     for (Collider *collider : colliderComponents)
     {
@@ -344,6 +345,7 @@ void PhysicsManager::clearAll()
         collider->desiredInGrid = false;
         collider->gridQueueIndex = SIZE_MAX;
         collider->cachedCellCount = 0;
+        collider->invalidateFatBounds();
         collider->adjacentPairs.clear();
     }
 
@@ -353,6 +355,11 @@ void PhysicsManager::clearAll()
     sleepCandidates.clear();
     pendingBodyChanges.clear();
     colliderComponents.clear();
+    persistentIslands.clear();
+    freeIslandIds.clear();
+    activeIslandIds.clear();
+    dirtySplitIslandIds.clear();
+    kinematicSolverPairs.clear();
     solverPreStepJobs.clear();
     solverConstraints.clear();
     contactPairs.clear();
@@ -490,24 +497,155 @@ void PhysicsManager::processNarrowPhasePair(const ColliderPair *pair)
 void PhysicsManager::updateSleepingStates(double timeDelta)
 {
     PLATFORMATOR_WORK_ADD(sleepBodies, sleepCandidates.size());
-
-    // Reduce all member motion and timers before applying any group decision.
-    for (auto *body : sleepCandidates)
+    if (sleepCandidates.empty())
     {
-        auto *root = findSleepRoot(body);
-        root->islandQuiet &=
-            body->getVelocity().squaredNorm() <= LINEAR_SLEEP_THRESHOLD * LINEAR_SLEEP_THRESHOLD &&
-            std::abs(body->getAngularVelocity()) <= ANGULAR_SLEEP_THRESHOLD;
-        root->islandTimer = std::min(root->islandTimer, body->getSleepTimer());
+        return;
     }
 
-    for (auto *body : sleepCandidates)
+    constexpr float linearThresholdSq = LINEAR_SLEEP_THRESHOLD * LINEAR_SLEEP_THRESHOLD;
+    const auto isQuiet = [](const Rigidbody *body) noexcept {
+        return body->getVelocity().squaredNorm() <= linearThresholdSq &&
+               std::abs(body->getAngularVelocity()) <= ANGULAR_SLEEP_THRESHOLD;
+    };
+
+    const auto evaluateIsland = [&](const PersistentIsland &island, std::vector<Rigidbody *> &toSleep) {
+        bool allCandidates = true;
+        bool anyCandidate = false;
+        for (Rigidbody *body : island.bodies)
+        {
+            if (body->sleepCandidateIndex != SIZE_MAX)
+            {
+                anyCandidate = true;
+            }
+            else
+            {
+                allCandidates = false;
+            }
+        }
+        if (!anyCandidate)
+        {
+            return;
+        }
+
+        if (allCandidates)
+        {
+            bool quiet = true;
+            double minTimer = std::numeric_limits<double>::infinity();
+            for (Rigidbody *body : island.bodies)
+            {
+                quiet &= isQuiet(body);
+                minTimer = std::min(minTimer, body->getSleepTimer());
+            }
+            const double timer = quiet ? minTimer + timeDelta : 0.0;
+            if (timer >= SLEEP_DELAY)
+            {
+                for (Rigidbody *body : island.bodies)
+                {
+                    toSleep.push_back(body);
+                }
+            }
+            else
+            {
+                for (Rigidbody *body : island.bodies)
+                {
+                    body->setSleepTimer(timer);
+                }
+            }
+            return;
+        }
+
+        // Mixed island (some bodies supported, some unsupported): preserve exact sleep-candidate connectivity.
+        for (Rigidbody *body : island.bodies)
+        {
+            if (body->sleepCandidateIndex != SIZE_MAX)
+            {
+                resetSleepIsland(body);
+            }
+        }
+        for (const ColliderPair *pair : island.contacts)
+        {
+            auto *rbA = pair->getObjectA()->getGameObject()->getComponent<Rigidbody>();
+            auto *rbB = pair->getObjectB()->getGameObject()->getComponent<Rigidbody>();
+            if (rbA != nullptr && rbB != nullptr)
+            {
+                mergeSleepIslands(rbA, rbB);
+            }
+        }
+        for (Rigidbody *body : island.bodies)
+        {
+            if (body->sleepCandidateIndex == SIZE_MAX)
+            {
+                continue;
+            }
+            auto *root = findSleepRoot(body);
+            root->islandQuiet &= isQuiet(body);
+            root->islandTimer = std::min(root->islandTimer, body->getSleepTimer());
+        }
+        for (Rigidbody *body : island.bodies)
+        {
+            if (body->sleepCandidateIndex == SIZE_MAX)
+            {
+                continue;
+            }
+            auto *root = findSleepRoot(body);
+            const double timer = root->islandQuiet ? root->islandTimer + timeDelta : 0.0;
+            if (timer >= SLEEP_DELAY)
+            {
+                toSleep.push_back(body);
+            }
+            else
+            {
+                body->setSleepTimer(timer);
+            }
+        }
+    };
+
+    std::vector<Rigidbody *> bodiesToSleep;
+    const bool runParallel = activeIslandIds.size() >= 32 &&
+                             tbb::global_control::active_value(tbb::global_control::max_allowed_parallelism) > 1 &&
+                             tbb::this_task_arena::max_concurrency() > 1;
+    if (!runParallel)
     {
-        auto *root = findSleepRoot(body);
-        const auto timer = root->islandQuiet ? root->islandTimer + timeDelta : 0;
+        for (int32_t islandId : activeIslandIds)
+        {
+            evaluateIsland(persistentIslands[static_cast<size_t>(islandId)], bodiesToSleep);
+        }
+    }
+    else
+    {
+        for (auto &local : parallelBodiesToSleep)
+        {
+            local.clear();
+        }
+        tbb::task_group_context context(tbb::task_group_context::isolated);
+        tbb::parallel_for(
+            tbb::blocked_range<size_t>(0, activeIslandIds.size(), 16),
+            [&](const auto &range) {
+                auto &localToSleep = parallelBodiesToSleep.local();
+                for (size_t i = range.begin(); i != range.end(); ++i)
+                {
+                    evaluateIsland(persistentIslands[static_cast<size_t>(activeIslandIds[i])], localToSleep);
+                }
+            },
+            context);
+        for (auto &local : parallelBodiesToSleep)
+        {
+            bodiesToSleep.insert(bodiesToSleep.end(), local.begin(), local.end());
+            local.clear();
+        }
+    }
+
+    // Evaluate isolated sleep candidates (0 active dynamic contacts, e.g. zero-gravity bodies).
+    for (Rigidbody *body : sleepCandidates)
+    {
+        if (body->solverIslandId != -1)
+        {
+            continue;
+        }
+        const double timer = isQuiet(body) ? body->getSleepTimer() + timeDelta : 0.0;
         if (timer >= SLEEP_DELAY)
         {
-            body->setIsSleeping(true);
+            bodiesToSleep.push_back(body);
         }
         else
         {
@@ -515,7 +653,18 @@ void PhysicsManager::updateSleepingStates(double timeDelta)
         }
     }
 
-    // Sleep decisions queue membership changes; drain only after both fixed-list traversals finish.
+    if (!bodiesToSleep.empty())
+    {
+        std::sort(bodiesToSleep.begin(), bodiesToSleep.end(), [](const Rigidbody *a, const Rigidbody *b) {
+            return a->getPhysicsManagerIndex() < b->getPhysicsManagerIndex();
+        });
+        for (Rigidbody *body : bodiesToSleep)
+        {
+            body->setIsSleeping(true);
+        }
+    }
+
+    // Sleep decisions queue membership changes; drain only after all traversals finish.
     reconcileChangedBodies();
 }
 

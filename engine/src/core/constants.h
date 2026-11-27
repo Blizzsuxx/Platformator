@@ -24,6 +24,9 @@ constexpr float WAKE_LINEAR_EPSILON_SQUARED = WAKE_LINEAR_EPSILON * WAKE_LINEAR_
 constexpr float WAKE_ANGULAR_EPSILON = 1e-4f;
 
 constexpr float GRID_CELL_SIZE = 200.0f;
+constexpr float FAT_AABB_MARGIN = 2.5f;
+constexpr float FAT_AABB_VELOCITY_LEAD_STEPS = 5.0f;
+constexpr float FAT_AABB_MAX_VELOCITY_LEAD = 48.0f;
 constexpr float GRAVITY_VECTOR_X = 0.0f;
 constexpr float GRAVITY_VECTOR_Y = 98.10f;
 

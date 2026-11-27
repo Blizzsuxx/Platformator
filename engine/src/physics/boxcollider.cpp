@@ -127,6 +127,7 @@ void BoxCollider::setWidth(const float width)
         rigidbodyComponent->refreshMomentOfInertiaCache();
     }
 
+    invalidateFatBounds();
     scheduleSync();
 }
 
@@ -149,6 +150,7 @@ void BoxCollider::setHeight(const float height)
         rigidbodyComponent->refreshMomentOfInertiaCache();
     }
 
+    invalidateFatBounds();
     scheduleSync();
 }
 
@@ -239,10 +241,7 @@ void BoxCollider::updateCollider()
 
     const float extentX = std::abs(hxX) + std::abs(hyX);
     const float extentY = std::abs(hxY) + std::abs(hyY);
-    xProjections.getMin()->setProjectedPosition(center.x() - extentX);
-    xProjections.getMax()->setProjectedPosition(center.x() + extentX);
-    yProjections.getMin()->setProjectedPosition(center.y() - extentY);
-    yProjections.getMax()->setProjectedPosition(center.y() + extentY);
+    setTightBounds(center.x() - extentX, center.x() + extentX, center.y() - extentY, center.y() + extentY);
 }
 
 Edge BoxCollider::getEdgeWithNormal(const Eigen::Vector2f &normal) const

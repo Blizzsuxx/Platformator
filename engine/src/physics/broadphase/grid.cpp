@@ -111,6 +111,7 @@ void Grid::removeColliderInternal(Collider *collider)
         });
     }
 
+    collider->invalidateFatBounds();
     collider->setIsRegisteredInGrid(false);
 }
 
@@ -161,6 +162,21 @@ void Grid::dequeuePairFromNarrowPhase(const ColliderPair *pair)
     pair->setNarrowPhaseQueueIndex(SIZE_MAX);
 }
 
+namespace
+{
+inline bool pairNeedsNarrowPhaseCheck(const ColliderPair *pair) noexcept
+{
+    if (pair->getCollision() != nullptr)
+    {
+        return true;
+    }
+    const Collider *a = pair->getObjectA();
+    const Collider *b = pair->getObjectB();
+    return !(a->getTightMaxX() < b->getTightMinX() || b->getTightMaxX() < a->getTightMinX() ||
+             a->getTightMaxY() < b->getTightMinY() || b->getTightMaxY() < a->getTightMinY());
+}
+} // namespace
+
 void Grid::queuePairsForCollider(Collider *collider)
 {
     const std::vector<const ColliderPair *> *touchingPairs = getTouchingPairs(collider);
@@ -171,7 +187,10 @@ void Grid::queuePairsForCollider(Collider *collider)
 
     for (const ColliderPair *pair : *touchingPairs)
     {
-        queuePairForNarrowPhase(pair);
+        if (pair != nullptr && !pair->getIsQueuedForNarrowPhase() && pairNeedsNarrowPhaseCheck(pair))
+        {
+            queuePairForNarrowPhase(pair);
+        }
     }
 }
 
@@ -259,7 +278,10 @@ void Grid::applyPairWitnessDelta(Collider *colliderA, Collider *colliderB, int d
         pair->setAdjacencyIndexB(adjacencyB.size());
         adjacencyB.push_back(pair);
 
-        queuePairForNarrowPhase(pair);
+        if (pairNeedsNarrowPhaseCheck(pair))
+        {
+            queuePairForNarrowPhase(pair);
+        }
         return;
     }
     else
@@ -389,6 +411,8 @@ void Grid::syncColliderInternal(Collider *collider, bool geometryPrepared)
     if (geometry && !geometryPrepared)
         collider->prepareSyncFromCache();
     if (!geometry && !filter)
+        return;
+    if (!filter && !collider->broadPhaseSyncNeeded)
         return;
     const auto oldRange = collider->getGridCellRange();
     const auto newRange = collider->getGridCellRangeCache();
@@ -538,22 +562,25 @@ void Grid::flushPendingWork()
         else if (collider->dirty)
             syncColliderInternal(collider, true);
     }
-    const bool runCellsParallel =
-        cellsWithOperations.size() >= GRID_CELL_FLUSH_PARALLEL_THRESHOLD ||
-        (cellsWithOperations.size() >= GRID_CELL_FLUSH_DENSE_MIN_CELLS &&
-         pendingColliderOperations.size() >= GRID_UPDATE_PARALLEL_THRESHOLD);
-    if (!runCellsParallel)
+    if (!cellsWithOperations.empty())
     {
-        for (auto *cell : cellsWithOperations)
-            cell->flushPendingOperations();
+        const bool runCellsParallel =
+            cellsWithOperations.size() >= GRID_CELL_FLUSH_PARALLEL_THRESHOLD ||
+            (cellsWithOperations.size() >= GRID_CELL_FLUSH_DENSE_MIN_CELLS &&
+             pendingColliderOperations.size() >= GRID_UPDATE_PARALLEL_THRESHOLD);
+        if (!runCellsParallel)
+        {
+            for (auto *cell : cellsWithOperations)
+                cell->flushPendingOperations();
+        }
+        else
+        {
+            tbb::parallel_for(size_t(0), cellsWithOperations.size(),
+                              [&](size_t i) { cellsWithOperations[i]->flushPendingOperations(); });
+        }
+        cellsWithOperations.clear();
+        applyCollectedPairDeltas();
     }
-    else
-    {
-        tbb::parallel_for(size_t(0), cellsWithOperations.size(),
-                          [&](size_t i) { cellsWithOperations[i]->flushPendingOperations(); });
-    }
-    cellsWithOperations.clear();
-    applyCollectedPairDeltas();
     for (auto *cell : potentiallyEmptyCells)
     {
         const GridCellKey key = cell->getCellKey();
@@ -650,7 +677,7 @@ void Grid::flushPendingWork()
                     }
                     const Collider *other =
                         pair->getObjectA() == collider ? pair->getObjectB() : pair->getObjectA();
-                    if (!other->desiredInGrid || other->gridQueueIndex > idx)
+                    if ((!other->desiredInGrid || other->gridQueueIndex > idx) && pairNeedsNarrowPhaseCheck(pair))
                     {
                         local.push_back(pair);
                     }
@@ -694,6 +721,7 @@ void Grid::clearAll()
     for (Collider *collider : pendingColliderOperations)
     {
         collider->setIsRegisteredInGrid(false);
+        collider->invalidateFatBounds();
         collider->desiredInGrid = false;
         collider->gridQueueIndex = SIZE_MAX;
         collider->cachedCellCount = 0;
@@ -701,6 +729,7 @@ void Grid::clearAll()
     for (auto &cellEntry : cells)
     {
         cellEntry.second.getAABB()->forEachRegisteredCollider([](Collider *collider) {
+            collider->invalidateFatBounds();
             collider->cachedCellCount = 0;
         });
     }

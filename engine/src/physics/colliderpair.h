@@ -110,6 +110,9 @@ class ColliderPair
     mutable int witnessCount;
     mutable size_t contactIndex = SIZE_MAX;
     mutable size_t solverIndex = SIZE_MAX;
+    mutable int32_t solverIslandId = -1;
+    mutable size_t solverIslandContactIndex = SIZE_MAX;
+    mutable size_t kinematicSolverIndex = SIZE_MAX;
     mutable bool hasCollision = false;
     mutable bool resultHadContact = false;
 #if PLATFORMATOR_ENABLE_WORK_PROBES

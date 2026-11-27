@@ -57,6 +57,11 @@ void PhysicsManager::reconcileBodyParticipation(Rigidbody *body)
     {
         refreshSolverPairs(collider);
     }
+
+    if ((!live || body->getBodyType() != DYNAMIC) && body->solverIslandId != -1)
+    {
+        detachBodyFromPersistentIsland(body);
+    }
 }
 
 Rigidbody *PhysicsManager::findSleepRoot(Rigidbody *body)

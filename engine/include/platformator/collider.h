@@ -269,6 +269,22 @@ class Collider : public Component
     {
         return &yProjections;
     }
+    float getTightMinX() const noexcept
+    {
+        return tightMinX;
+    }
+    float getTightMaxX() const noexcept
+    {
+        return tightMaxX;
+    }
+    float getTightMinY() const noexcept
+    {
+        return tightMinY;
+    }
+    float getTightMaxY() const noexcept
+    {
+        return tightMaxY;
+    }
 
     uint64_t getCollisionGroup() const
     {
@@ -376,11 +392,29 @@ class Collider : public Component
 
     BoundingRadiusProjectionAxis xProjections;
     BoundingRadiusProjectionAxis yProjections;
+    float tightMinX = 0.0f;
+    float tightMaxX = 0.0f;
+    float tightMinY = 0.0f;
+    float tightMaxY = 0.0f;
     size_t physicsManagerIndex;
 
     GridCellRange gridCellRange;
     ColliderFlags flags;
     GridCellRange gridCellRangeCache;
+
+    void setTightBounds(float minX, float maxX, float minY, float maxY) noexcept
+    {
+        tightMinX = minX;
+        tightMaxX = maxX;
+        tightMinY = minY;
+        tightMaxY = maxY;
+    }
+
+    void invalidateFatBounds() noexcept
+    {
+        fatBoundsValid = false;
+        broadPhaseSyncNeeded = true;
+    }
 
     void updateGridCellRange()
     {
@@ -398,6 +432,8 @@ class Collider : public Component
     };
     uint8_t dirty = Geometry;
     bool desiredInGrid = false;
+    bool fatBoundsValid = false;
+    bool broadPhaseSyncNeeded = true;
     size_t gridQueueIndex = SIZE_MAX;
     static constexpr uint8_t MAX_CACHED_GRID_CELLS = 4;
     GridCell *cachedCells[MAX_CACHED_GRID_CELLS] = {};

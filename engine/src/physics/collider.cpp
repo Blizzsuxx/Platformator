@@ -1,5 +1,6 @@
 #include "platformator/collider.h"
 
+#include <algorithm>
 #include <cassert>
 #include <cmath>
 #include <limits>
@@ -11,6 +12,7 @@
 #include "physics/broadphase/gridcell.h"
 #include "core/runtimeaccess.h"
 #include "physics/broadphase/segmentedintervallist.h"
+#include "platformator/rigidbody.h"
 #include "platformator/scriptcomponent.h"
 #include "physics/collision.h"
 #include "benchmark/workprobe.h"
@@ -48,6 +50,7 @@ void Collider::setOffset(const Eigen::Vector2f &offset)
 
     if (getGameObject() != nullptr)
     {
+        invalidateFatBounds();
         scheduleSync();
     }
 }
@@ -101,8 +104,52 @@ void Collider::prepareSyncFromCache()
             object->worldPosition + Eigen::Vector2f(offset.x() * c - offset.y() * s, offset.x() * s + offset.y() * c);
     }
     updateCollider();
-    calculateGridCellRange();
     stateVersion++;
+
+    const float fatMinX = xProjections.getMin()->getProjectedPosition();
+    const float fatMaxX = xProjections.getMax()->getProjectedPosition();
+    const float fatMinY = yProjections.getMin()->getProjectedPosition();
+    const float fatMaxY = yProjections.getMax()->getProjectedPosition();
+
+    if (fatBoundsValid && getIsRegisteredInGrid() && tightMinX >= fatMinX && tightMaxX <= fatMaxX &&
+        tightMinY >= fatMinY && tightMaxY <= fatMaxY)
+    {
+        broadPhaseSyncNeeded = false;
+        return;
+    }
+
+    float newMinX = tightMinX;
+    float newMaxX = tightMaxX;
+    float newMinY = tightMinY;
+    float newMaxY = tightMaxY;
+    if (const auto *rb = object->getComponent<Rigidbody>(); rb != nullptr && rb->getBodyType() != BodyType::STATIC)
+    {
+        newMinX -= FAT_AABB_MARGIN;
+        newMaxX += FAT_AABB_MARGIN;
+        newMinY -= FAT_AABB_MARGIN;
+        newMaxY += FAT_AABB_MARGIN;
+
+        const Eigen::Vector2f &vel = rb->getVelocity();
+        const float leadScale = static_cast<float>(FIXED_TIME_STEP) * FAT_AABB_VELOCITY_LEAD_STEPS;
+        const float leadX = std::clamp(vel.x() * leadScale, -FAT_AABB_MAX_VELOCITY_LEAD, FAT_AABB_MAX_VELOCITY_LEAD);
+        const float leadY = std::clamp(vel.y() * leadScale, -FAT_AABB_MAX_VELOCITY_LEAD, FAT_AABB_MAX_VELOCITY_LEAD);
+        if (leadX > 0.0f)
+            newMaxX += leadX;
+        else
+            newMinX += leadX;
+        if (leadY > 0.0f)
+            newMaxY += leadY;
+        else
+            newMinY += leadY;
+    }
+
+    xProjections.getMin()->setProjectedPosition(newMinX);
+    xProjections.getMax()->setProjectedPosition(newMaxX);
+    yProjections.getMin()->setProjectedPosition(newMinY);
+    yProjections.getMax()->setProjectedPosition(newMaxY);
+    fatBoundsValid = true;
+    broadPhaseSyncNeeded = true;
+    calculateGridCellRange();
 }
 
 void Collider::triggerCollisionEnter(const Collision *collision, Collider *other, double timeDelta) const

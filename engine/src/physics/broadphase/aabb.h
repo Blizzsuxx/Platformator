@@ -93,10 +93,10 @@ class AABB
     void forEachOverlappingAABB(float minX, float maxX, float minY, float maxY, Visitor &&visitor) const
     {
         intervalListX.forEachOverlappingInterval(minX, maxX, [&](Collider *collider) {
-            const float cMinX = collider->getXProjections()->getMin()->getProjectedPosition();
-            const float cMaxX = collider->getXProjections()->getMax()->getProjectedPosition();
-            const float cMinY = collider->getYProjections()->getMin()->getProjectedPosition();
-            const float cMaxY = collider->getYProjections()->getMax()->getProjectedPosition();
+            const float cMinX = collider->getTightMinX();
+            const float cMaxX = collider->getTightMaxX();
+            const float cMinY = collider->getTightMinY();
+            const float cMaxY = collider->getTightMaxY();
             if (cMaxX >= minX && cMinX <= maxX && cMaxY >= minY && cMinY <= maxY)
             {
                 visitor(collider, cMinX, cMaxX, cMinY, cMaxY);

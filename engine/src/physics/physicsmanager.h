@@ -159,6 +159,17 @@ private:
         std::vector<std::pair<size_t, Rigidbody *>> writableBodies;
     };
 
+    struct PersistentIsland
+    {
+        int32_t id = -1;
+        size_t activeListIndex = SIZE_MAX;
+        std::vector<Rigidbody *> bodies;
+        std::vector<const ColliderPair *> contacts;
+        bool maySplit = false;
+        bool splitQueued = false;
+        bool hasSleepingEndpoint = false;
+    };
+
     struct SolverPreStepJob
     {
         Collision *collision = nullptr;
@@ -166,17 +177,36 @@ private:
         Rigidbody *rbB = nullptr;
     };
 
+    int32_t acquirePersistentIsland();
+    void recyclePersistentIsland(int32_t islandId);
+    void setPersistentIslandActive(PersistentIsland &island, bool active);
+    void queuePersistentIslandSplit(PersistentIsland &island);
+    void addBodyToPersistentIsland(PersistentIsland &island, Rigidbody *body);
+    void detachBodyFromPersistentIsland(Rigidbody *body);
+    int32_t mergePersistentIslands(int32_t islandIdA, int32_t islandIdB);
+    void removeContactFromPersistentIsland(const ColliderPair *pair);
+    void updatePersistentIslandContact(const ColliderPair *pair, bool solve, Collision::CollisionType response,
+                                       Rigidbody *rbA, Rigidbody *rbB);
+    void splitPersistentIsland(int32_t islandId);
+    void splitDirtyIslands();
+    void wakePersistentIslandEndpoints();
+
     void prepareSolverConstraint(const SolverPreStepJob &job, float inverseTimeDelta,
                                  SolverConstraint &outConstraint) const;
     static void applyWarmStart(const SolverConstraint &constraint, SolverBodyState &bodyA, SolverBodyState &bodyB) noexcept;
     static void resolveCollision(SolverConstraint &constraint, SolverBodyState &bodyA, SolverBodyState &bodyB) noexcept;
     static void storeConstraintImpulses(const SolverConstraint &constraint) noexcept;
-    void solveConstraintIterations();
-    void solveConstraintsSerial();
-    bool prepareSolverIslands();
-    void solveIslands();
+    void solvePersistentIsland(const PersistentIsland &island, float inverseTimeDelta,
+                               IslandSolverScratch &scratch);
+    bool solvePersistentIslandGroup8(const int32_t *islandIds, size_t groupSize, float inverseTimeDelta,
+                                     IslandSolverScratch &scratch);
+    void solveIslandRange(const int32_t *islandIds, size_t begin, size_t end, float inverseTimeDelta,
+                          IslandSolverScratch &scratch);
+    void solveConstraintIterations(float inverseTimeDelta);
+    void solveConstraintsSerial(float inverseTimeDelta);
+    void solveIslands(float inverseTimeDelta, size_t totalContacts);
     bool prepareOrderedSolverBatches();
-    void solveOrderedBatches();
+    void solveOrderedBatches(float inverseTimeDelta);
     void resolveKinematicCollision(const Collision *collision, Rigidbody *rbA, Rigidbody *rbB);
     void resolveKinematicBodyAgainstNormal(Rigidbody *rigidBody, const Eigen::Vector2f &approachNormal,
                                            float correctionDistance);
@@ -186,6 +216,18 @@ private:
     std::vector<Rigidbody *> registeredBodies;
     std::vector<Rigidbody *> awakeDynamicBodies, movingKinematicBodies, sleepCandidates, pendingBodyChanges;
     std::vector<Collider *> colliderComponents;
+    std::vector<PersistentIsland> persistentIslands;
+    std::vector<int32_t> freeIslandIds;
+    std::vector<int32_t> activeIslandIds;
+    std::vector<int32_t> dirtySplitIslandIds;
+    std::vector<const ColliderPair *> kinematicSolverPairs;
+    std::vector<int32_t> splitAdjHead;
+    std::vector<int32_t> splitAdjNext;
+    std::vector<uint32_t> splitAdjTo;
+    std::vector<int32_t> splitComponentOfBody;
+    std::vector<uint32_t> splitQueue;
+    std::vector<const ColliderPair *> splitRemainingContacts;
+    std::vector<int32_t> splitComponentIslandIds;
     std::vector<SolverPreStepJob> solverPreStepJobs;
     std::vector<SolverConstraint> solverConstraints;
     std::vector<uint32_t> solverBodyLocalIndices;
@@ -193,6 +235,7 @@ private:
     std::vector<std::pair<size_t, Rigidbody *>> solverTouchedWritableBodies;
     IslandSolverScratch serialSolverScratch;
     tbb::enumerable_thread_specific<IslandSolverScratch> solverIslandScratch;
+    tbb::enumerable_thread_specific<std::vector<Rigidbody *>> parallelBodiesToSleep;
 
     struct SolverBodyNode
     {

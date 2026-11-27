@@ -1,14 +1,37 @@
 #include "physics/broadphase/aabb.h"
 #include "physics/broadphase/grid.h"
 
+#include <oneapi/tbb/parallel_invoke.h>
+
+namespace
+{
+bool proxySortLess(BoundingRadiusProjectionProxy *a, BoundingRadiusProjectionProxy *b) noexcept
+{
+    const float posA = a->getCachedProjectedPosition();
+    const float posB = b->getCachedProjectedPosition();
+    if (posA != posB)
+    {
+        return posA < posB;
+    }
+    if (a->getIsMaxima() != b->getIsMaxima())
+    {
+        return !a->getIsMaxima();
+    }
+    const Collider *colA = a->getCollider();
+    const Collider *colB = b->getCollider();
+    const uint32_t slotA = colA->getHandle().slot;
+    const uint32_t slotB = colB->getHandle().slot;
+    if (slotA != slotB)
+    {
+        return slotA < slotB;
+    }
+    return colA < colB;
+}
+} // namespace
+
 AABB::AABB(Grid *owner)
-    : bindingBlocks(),
-      freeBindings(),
-      bindingMap(),
-      intervalListX(this, true),
-      intervalListY(this, false),
-      pairsWithBothAxisOverlapping(),
-      owner(owner)
+    : bindingBlocks(), freeBindings(), bindingMap(), intervalListX(this, true), intervalListY(this, false),
+      pairsWithBothAxisOverlapping(), owner(owner)
 {
 }
 
@@ -16,9 +39,7 @@ AABB::~AABB()
 {
     intervalListX.clear();
     intervalListY.clear();
-    bindingMap.forEach([](Collider *, ColliderBinding *binding) {
-        std::destroy_at(binding);
-    });
+    bindingMap.forEach([](Collider *, ColliderBinding *binding) { std::destroy_at(binding); });
     bindingMap.clear();
     freeBindings.clear();
     bindingBlocks.clear();
@@ -38,7 +59,7 @@ AABB::BindingSlot *AABB::allocateBindingSlot()
         const size_t prevCap = bindingBlocks.empty() ? 0 : bindingBlocks.back().capacity;
         const size_t nextCap = prevCap == 0 ? 4 : std::min<size_t>(prevCap * 2, 64);
         BindingBlock block;
-        block.slots = std::unique_ptr<BindingSlot[]>(new BindingSlot[nextCap]);
+        block.slots = std::make_unique_for_overwrite<BindingSlot[]>(nextCap);
         block.capacity = nextCap;
         block.used = 0;
         bindingBlocks.push_back(std::move(block));
@@ -60,6 +81,95 @@ void AABB::add(Collider *element)
     }
     intervalListX.add(&binding->xBinding);
     intervalListY.add(&binding->yBinding);
+}
+
+void AABB::addBatch(const std::vector<Collider *> &colliders)
+{
+    if (colliders.size() < 32)
+    {
+        for (Collider *collider : colliders)
+        {
+            add(collider);
+        }
+        return;
+    }
+
+    const bool wasEmpty = getIsEmpty();
+    std::vector<ColliderBinding *> added;
+    added.reserve(colliders.size());
+    for (Collider *collider : colliders)
+    {
+        ColliderBinding *binding = bindingMap.emplaceIfAbsent(collider, [&]() {
+            BindingSlot *slot = allocateBindingSlot();
+            return std::construct_at(reinterpret_cast<ColliderBinding *>(slot), collider);
+        });
+        if (binding != nullptr)
+        {
+            added.push_back(binding);
+        }
+    }
+    if (added.empty())
+    {
+        return;
+    }
+
+    if (wasEmpty)
+    {
+        std::vector<BoundingRadiusProjectionProxy *> xProxies;
+        std::vector<BoundingRadiusProjectionProxy *> yProxies;
+        xProxies.reserve(added.size() * 2);
+        yProxies.reserve(added.size() * 2);
+        for (ColliderBinding *binding : added)
+        {
+            xProxies.push_back(&binding->xBinding.minProxy);
+            xProxies.push_back(&binding->xBinding.maxProxy);
+            yProxies.push_back(&binding->yBinding.minProxy);
+            yProxies.push_back(&binding->yBinding.maxProxy);
+        }
+
+        auto buildX = [&]() {
+            std::sort(xProxies.begin(), xProxies.end(), proxySortLess);
+            intervalListX.addBulkEmpty(xProxies);
+        };
+        auto buildY = [&]() {
+            std::sort(yProxies.begin(), yProxies.end(), proxySortLess);
+            intervalListY.addBulkEmpty(yProxies);
+        };
+
+        if (added.size() >= 64)
+        {
+            tbb::parallel_invoke(buildX, buildY);
+        }
+        else
+        {
+            buildX();
+            buildY();
+        }
+        return;
+    }
+
+    auto insertX = [&]() {
+        for (ColliderBinding *binding : added)
+        {
+            intervalListX.add(&binding->xBinding);
+        }
+    };
+    auto insertY = [&]() {
+        for (ColliderBinding *binding : added)
+        {
+            intervalListY.add(&binding->yBinding);
+        }
+    };
+
+    if (added.size() >= 64)
+    {
+        tbb::parallel_invoke(insertX, insertY);
+    }
+    else
+    {
+        insertX();
+        insertY();
+    }
 }
 
 void AABB::remove(Collider *element)
@@ -87,6 +197,105 @@ void AABB::remove(ColliderBinding *binding)
     freeBindings.push_back(reinterpret_cast<BindingSlot *>(binding));
 }
 
+bool AABB::tryClearAllRemoved(const std::vector<Collider *> &colliders)
+{
+    if (bindingMap.size() < 16 || colliders.size() < bindingMap.size())
+    {
+        return false;
+    }
+
+    std::vector<ColliderBinding *> matched;
+    matched.reserve(bindingMap.size());
+    for (Collider *collider : colliders)
+    {
+        if (ColliderBinding *binding = bindingMap.find(collider); binding != nullptr && !binding->pendingRemoval)
+        {
+            binding->pendingRemoval = true;
+            matched.push_back(binding);
+        }
+    }
+
+    if (matched.size() != bindingMap.size())
+    {
+        for (ColliderBinding *binding : matched)
+        {
+            binding->pendingRemoval = false;
+        }
+        return false;
+    }
+
+    for (const AABBPair &pair : pairsWithBothAxisOverlapping)
+    {
+        owner->recordPairDelta(pair.a, pair.b, -1);
+    }
+    pairsWithBothAxisOverlapping.clear();
+    intervalListX.resetToEmpty();
+    intervalListY.resetToEmpty();
+    bindingMap.clear();
+    for (ColliderBinding *binding : matched)
+    {
+        std::destroy_at(binding);
+        freeBindings.push_back(reinterpret_cast<BindingSlot *>(binding));
+    }
+    return true;
+}
+
+void AABB::removeBatch(const std::vector<Collider *> &colliders)
+{
+    if (colliders.empty())
+    {
+        return;
+    }
+    if (tryClearAllRemoved(colliders))
+    {
+        return;
+    }
+    if (colliders.size() < 64)
+    {
+        for (Collider *collider : colliders)
+        {
+            remove(collider);
+        }
+        return;
+    }
+
+    std::vector<ColliderBinding *> toRemove;
+    toRemove.reserve(colliders.size());
+    for (Collider *collider : colliders)
+    {
+        if (ColliderBinding *binding = bindingMap.find(collider); binding != nullptr && !binding->pendingRemoval)
+        {
+            binding->pendingRemoval = true;
+            toRemove.push_back(binding);
+        }
+    }
+    if (toRemove.empty())
+    {
+        return;
+    }
+
+    tbb::parallel_invoke(
+        [&]() {
+            for (ColliderBinding *binding : toRemove)
+            {
+                intervalListX.remove(&binding->xBinding);
+            }
+        },
+        [&]() {
+            for (ColliderBinding *binding : toRemove)
+            {
+                intervalListY.remove(&binding->yBinding);
+            }
+        });
+
+    for (ColliderBinding *binding : toRemove)
+    {
+        bindingMap.erase(binding->collider);
+        std::destroy_at(binding);
+        freeBindings.push_back(reinterpret_cast<BindingSlot *>(binding));
+    }
+}
+
 void AABB::repair(Collider *element)
 {
     ColliderBinding *binding = getBinding(element);
@@ -98,19 +307,52 @@ void AABB::repair(Collider *element)
     repair(binding);
 }
 
+void AABB::repairAxis(SegmentedIntervalList &list, BoundingRadiusProjectionAxisBinding &axisBinding)
+{
+    const float oldMin = axisBinding.minProxy.getCachedProjectedPosition();
+    const float newMin = axisBinding.minProxy.getProjectedPosition();
+    const float oldMax = axisBinding.maxProxy.getCachedProjectedPosition();
+    const float newMax = axisBinding.maxProxy.getProjectedPosition();
+    const bool minChanged = newMin != oldMin;
+    const bool maxChanged = newMax != oldMax;
+    if (!minChanged && !maxChanged)
+    {
+        return;
+    }
+
+    // Move the leading endpoint first so fast motion never inverts [min, max] mid-repair.
+    if (newMax > oldMax)
+    {
+        if (maxChanged)
+        {
+            axisBinding.maxProxy.updateCachedProjectedPosition();
+            list.repairProjection(&axisBinding.maxProxy);
+        }
+        if (minChanged)
+        {
+            axisBinding.minProxy.updateCachedProjectedPosition();
+            list.repairProjection(&axisBinding.minProxy);
+        }
+    }
+    else
+    {
+        if (minChanged)
+        {
+            axisBinding.minProxy.updateCachedProjectedPosition();
+            list.repairProjection(&axisBinding.minProxy);
+        }
+        if (maxChanged)
+        {
+            axisBinding.maxProxy.updateCachedProjectedPosition();
+            list.repairProjection(&axisBinding.maxProxy);
+        }
+    }
+}
+
 void AABB::repair(ColliderBinding *binding)
 {
-    binding->xBinding.minProxy.updateCachedProjectedPosition();
-    intervalListX.repairProjection(&binding->xBinding.minProxy);
-
-    binding->xBinding.maxProxy.updateCachedProjectedPosition();
-    intervalListX.repairProjection(&binding->xBinding.maxProxy);
-
-    binding->yBinding.minProxy.updateCachedProjectedPosition();
-    intervalListY.repairProjection(&binding->yBinding.minProxy);
-
-    binding->yBinding.maxProxy.updateCachedProjectedPosition();
-    intervalListY.repairProjection(&binding->yBinding.maxProxy);
+    repairAxis(intervalListX, binding->xBinding);
+    repairAxis(intervalListY, binding->yBinding);
 }
 
 AABB::ColliderBinding *AABB::getBinding(Collider *element)

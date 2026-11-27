@@ -14,43 +14,89 @@
 namespace
 {
 constexpr size_t parallelSolverBatchSize = 128;
+constexpr size_t parallelPreStepThreshold = 256;
+
+bool hasWakeMotion(const Rigidbody *other) noexcept
+{
+    return other->getVelocity().squaredNorm() > LINEAR_SLEEP_THRESHOLD * LINEAR_SLEEP_THRESHOLD ||
+           std::abs(other->getAngularVelocity()) > ANGULAR_SLEEP_THRESHOLD ||
+           (other->getBodyType() == KINEMATIC &&
+            (!other->getVelocity().isZero(0) || other->getAngularVelocity() != 0));
+}
 }
 
 void PhysicsManager::resolveCollisions(double timeDelta)
 {
     PLATFORMATOR_BENCH_SCOPE(ResolveCollisions);
 
-    float inverseTimeDelta = timeDelta > 0.0 ? static_cast<float>(1.0 / timeDelta) : 0.0f;
-    solverConstraints.clear();
-    if (solverConstraints.capacity() < solverPairs.size())
+    const float inverseTimeDelta = timeDelta > 0.0 ? static_cast<float>(1.0 / timeDelta) : 0.0f;
+    solverPreStepJobs.clear();
+    if (solverPreStepJobs.capacity() < solverPairs.size())
     {
-        solverConstraints.reserve(solverPairs.size());
+        solverPreStepJobs.reserve(solverPairs.size());
     }
 
     for (auto *pair : solverPairs)
     {
         auto *collision = pair->getCollision();
-        Collision::CollisionType resolutionType = collision->getResolutionType();
+        const Collision::CollisionType resolutionType = collision->getResolutionType();
 
         switch (resolutionType)
         {
         case Collision::CollisionType::DYNAMIC: {
-            SolverConstraint constraint;
-            if (preStepCollision(collision, inverseTimeDelta, constraint))
+            auto *rbA = static_cast<Rigidbody *>(
+                collision->getReferenceObject()->getGameObject()->getComponent(ComponentType::RIGID_BODY));
+            auto *rbB = static_cast<Rigidbody *>(
+                collision->getIncidentObject()->getGameObject()->getComponent(ComponentType::RIGID_BODY));
+            if (rbA == nullptr || rbB == nullptr)
             {
-                solverConstraints.push_back(constraint);
+                break;
             }
+            if (rbA->getIsSleeping() && hasWakeMotion(rbB))
+            {
+                rbA->wakeUp();
+            }
+            if (rbB->getIsSleeping() && hasWakeMotion(rbA))
+            {
+                rbB->wakeUp();
+            }
+            mergeSleepIslands(rbA, rbB);
+            solverPreStepJobs.push_back(SolverPreStepJob{collision, rbA, rbB});
             break;
         }
         case Collision::CollisionType::KINEMATIC:
             resolveKinematicCollision(collision);
             break;
         case Collision::CollisionType::TRIGGER:
-            /* code */
             break;
         default:
             break;
         }
+    }
+
+    const size_t constraintCount = solverPreStepJobs.size();
+    solverConstraints.resize(constraintCount);
+    if (constraintCount < parallelPreStepThreshold ||
+        tbb::global_control::active_value(tbb::global_control::max_allowed_parallelism) <= 1 ||
+        tbb::this_task_arena::max_concurrency() <= 1)
+    {
+        for (size_t i = 0; i < constraintCount; ++i)
+        {
+            prepareSolverConstraint(solverPreStepJobs[i], inverseTimeDelta, solverConstraints[i]);
+        }
+    }
+    else
+    {
+        tbb::task_group_context context(tbb::task_group_context::isolated);
+        tbb::parallel_for(
+            tbb::blocked_range<size_t>(0, constraintCount, 64),
+            [&](const auto &range) {
+                for (size_t i = range.begin(); i != range.end(); ++i)
+                {
+                    prepareSolverConstraint(solverPreStepJobs[i], inverseTimeDelta, solverConstraints[i]);
+                }
+            },
+            context);
     }
 
     solveConstraintIterations();
@@ -89,6 +135,10 @@ void PhysicsManager::solveConstraintIterations()
 
 void PhysicsManager::solveConstraintsSerial()
 {
+    for (const SolverConstraint &constraint : solverConstraints)
+    {
+        applyWarmStart(constraint);
+    }
     for (size_t iteration = 0; iteration < COLLISION_SOLVER_ITERATIONS; ++iteration)
     {
         for (const SolverConstraint &constraint : solverConstraints)
@@ -213,12 +263,24 @@ void PhysicsManager::solveIslands()
     // A simulation step must finish applying impulses even if the caller's task group is cancelled.
     tbb::task_group_context context(tbb::task_group_context::isolated);
     tbb::parallel_for(size_t{0}, solverIslandJobEnds.size(), [&](size_t job) {
+        auto &local = solverIslandLocalConstraints.local();
         const size_t begin = job == 0 ? 0 : solverIslandJobEnds[job - 1];
         for (size_t island = begin; island < solverIslandJobEnds[job]; ++island)
         {
+            const auto &indices = solverIslands[island];
+            local.clear();
+            if (local.capacity() < indices.size())
+            {
+                local.reserve(indices.size());
+            }
+            for (size_t index : indices)
+            {
+                local.push_back(solverConstraints[index]);
+                applyWarmStart(local.back());
+            }
             for (size_t iteration = 0; iteration < COLLISION_SOLVER_ITERATIONS; ++iteration)
-                for (size_t index : solverIslands[island])
-                    resolveCollision(solverConstraints[index]);
+                for (const SolverConstraint &constraint : local)
+                    resolveCollision(constraint);
         }
     }, context);
 }
@@ -272,6 +334,22 @@ void PhysicsManager::solveOrderedBatches()
 {
     PLATFORMATOR_WORK_ADD(solverOrderedBatchDispatches, 1);
     tbb::task_group_context context(tbb::task_group_context::isolated);
+    for (size_t batch = 0; batch < solverBatchCount; ++batch)
+    {
+        const auto &order = solverBatches[batch];
+        if (order.size() < parallelSolverBatchSize)
+        {
+            for (size_t index : order)
+                applyWarmStart(solverConstraints[index]);
+        }
+        else
+        {
+            tbb::parallel_for(tbb::blocked_range<size_t>(0, order.size(), 32), [&](const auto &range) {
+                for (size_t i = range.begin(); i != range.end(); ++i)
+                    applyWarmStart(solverConstraints[order[i]]);
+            }, context);
+        }
+    }
     for (size_t iteration = 0; iteration < COLLISION_SOLVER_ITERATIONS; ++iteration)
     {
         for (size_t batch = 0; batch < solverBatchCount; ++batch)
@@ -293,45 +371,24 @@ void PhysicsManager::solveOrderedBatches()
     }
 }
 
-bool PhysicsManager::preStepCollision(Collision *collision, float inverseTimeDelta, SolverConstraint &outConstraint)
+void PhysicsManager::prepareSolverConstraint(const SolverPreStepJob &job, float inverseTimeDelta,
+                                             SolverConstraint &outConstraint) const
 {
-    Rigidbody *rbA = (Rigidbody *)collision->getReferenceObject()->getGameObject()->getComponent(
-        ComponentType::RIGID_BODY);
-    Rigidbody *rbB =
-        (Rigidbody *)collision->getIncidentObject()->getGameObject()->getComponent(ComponentType::RIGID_BODY);
+    Collision *collision = job.collision;
+    Rigidbody *rbA = job.rbA;
+    Rigidbody *rbB = job.rbB;
 
-    if (rbA == nullptr || rbB == nullptr)
-    {
-        return false;
-    }
+    const float invMassA = rbA->getIsSleeping() ? 0.f : rbA->getInverseMass();
+    const float invMassB = rbB->getIsSleeping() ? 0.f : rbB->getInverseMass();
+    const float invInertiaA = rbA->getIsSleeping() ? 0.f : rbA->getInverseMomentOfInertia();
+    const float invInertiaB = rbB->getIsSleeping() ? 0.f : rbB->getInverseMomentOfInertia();
 
-    const auto hasWakeMotion = [](const Rigidbody *other)
-    {
-        return other->getVelocity().squaredNorm() > LINEAR_SLEEP_THRESHOLD * LINEAR_SLEEP_THRESHOLD ||
-               std::abs(other->getAngularVelocity()) > ANGULAR_SLEEP_THRESHOLD ||
-               (other->getBodyType() == KINEMATIC &&
-                (!other->getVelocity().isZero(0) || other->getAngularVelocity() != 0));
-    };
-    if (rbA->getIsSleeping() && hasWakeMotion(rbB))
-    {
-        rbA->wakeUp();
-    }
-    if (rbB->getIsSleeping() && hasWakeMotion(rbA))
-    {
-        rbB->wakeUp();
-    }
-    mergeSleepIslands(rbA, rbB);
-    float invMassA = rbA->getIsSleeping() ? 0.f : rbA->getInverseMass();
-    float invMassB = rbB->getIsSleeping() ? 0.f : rbB->getInverseMass();
-    float invInertiaA = rbA->getIsSleeping() ? 0.f : rbA->getInverseMomentOfInertia();
-    float invInertiaB = rbB->getIsSleeping() ? 0.f : rbB->getInverseMomentOfInertia();
-
-    Eigen::Vector2f positionA = rbA->getGameObject()->worldPosition;
-    Eigen::Vector2f positionB = rbB->getGameObject()->worldPosition;
+    const Eigen::Vector2f positionA = rbA->getGameObject()->worldPosition;
+    const Eigen::Vector2f positionB = rbB->getGameObject()->worldPosition;
 
     const Eigen::Vector2f &normal = collision->getNormal();
     const Eigen::Vector2f tangent = crossSV(1.0f, normal);
-    float inverseMassSum = invMassA + invMassB;
+    const float inverseMassSum = invMassA + invMassB;
     ClipPointsWithData &contactPoints = collision->getContactPoints();
     const uint8_t pointCount = static_cast<uint8_t>(std::min<size_t>(contactPoints.count, 2));
 
@@ -371,25 +428,25 @@ bool PhysicsManager::preStepCollision(Collision *collision, float inverseTimeDel
     {
         const Eigen::Vector2f &rA = outConstraint.rA[i];
         const Eigen::Vector2f &rB = outConstraint.rB[i];
-        float rnA = rA.dot(normal);
-        float rnB = rB.dot(normal);
-        float kNormal =
+        const float rnA = rA.dot(normal);
+        const float rnB = rB.dot(normal);
+        const float kNormal =
             inverseMassSum + invInertiaA * (rA.dot(rA) - rnA * rnA) + invInertiaB * (rB.dot(rB) - rnB * rnB);
         contactPoints.points[i].massNormal = kNormal > 0 ? 1.0f / kNormal : 0.f;
 
-        float rtA = rA.dot(tangent);
-        float rtB = rB.dot(tangent);
-        float kTangent =
+        const float rtA = rA.dot(tangent);
+        const float rtB = rB.dot(tangent);
+        const float kTangent =
             inverseMassSum + invInertiaA * (rA.dot(rA) - rtA * rtA) + invInertiaB * (rB.dot(rB) - rtB * rtB);
         contactPoints.points[i].massTangent = kTangent > 0 ? 1.0f / kTangent : 0.f;
 
-        float baumgarteBias =
+        const float baumgarteBias =
             -COLLISION_BIAS_FACTOR * inverseTimeDelta *
             std::min(0.0f, contactPoints.points[i].separation + COLLISION_ALLOWED_PENETRATION);
 
-        Eigen::Vector2f relativeVelocity = (rbB->getVelocity() + crossSV(rbB->getAngularVelocity(), rB)) -
-                                           (rbA->getVelocity() + crossSV(rbA->getAngularVelocity(), rA));
-        float vn = relativeVelocity.dot(normal);
+        const Eigen::Vector2f relativeVelocity = (rbB->getVelocity() + crossSV(rbB->getAngularVelocity(), rB)) -
+                                                 (rbA->getVelocity() + crossSV(rbA->getAngularVelocity(), rA));
+        const float vn = relativeVelocity.dot(normal);
         float restitutionBias = 0.0f;
         if (vn < -RESTITUTION_VELOCITY_THRESHOLD)
         {
@@ -397,13 +454,23 @@ bool PhysicsManager::preStepCollision(Collision *collision, float inverseTimeDel
         }
 
         contactPoints.points[i].bias = baumgarteBias + restitutionBias;
-
-        Eigen::Vector2f accumulatedImpulse = contactPoints.points[i].accumulatedNormalImpulse * normal +
-                                             contactPoints.points[i].accumulatedTangentImpulse * tangent;
-        rbA->applySolverImpulse(-accumulatedImpulse, rA);
-        rbB->applySolverImpulse(accumulatedImpulse, rB);
     }
-    return true;
+}
+
+void PhysicsManager::applyWarmStart(const SolverConstraint &constraint)
+{
+    Rigidbody *rbA = constraint.rbA;
+    Rigidbody *rbB = constraint.rbB;
+    const ClipPointsWithData &contactPoints = *constraint.contactPoints;
+    const Eigen::Vector2f &normal = constraint.normal;
+    const Eigen::Vector2f &tangent = constraint.tangent;
+    for (uint8_t i = 0; i < constraint.pointCount; ++i)
+    {
+        const Eigen::Vector2f accumulatedImpulse = contactPoints.points[i].accumulatedNormalImpulse * normal +
+                                                   contactPoints.points[i].accumulatedTangentImpulse * tangent;
+        rbA->applySolverImpulse(-accumulatedImpulse, constraint.rA[i]);
+        rbB->applySolverImpulse(accumulatedImpulse, constraint.rB[i]);
+    }
 }
 
 void PhysicsManager::resolveCollision(const SolverConstraint &constraint)

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <cassert>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -16,7 +17,7 @@ class Grid;
 
 class AABBPair
 {
-public:
+  public:
     AABBPair() noexcept : a(nullptr), b(nullptr)
     {
     }
@@ -43,7 +44,7 @@ public:
 
     class HashFunction
     {
-    public:
+      public:
         size_t operator()(const AABBPair &pair) const noexcept
         {
             const uintptr_t p1 = reinterpret_cast<uintptr_t>(pair.a);
@@ -65,12 +66,13 @@ public:
 
 class AABB
 {
-public:
+  public:
     struct ColliderBinding
     {
         Collider *collider;
         BoundingRadiusProjectionAxisBinding xBinding;
         BoundingRadiusProjectionAxisBinding yBinding;
+        bool pendingRemoval = false;
 
         explicit ColliderBinding(Collider *collider)
             : collider(collider), xBinding(collider->getXProjections()), yBinding(collider->getYProjections())
@@ -86,25 +88,23 @@ public:
     AABB &operator=(AABB &&) = delete;
 
     void add(Collider *element);
+    void addBatch(const std::vector<Collider *> &colliders);
     void remove(Collider *element);
     void remove(ColliderBinding *binding);
+    void removeBatch(const std::vector<Collider *> &colliders);
     void repair(Collider *element);
     void repair(ColliderBinding *binding);
     ColliderBinding *getBinding(Collider *element);
     SegmentedIntervalList *getIntervalListX();
     SegmentedIntervalList *getIntervalListY();
-    template <typename Fn>
-    void forEachRegisteredCollider(Fn &&fn) const
+    template <typename Fn> void forEachRegisteredCollider(Fn &&fn) const
     {
-        bindingMap.forEach([&](Collider *collider, ColliderBinding *) {
-            fn(collider);
-        });
+        bindingMap.forEach([&](Collider *collider, ColliderBinding *) { fn(collider); });
     }
     template <typename Visitor>
     void forEachOverlappingAABB(float minX, float maxX, float minY, float maxY, Visitor &&visitor) const
     {
-        intervalListX.forEachOverlappingInterval(minX, maxX, [&](Collider *collider)
-                                                 {
+        intervalListX.forEachOverlappingInterval(minX, maxX, [&](Collider *collider) {
             const float cMinX = collider->getXProjections()->getMin()->getProjectedPosition();
             const float cMaxX = collider->getXProjections()->getMax()->getProjectedPosition();
             const float cMinY = collider->getYProjections()->getMin()->getProjectedPosition();
@@ -112,12 +112,12 @@ public:
             if (cMaxX >= minX && cMinX <= maxX && cMaxY >= minY && cMinY <= maxY)
             {
                 visitor(collider, cMinX, cMaxX, cMinY, cMaxY);
-            } });
+            }
+        });
     }
-    // sort the array with insertion sort, sort from lowest to highest
     bool getIsEmpty() const;
 
-private:
+  private:
     struct alignas(ColliderBinding) BindingSlot
     {
         std::byte data[sizeof(ColliderBinding)];
@@ -132,48 +132,38 @@ private:
 
     class FlatBindingMap
     {
-    public:
+      public:
         struct Entry
         {
             Collider *key = nullptr;
             ColliderBinding *value = nullptr;
         };
 
+        size_t size() const noexcept
+        {
+            return count;
+        }
+
         ColliderBinding *find(Collider *key) const noexcept
         {
-            if (entries.empty())
+            if (count == 0)
             {
                 return nullptr;
             }
-            const size_t mask = entries.size() - 1;
-            size_t idx = hashPtr(key) & mask;
-            while (entries[idx].key != nullptr)
-            {
-                if (entries[idx].key == key)
-                {
-                    return entries[idx].value;
-                }
-                idx = (idx + 1) & mask;
-            }
-            return nullptr;
+            const Entry &entry = entries[findSlot(key)];
+            return entry.key != nullptr ? entry.value : nullptr;
         }
 
-        template <typename Factory>
-        ColliderBinding *emplaceIfAbsent(Collider *key, Factory &&factory)
+        template <typename Factory> ColliderBinding *emplaceIfAbsent(Collider *key, Factory &&factory)
         {
-            if (entries.empty() || (count + 1) * 10 >= entries.size() * 7)
+            if (entries.empty() || exceedsLoadFactor(count + 1))
             {
-                rehash(entries.empty() ? 8 : entries.size() * 2);
+                rehash(entries.empty() ? INITIAL_CAPACITY : entries.size() * 2);
             }
-            const size_t mask = entries.size() - 1;
-            size_t idx = hashPtr(key) & mask;
-            while (entries[idx].key != nullptr)
+            const size_t idx = findSlot(key);
+            if (entries[idx].key != nullptr)
             {
-                if (entries[idx].key == key)
-                {
-                    return nullptr;
-                }
-                idx = (idx + 1) & mask;
+                return nullptr;
             }
             ColliderBinding *binding = factory();
             entries[idx] = Entry{key, binding};
@@ -183,31 +173,23 @@ private:
 
         void erase(Collider *key) noexcept
         {
-            if (entries.empty())
+            if (count == 0)
             {
                 return;
             }
-            const size_t mask = entries.size() - 1;
-            size_t hole = hashPtr(key) & mask;
-            while (entries[hole].key != nullptr)
-            {
-                if (entries[hole].key == key)
-                {
-                    break;
-                }
-                hole = (hole + 1) & mask;
-            }
+            size_t hole = findSlot(key);
             if (entries[hole].key == nullptr)
             {
                 return;
             }
 
             --count;
+            const size_t mask = entries.size() - 1;
             size_t curr = (hole + 1) & mask;
             while (entries[curr].key != nullptr)
             {
-                const size_t ideal = hashPtr(entries[curr].key) & mask;
-                if (((curr - ideal) & mask) >= ((curr - hole) & mask))
+                const size_t ideal = FlatPointerHash<Collider>{}(entries[curr].key) & mask;
+                if (probeDistance(ideal, curr, mask) >= probeDistance(hole, curr, mask))
                 {
                     entries[hole] = entries[curr];
                     hole = curr;
@@ -226,8 +208,7 @@ private:
             }
         }
 
-        template <typename Fn>
-        void forEach(Fn &&fn) const
+        template <typename Fn> void forEach(Fn &&fn) const
         {
             if (count == 0)
             {
@@ -242,34 +223,53 @@ private:
             }
         }
 
-    private:
-        static size_t hashPtr(const Collider *key) noexcept
+      private:
+        static constexpr size_t INITIAL_CAPACITY = 8;
+        static constexpr size_t LOAD_FACTOR_NUM = 7;
+        static constexpr size_t LOAD_FACTOR_DEN = 10;
+
+        static size_t probeDistance(size_t from, size_t to, size_t mask) noexcept
         {
-            uint64_t x = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(key) >> 3);
-            x ^= x >> 30;
-            x *= 0xbf58476d1ce4e5b9ULL;
-            x ^= x >> 27;
-            x *= 0x94d049bb133111ebULL;
-            x ^= x >> 31;
-            return static_cast<size_t>(x);
+            return (to - from) & mask;
+        }
+
+        static size_t findEmptySlot(const std::vector<Entry> &table, Collider *key) noexcept
+        {
+            const size_t mask = table.size() - 1;
+            size_t idx = FlatPointerHash<Collider>{}(key) & mask;
+            while (table[idx].key != nullptr)
+            {
+                idx = (idx + 1) & mask;
+            }
+            return idx;
+        }
+
+        bool exceedsLoadFactor(size_t nextCount) const noexcept
+        {
+            return nextCount * LOAD_FACTOR_DEN >= entries.size() * LOAD_FACTOR_NUM;
+        }
+
+        size_t findSlot(Collider *key) const noexcept
+        {
+            assert(!entries.empty());
+            const size_t mask = entries.size() - 1;
+            size_t idx = FlatPointerHash<Collider>{}(key) & mask;
+            while (entries[idx].key != nullptr && entries[idx].key != key)
+            {
+                idx = (idx + 1) & mask;
+            }
+            return idx;
         }
 
         void rehash(size_t newCapacity)
         {
             std::vector<Entry> next(newCapacity);
-            const size_t mask = newCapacity - 1;
             for (const Entry &entry : entries)
             {
-                if (entry.key == nullptr)
+                if (entry.key != nullptr)
                 {
-                    continue;
+                    next[findEmptySlot(next, entry.key)] = entry;
                 }
-                size_t idx = hashPtr(entry.key) & mask;
-                while (next[idx].key != nullptr)
-                {
-                    idx = (idx + 1) & mask;
-                }
-                next[idx] = entry;
             }
             entries.swap(next);
         }
@@ -279,6 +279,8 @@ private:
     };
 
     BindingSlot *allocateBindingSlot();
+    void repairAxis(SegmentedIntervalList &list, BoundingRadiusProjectionAxisBinding &axisBinding);
+    bool tryClearAllRemoved(const std::vector<Collider *> &colliders);
     void axisOverlapBegin(Collider *colliderA, Collider *colliderB);
     void axisOverlapEnd(Collider *colliderA, Collider *colliderB);
     void overlapBeginCheckpoint(Collider *colliderA, Collider *colliderB);

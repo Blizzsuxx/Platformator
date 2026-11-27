@@ -91,10 +91,11 @@ class BoundingRadiusProjection
 class BoundingRadiusProjectionProxy
 {
   public:
+    static constexpr uint8_t INVALID_CHUNK_INDEX = 0xFFu;
+
     BoundingRadiusProjectionProxy(BoundingRadiusProjection *projection, LocalSortArray *chunk)
-        : projection(projection), chunk(chunk), chunkIndex(SIZE_MAX),
-          cachedProjectedPosition(projection->getProjectedPosition()),
-          isMaxima(projection->getIsMaxima())
+        : projection(projection), chunk(chunk), cachedProjectedPosition(projection->getProjectedPosition()),
+          chunkIndex(INVALID_CHUNK_INDEX), isMaxima(projection->getIsMaxima())
     {
     }
     ~BoundingRadiusProjectionProxy() = default;
@@ -109,7 +110,7 @@ class BoundingRadiusProjectionProxy
     }
     size_t getChunkIndex() const
     {
-        return chunkIndex;
+        return chunkIndex == INVALID_CHUNK_INDEX ? SIZE_MAX : static_cast<size_t>(chunkIndex);
     }
 
     void setChunk(LocalSortArray *chunk)
@@ -117,16 +118,22 @@ class BoundingRadiusProjectionProxy
         this->chunk = chunk;
         if (chunk == nullptr)
         {
-            chunkIndex = SIZE_MAX;
+            chunkIndex = INVALID_CHUNK_INDEX;
         }
     }
     void setChunkIndex(size_t chunkIndex)
     {
-        this->chunkIndex = chunkIndex;
+        this->chunkIndex = chunkIndex == SIZE_MAX ? INVALID_CHUNK_INDEX : static_cast<uint8_t>(chunkIndex);
     }
-    void updateCachedProjectedPosition()
+    bool updateCachedProjectedPosition()
     {
-        cachedProjectedPosition = projection->getProjectedPosition();
+        const float next = projection->getProjectedPosition();
+        if (next == cachedProjectedPosition)
+        {
+            return false;
+        }
+        cachedProjectedPosition = next;
+        return true;
     }
 
     Collider *getCollider()
@@ -176,8 +183,8 @@ class BoundingRadiusProjectionProxy
   private:
     BoundingRadiusProjection *projection;
     LocalSortArray *chunk;
-    size_t chunkIndex;
     float cachedProjectedPosition;
+    uint8_t chunkIndex;
     bool isMaxima;
 };
 

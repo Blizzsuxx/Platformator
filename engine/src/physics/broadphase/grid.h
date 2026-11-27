@@ -7,6 +7,7 @@
 
 struct PairDelta
 {
+    uint64_t sortKey;
     Collider *colliderA;
     Collider *colliderB;
     int delta;
@@ -18,7 +19,15 @@ struct PairDeltaCollector
 
     void record(Collider *colliderA, Collider *colliderB, int delta)
     {
-        localPairDeltas.local().emplace_back(colliderA, colliderB, delta);
+        uint32_t slotA = colliderA->getHandle().slot;
+        uint32_t slotB = colliderB->getHandle().slot;
+        if (slotB < slotA || (slotB == slotA && colliderB < colliderA))
+        {
+            std::swap(colliderA, colliderB);
+            std::swap(slotA, slotB);
+        }
+        const uint64_t sortKey = (static_cast<uint64_t>(slotA) << 32) | static_cast<uint64_t>(slotB);
+        localPairDeltas.local().push_back(PairDelta{sortKey, colliderA, colliderB, delta});
     }
 };
 

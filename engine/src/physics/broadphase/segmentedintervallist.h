@@ -12,12 +12,14 @@ class SegmentedIntervalList
 {
     friend class LocalSortArray;
 
-public:
+  public:
     SegmentedIntervalList(AABB *owner, bool isPrimary);
     ~SegmentedIntervalList();
 
     void clear();
+    void resetToEmpty();
     void add(BoundingRadiusProjectionAxisBinding *binding);
+    void addBulkEmpty(const std::vector<BoundingRadiusProjectionProxy *> &sortedProxies);
     void remove(BoundingRadiusProjectionAxisBinding *binding);
     void repairProjection(BoundingRadiusProjectionProxy *projection);
 
@@ -45,8 +47,7 @@ public:
         while (low < high)
         {
             const size_t mid = low + (high - low) / 2;
-            if (chunks[mid]->getSize() == 0 ||
-                chunks[mid]->getMax()->getCachedProjectedPosition() < minCoord)
+            if (chunks[mid]->getSize() == 0 || chunks[mid]->getMaxPosition() < minCoord)
             {
                 low = mid + 1;
             }
@@ -69,37 +70,33 @@ public:
         }
 
         for (LocalSortArray *chunk = startChunk;
-             chunk != nullptr && chunk->getSize() > 0 &&
-             chunk->getMin()->getCachedProjectedPosition() <= maxCoord;
+             chunk != nullptr && chunk->getSize() > 0 && chunk->getMinPosition() <= maxCoord;
              chunk = chunk->getRightChunk())
         {
             BoundingRadiusProjectionProxy **arr = chunk->getArray();
             const size_t sz = chunk->getSize();
             for (size_t i = 0; i < sz; ++i)
             {
-                BoundingRadiusProjectionProxy *proxy = arr[i];
-                if (proxy->getCachedProjectedPosition() > maxCoord)
+                if (chunk->getPosition(i) > maxCoord)
                     return;
-                if (!proxy->getIsMaxima())
+                if (!chunk->getIsMaxima(i))
                 {
-                    if (Collider *collider = proxy->getCollider())
+                    if (Collider *collider = arr[i]->getCollider())
                         visitor(collider);
                 }
             }
         }
     }
 
-private:
-    template <typename EmitFn>
-    void processProjectionCollisions(
-        BoundingRadiusProjectionProxy *lowerProjection,
-        size_t lowerIndexInsideChunk,
-        BoundingRadiusProjectionProxy *upperProjection,
-        size_t upperIndexInsideChunk,
-        EmitFn &&emit);
+  private:
+    static constexpr size_t BULK_CHUNK_FILL = 24;
 
-    size_t binarySearch(BoundingRadiusProjectionProxy *element);
-    size_t binarySearch(LocalSortArray *array);
+    template <typename EmitFn>
+    void processProjectionCollisions(BoundingRadiusProjectionProxy *lowerProjection, size_t lowerIndexInsideChunk,
+                                     BoundingRadiusProjectionProxy *upperProjection, size_t upperIndexInsideChunk,
+                                     EmitFn &&emit);
+
+    size_t binarySearch(BoundingRadiusProjectionProxy *element) const noexcept;
     std::pair<LocalSortArray *, size_t> find(BoundingRadiusProjectionProxy *element);
 
     std::pair<LocalSortArray *, size_t> add(BoundingRadiusProjectionProxy *element);
@@ -109,21 +106,31 @@ private:
     std::pair<LocalSortArray *, size_t> getPreviousIndex(LocalSortArray *chunk, size_t index) const;
     std::pair<LocalSortArray *, size_t> getNextIndex(LocalSortArray *chunk, size_t index) const;
 
-    void repairProjectionFromIndexInternal(BoundingRadiusProjectionProxy *projection, LocalSortArray *chunk, size_t arrayIndex);
-    void addCollisionsForNewlyAddedProjection(BoundingRadiusProjectionProxy *lowerProjection, size_t lowerIndexInsideChunkWhereItWasInserted, BoundingRadiusProjectionProxy *upperProjection, size_t upperIndexInsideChunkWhereItWasInserted);
-    void removeCollisionsForRemovedProjection(BoundingRadiusProjectionProxy *lowerProjection, size_t lowerIndexInsideChunkWhereItWasRemoved, BoundingRadiusProjectionProxy *upperProjection, size_t upperIndexInsideChunkWhereItWasRemoved);
+    void repairProjectionFromIndexInternal(BoundingRadiusProjectionProxy *projection, LocalSortArray *chunk,
+                                           size_t arrayIndex);
+    void addCollisionsForNewlyAddedProjection(BoundingRadiusProjectionProxy *lowerProjection,
+                                              size_t lowerIndexInsideChunkWhereItWasInserted,
+                                              BoundingRadiusProjectionProxy *upperProjection,
+                                              size_t upperIndexInsideChunkWhereItWasInserted);
+    void removeCollisionsForRemovedProjection(BoundingRadiusProjectionProxy *lowerProjection,
+                                              size_t lowerIndexInsideChunkWhereItWasRemoved,
+                                              BoundingRadiusProjectionProxy *upperProjection,
+                                              size_t upperIndexInsideChunkWhereItWasRemoved);
 
     void emitCollision(Collider *colliderA, Collider *colliderB);
     void removeCollision(Collider *colliderA, Collider *colliderB);
-    void swap(BoundingRadiusProjectionProxy *leftRadiusProjection, size_t leftRadiusProjectionIndex, BoundingRadiusProjectionProxy *rightRadiusProjection, size_t rightRadiusProjectionIndex);
+    void swap(BoundingRadiusProjectionProxy *leftRadiusProjection, size_t leftRadiusProjectionIndex,
+              BoundingRadiusProjectionProxy *rightRadiusProjection, size_t rightRadiusProjectionIndex);
 
+    LocalSortArray *allocateEmptyChunk();
     LocalSortArray *allocateSplitChunk(LocalSortArray *other);
     void recycleChunk(LocalSortArray *chunk);
+    void eraseChunkFromList(LocalSortArray *target);
 
     std::vector<LocalSortArray *> chunks;
     std::vector<LocalSortArray *> freeChunks;
     AABB *owner;
 
-    // we only need to check for collisions in one of the axes when inserting or removing an interval, so we can use this to know if we should emit a collision or not
+    // Only the primary axis maintains checkpoints and emits overlap transitions on add/remove.
     bool isPrimary;
 };

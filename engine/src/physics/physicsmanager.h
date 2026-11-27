@@ -137,7 +137,16 @@ private:
         bool blockSolve = false;
     };
 
-    bool preStepCollision(Collision *collision, float inverseTimeDelta, SolverConstraint &outConstraint);
+    struct SolverPreStepJob
+    {
+        Collision *collision = nullptr;
+        Rigidbody *rbA = nullptr;
+        Rigidbody *rbB = nullptr;
+    };
+
+    void prepareSolverConstraint(const SolverPreStepJob &job, float inverseTimeDelta,
+                                 SolverConstraint &outConstraint) const;
+    void applyWarmStart(const SolverConstraint &constraint);
     void solveConstraintIterations();
     void solveConstraintsSerial();
     bool prepareSolverIslands();
@@ -154,7 +163,9 @@ private:
     std::vector<Rigidbody *> registeredBodies;
     std::vector<Rigidbody *> awakeDynamicBodies, movingKinematicBodies, sleepCandidates, pendingBodyChanges;
     std::vector<Collider *> colliderComponents;
+    std::vector<SolverPreStepJob> solverPreStepJobs;
     std::vector<SolverConstraint> solverConstraints;
+    tbb::enumerable_thread_specific<std::vector<SolverConstraint>> solverIslandLocalConstraints;
 
     struct SolverBodyNode
     {

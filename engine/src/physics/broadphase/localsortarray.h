@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <cstdint>
 #include <vector>
 #include "core/flatset.h"
 #include "platformator/collider.h"
@@ -35,6 +36,45 @@ class LocalSortArray
     BoundingRadiusProjectionProxy *getMin()
     {
         return array[0];
+    }
+    float getPosition(size_t index) const noexcept
+    {
+        return positions[index];
+    }
+    bool getIsMaxima(size_t index) const noexcept
+    {
+        return isMaxima[index] != 0;
+    }
+    float getMinPosition() const noexcept
+    {
+        return positions[0];
+    }
+    float getMaxPosition() const noexcept
+    {
+        return positions[size - 1];
+    }
+    bool getMaxIsMaxima() const noexcept
+    {
+        return isMaxima[size - 1] != 0;
+    }
+    void setPosition(size_t index, float pos) noexcept
+    {
+        positions[index] = pos;
+    }
+    void setSlot(size_t index, BoundingRadiusProjectionProxy *proxy, float pos, bool maxFlag) noexcept
+    {
+        array[index] = proxy;
+        positions[index] = pos;
+        isMaxima[index] = maxFlag ? 1 : 0;
+    }
+    void appendSorted(BoundingRadiusProjectionProxy *proxy) noexcept
+    {
+        const size_t idx = size++;
+        array[idx] = proxy;
+        positions[idx] = proxy->getCachedProjectedPosition();
+        isMaxima[idx] = proxy->getIsMaxima() ? 1 : 0;
+        proxy->setChunk(this);
+        proxy->setChunkIndex(idx);
     }
     size_t getSize() const
     {
@@ -99,21 +139,21 @@ class LocalSortArray
 
   private:
     size_t logInvalidFind();
-    size_t binarySearch(BoundingRadiusProjectionProxy *element);
+    size_t binarySearch(float pos, bool maxFlag) const noexcept;
     void addCheckpointInternal(Collider *element);
     std::size_t removeCheckpointInternal(Collider *element);
 
-    size_t size;
+    // Cache-line-aligned SoA keys eliminate pointer chasing during binary search and interval repair.
+    alignas(64) float positions[MAX_CHUNK_SIZE];
+    uint8_t isMaxima[MAX_CHUNK_SIZE];
     BoundingRadiusProjectionProxy *array[MAX_CHUNK_SIZE];
+    size_t size;
+    size_t chunkListIndex = SIZE_MAX;
 
     // The ‘checkpoints’ set contains the set of object id’s which
     // overlap with the ‘trailing edge’ of the chunk (AABBs whose min-
     // ima is within this chunk or one to the left, but whose maxima is in
-    // a chunk to the right
-
-    // Needed even in an event driven model (let's say (Amin, Bmax), (Cmin, Dmax), (Cmax, Amax),
-    // and we want to add Emin and Emax at Cmin Dmax place, we need to check checkpoints for A (and we cannot see it
-    // with events))
+    // a chunk to the right)
     FlatPointerSet<Collider> checkpoints;
     FlatPointerSet<Collider> checkpointCache;
 

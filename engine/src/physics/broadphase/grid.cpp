@@ -314,18 +314,15 @@ void Grid::applyCollectedPairDeltas()
     pairDeltaScratch.clear();
     for (auto &local : activePairDeltaCollector.localPairDeltas)
     {
-        for (auto delta : local)
-        {
-            if (delta.colliderB->getHandle() < delta.colliderA->getHandle())
-                std::swap(delta.colliderA, delta.colliderB);
-            pairDeltaScratch.push_back(delta);
-        }
+        pairDeltaScratch.insert(pairDeltaScratch.end(), local.begin(), local.end());
         local.clear();
     }
-    const auto deltaLess = [](const auto &a, const auto &b) {
-        if (a.colliderA->getHandle() != b.colliderA->getHandle())
-            return a.colliderA->getHandle() < b.colliderA->getHandle();
-        return a.colliderB->getHandle() < b.colliderB->getHandle();
+    const auto deltaLess = [](const PairDelta &a, const PairDelta &b) {
+        if (a.sortKey != b.sortKey)
+            return a.sortKey < b.sortKey;
+        if (a.colliderA != b.colliderA)
+            return a.colliderA < b.colliderA;
+        return a.colliderB < b.colliderB;
     };
     if (pairDeltaScratch.size() >= PAIR_DELTA_PARALLEL_SORT_THRESHOLD)
     {

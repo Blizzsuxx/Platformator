@@ -256,6 +256,7 @@ void PhysicsManager::clearAll()
     sleepCandidates.clear();
     pendingBodyChanges.clear();
     colliderComponents.clear();
+    solverPreStepJobs.clear();
     solverConstraints.clear();
     contactPairs.clear();
     solverPairs.clear();

@@ -87,15 +87,16 @@ void GridCell::queueSyncCollider(Collider *collider)
 
 void GridCell::flushPendingOperations()
 {
-    for (Collider *collider : collidersToRemove)
+    if (!collidersToRemove.empty())
     {
-        aabb.remove(collider);
+        aabb.removeBatch(collidersToRemove);
+        collidersToRemove.clear();
     }
-    collidersToRemove.clear();
 
     for (Collider *collider : collidersToSync)
     {
-        if (collider == nullptr || collider->getIsQueuedForRemove() || collider->getGameObject()->getIsMarkedForDeletion() || !collider->getGameObject()->getActive())
+        if (collider == nullptr || collider->getIsQueuedForRemove() || collider->getGameObject()->getIsMarkedForDeletion() ||
+            !collider->getGameObject()->getActive())
         {
             continue;
         }
@@ -104,16 +105,15 @@ void GridCell::flushPendingOperations()
     }
     collidersToSync.clear();
 
-    for (Collider *collider : collidersToAdd)
+    if (!collidersToAdd.empty())
     {
-        if (collider == nullptr || collider->getIsQueuedForRemove() || collider->getGameObject()->getIsMarkedForDeletion() || !collider->getGameObject()->getActive())
-        {
-            continue;
-        }
-
-        addCollider(collider);
+        std::erase_if(collidersToAdd, [](Collider *collider) {
+            return collider == nullptr || collider->getIsQueuedForRemove() ||
+                   collider->getGameObject()->getIsMarkedForDeletion() || !collider->getGameObject()->getActive();
+        });
+        aabb.addBatch(collidersToAdd);
+        collidersToAdd.clear();
     }
-    collidersToAdd.clear();
 
     clearQueuedForOperations();
 }

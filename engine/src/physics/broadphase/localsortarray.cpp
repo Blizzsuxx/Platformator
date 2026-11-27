@@ -4,12 +4,14 @@
 #include "physics/broadphase/segmentedintervallist.h"
 
 LocalSortArray::LocalSortArray(SegmentedIntervalList *owner)
-    : size(0), array(), checkpoints(), leftChunk(nullptr), rightChunk(nullptr), owner(owner)
+    : positions(), isMaxima(), array(), size(0), chunkListIndex(SIZE_MAX), checkpoints(), checkpointCache(),
+      leftChunk(nullptr), rightChunk(nullptr), owner(owner)
 {
 }
 
 LocalSortArray::LocalSortArray(LocalSortArray *other)
-    : size(0), array(), checkpoints(), checkpointCache(), leftChunk(nullptr), rightChunk(nullptr), owner(other->owner)
+    : positions(), isMaxima(), array(), size(0), chunkListIndex(SIZE_MAX), checkpoints(), checkpointCache(),
+      leftChunk(nullptr), rightChunk(nullptr), owner(other->owner)
 {
     initFromSplit(other);
 }
@@ -34,6 +36,8 @@ void LocalSortArray::initFromSplit(LocalSortArray *other)
     const size_t splitIndex = oldSize - movedCount;
 
     size = movedCount;
+    std::copy(other->positions + splitIndex, other->positions + oldSize, positions);
+    std::copy(other->isMaxima + splitIndex, other->isMaxima + oldSize, isMaxima);
     std::copy(other->array + splitIndex, other->array + oldSize, array);
     other->size = splitIndex;
 
@@ -44,16 +48,8 @@ void LocalSortArray::initFromSplit(LocalSortArray *other)
         rightChunk->leftChunk = this;
     }
 
-    // When a chunk must be split due to insertion into a full chunk, a
-    // new chunk is allocated and placed next in the list. Approximately
-    // half the elements from the end of the full chunk are copied into the
-    // new chunk, and the new chunk inherits the old chunk’s checkpoints
-    // set. The checkpoints set for the old chunk is computed by starting
-    //  with the original set and modifying this set while traversing the new
-    // chunk. Beginning with the end and traversing backwards, when a
-    // maxima is encountered, its object id is added to the checkpoints.
-    // When a minima is encountered, its object id is removed.
-
+    // Recompute the left chunk's checkpoints by walking the moved right half backwards:
+    // encountering a maxima adds its collider; encountering a minima removes it.
     for (size_t i = size - 1; i != SIZE_MAX; i--)
     {
         array[i]->setChunk(this);
@@ -64,7 +60,7 @@ void LocalSortArray::initFromSplit(LocalSortArray *other)
             continue;
         }
 
-        if (array[i]->getIsMaxima())
+        if (isMaxima[i])
         {
             other->addCheckpointInternal(array[i]->getCollider());
         }
@@ -81,28 +77,30 @@ LocalSortArray::~LocalSortArray()
 
 size_t LocalSortArray::add(BoundingRadiusProjectionProxy *element)
 {
-    // find the index where the element should be inserted using binary search
     if (size == MAX_CHUNK_SIZE)
     {
         return SIZE_MAX;
     }
-    else
+
+    const float pos = element->getCachedProjectedPosition();
+    const bool maxFlag = element->getIsMaxima();
+    const size_t index = binarySearch(pos, maxFlag);
+    element->setChunk(this);
+
+    for (size_t i = size; i > index; i--)
     {
-        size_t index = binarySearch(element);
-        element->setChunk(this);
-
-        // insert the element at the index
-        for (size_t i = size; i > index; i--)
-        {
-            array[i] = array[i - 1];
-            array[i]->setChunkIndex(i);
-        }
-        array[index] = element;
-        element->setChunkIndex(index);
-        size++;
-
-        return index;
+        positions[i] = positions[i - 1];
+        isMaxima[i] = isMaxima[i - 1];
+        array[i] = array[i - 1];
+        array[i]->setChunkIndex(i);
     }
+    positions[index] = pos;
+    isMaxima[index] = maxFlag ? 1 : 0;
+    array[index] = element;
+    element->setChunkIndex(index);
+    size++;
+
+    return index;
 }
 
 BoundingRadiusProjectionProxy *LocalSortArray::pop()
@@ -116,12 +114,14 @@ BoundingRadiusProjectionProxy *LocalSortArray::remove(size_t index)
     {
         return nullptr;
     }
-    // remove the element at the specified index
+
     BoundingRadiusProjectionProxy *removed = array[index];
     removed->setChunk(nullptr);
 
     for (size_t i = index; i < size - 1; i++)
     {
+        positions[i] = positions[i + 1];
+        isMaxima[i] = isMaxima[i + 1];
         array[i] = array[i + 1];
         array[i]->setChunkIndex(i);
     }
@@ -132,13 +132,11 @@ BoundingRadiusProjectionProxy *LocalSortArray::remove(size_t index)
 
 size_t LocalSortArray::remove(BoundingRadiusProjectionProxy *element)
 {
-    // find the index of the element using binary search
     size_t index = find(element);
 
     if (index < size && array[index] == element)
     {
         remove(index);
-
         return index;
     }
 
@@ -175,7 +173,7 @@ size_t LocalSortArray::removeCheckpointInternal(Collider *collider)
     return checkpoints.erase(collider);
 }
 
-size_t LocalSortArray::binarySearch(BoundingRadiusProjectionProxy *element)
+size_t LocalSortArray::binarySearch(float pos, bool maxFlag) const noexcept
 {
     size_t low = 0;
     size_t high = size;
@@ -183,7 +181,8 @@ size_t LocalSortArray::binarySearch(BoundingRadiusProjectionProxy *element)
     while (low < high)
     {
         const size_t mid = low + ((high - low) >> 1);
-        if (*array[mid] < *element)
+        const float midPos = positions[mid];
+        if (midPos < pos || (midPos == pos && !isMaxima[mid] && maxFlag))
         {
             low = mid + 1;
         }
@@ -206,14 +205,17 @@ LocalSortArray *LocalSortArray::tryMergeWithRightChunk()
 {
     if (rightChunk != nullptr && size + rightChunk->size <= CHUNK_MERGE_THRESHOLD)
     {
-        for (size_t i = 0; i < rightChunk->size; i++)
+        const size_t rightSize = rightChunk->size;
+        std::copy(rightChunk->positions, rightChunk->positions + rightSize, positions + size);
+        std::copy(rightChunk->isMaxima, rightChunk->isMaxima + rightSize, isMaxima + size);
+        for (size_t i = 0; i < rightSize; i++)
         {
             BoundingRadiusProjectionProxy *element = rightChunk->array[i];
             element->setChunk(this);
             element->setChunkIndex(size + i);
             array[size + i] = element;
         }
-        size += rightChunk->size;
+        size += rightSize;
         if (owner->getIsPrimary())
         {
             checkpoints = std::move(rightChunk->checkpoints);

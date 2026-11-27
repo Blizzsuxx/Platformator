@@ -6,6 +6,10 @@
             "binaryArgs": []
         }
     ],
+    "clangd.arguments": [
+    "--compile-commands-dir=build",
+    "--background-index"
+  ],
     "files.associations": {
         "*.tcc": "cpp",
         "array": "cpp",

@@ -27,6 +27,9 @@
 #include "platformator/circlecollider.h"
 #include "core/constants.h"
 #include "core/flatidmap.h"
+#include "core/flatmap.h"
+#include "core/flatset.h"
+#include "core/slotpool.h"
 #include "physics/broadphase/grid.h"
 #include "physics/broadphase/aabb.h"
 #include "platformator/audio.h"
@@ -1935,6 +1938,184 @@ void testFlatIdMapMovesLeaveSourceReusable()
     require(source.empty(), "The move-assigned source supports insertion and erase");
 }
 
+void testFlatHashMapAndSetProbeChainsAndSemantics()
+{
+    struct CollidingHash
+    {
+        size_t operator()(int key) const noexcept
+        {
+            return static_cast<size_t>(key & 1);
+        }
+    };
+
+    int values[64];
+    for (int i = 0; i < 64; ++i)
+    {
+        values[i] = i;
+    }
+
+    FlatHashMap<int, int *, CollidingHash, std::equal_to<int>, 8> map;
+    map.insertOrAssign(0, &values[0]);
+    require(map.find(0) == &values[0] && map.size() == 1, "FlatHashMap supports key 0 because nullptr value is sentinel");
+
+    for (int i = 1; i < 32; ++i)
+    {
+        int *inserted = map.emplaceIfAbsent(i, [&]() { return &values[i]; });
+        require(inserted == &values[i], "emplaceIfAbsent returns newly inserted pointer");
+    }
+
+    bool factoryCalled = false;
+    int *duplicate = map.emplaceIfAbsent(5, [&]() {
+        factoryCalled = true;
+        return &values[60];
+    });
+    require(duplicate == nullptr && !factoryCalled, "emplaceIfAbsent returns nullptr without calling factory on duplicate");
+
+    int *existing = map.findOrEmplace(5, [&]() {
+        factoryCalled = true;
+        return &values[60];
+    });
+    require(existing == &values[5] && !factoryCalled, "findOrEmplace returns existing pointer without calling factory");
+
+    int *newlyCreated = map.findOrEmplace(40, [&]() { return &values[40]; });
+    require(newlyCreated == &values[40] && map.find(40) == &values[40], "findOrEmplace creates missing entries");
+
+    // Heavy backward-shift deletion across colliding probe chains.
+    for (int i = 0; i < 32; i += 2)
+    {
+        int *extracted = map.extract(i);
+        require(extracted == &values[i], "extract returns removed value for colliding keys");
+        require(map.find(i) == nullptr, "extracted key is no longer present");
+    }
+    for (int i = 1; i < 32; i += 2)
+    {
+        require(map.find(i) == &values[i], "backward-shift deletion preserves surviving colliding entries");
+    }
+    require(map.find(40) == &values[40], "backward-shift deletion preserves high-key colliding entry");
+
+    size_t visited = 0;
+    map.forEach([&](int key, int *value) {
+        require(value == &values[key], "forEach visits consistent key-value pairs");
+        ++visited;
+    });
+    require(visited == map.size(), "forEach visits every live map entry");
+
+    FlatHashMap<int, int *, CollidingHash, std::equal_to<int>, 8> moved(std::move(map));
+    require(map.empty() && moved.size() == visited, "FlatHashMap move transfers ownership and empties source");
+    map.insertOrAssign(12, &values[12]);
+    require(map.find(12) == &values[12], "Moved-from FlatHashMap remains reusable");
+    moved.clearAndRelease();
+    require(moved.empty() && moved.find(1) == nullptr, "clearAndRelease empties map");
+
+    // FlatHashSet probe chain and clear retention behavior.
+    FlatPointerSet<int> set;
+    for (int i = 0; i < 64; ++i)
+    {
+        require(set.insert(&values[i]), "FlatPointerSet inserts distinct pointers");
+        require(!set.insert(&values[i]), "FlatPointerSet rejects duplicate pointers");
+    }
+    for (int i = 0; i < 64; i += 3)
+    {
+        require(set.erase(&values[i]) == 1, "FlatPointerSet erases present pointers");
+        require(set.erase(&values[i]) == 0, "FlatPointerSet returns 0 when erasing absent pointer");
+    }
+    size_t iterated = 0;
+    for (int *ptr : set)
+    {
+        require(ptr != nullptr && set.contains(ptr), "FlatPointerSet iteration yields only live pointers");
+        ++iterated;
+    }
+    require(iterated == set.size(), "FlatPointerSet iteration visits exact live count");
+    set.clear();
+    require(set.empty() && set.begin() == set.end(), "FlatPointerSet clear empties set");
+    require(set.insert(&values[0]) && set.contains(&values[0]), "FlatPointerSet stays reusable after clear");
+}
+
+void testChunkedSlotPoolStabilityReuseAndExceptionSafety()
+{
+    struct TrackedObject
+    {
+        int id;
+        int *liveCounter;
+
+        TrackedObject(int id, int *liveCounter, bool shouldThrow = false) : id(id), liveCounter(liveCounter)
+        {
+            if (shouldThrow)
+            {
+                throw std::runtime_error("intentional ctor failure");
+            }
+            ++(*liveCounter);
+        }
+
+        ~TrackedObject()
+        {
+            --(*liveCounter);
+        }
+    };
+
+    int liveCounter = 0;
+    platformator_detail::ChunkedSlotPool<TrackedObject, 2, 8> pool;
+
+    std::vector<TrackedObject *> objects;
+    objects.reserve(30);
+    for (int i = 0; i < 30; ++i)
+    {
+        objects.push_back(pool.create(i, &liveCounter));
+    }
+    require(liveCounter == 30, "ChunkedSlotPool constructs every allocated object");
+    for (int i = 0; i < 30; ++i)
+    {
+        require(objects[i]->id == i, "ChunkedSlotPool preserves pointer stability across block growth");
+    }
+
+    // Destroy a slot and verify LIFO reuse without allocating a new slot.
+    TrackedObject *recycledAddr = objects[10];
+    pool.destroy(recycledAddr);
+    objects[10] = nullptr;
+    require(liveCounter == 29, "destroy invokes destructor");
+
+    // Constructor throw must roll back the popped slot onto the intrusive free list.
+    bool threw = false;
+    try
+    {
+        (void)pool.create(999, &liveCounter, true);
+    }
+    catch (const std::runtime_error &)
+    {
+        threw = true;
+    }
+    require(threw && liveCounter == 29, "Throwing constructor leaves live object count unchanged");
+
+    TrackedObject *reused = pool.create(1010, &liveCounter);
+    require(reused == recycledAddr && reused->id == 1010 && liveCounter == 30,
+            "ChunkedSlotPool rolls back failed construction and reuses the same slot");
+    objects[10] = reused;
+
+    // Move preserves pointer stability and leaves moved-from pool reusable.
+    platformator_detail::ChunkedSlotPool<TrackedObject, 2, 8> movedPool(std::move(pool));
+    for (int i = 0; i < 30; ++i)
+    {
+        require(objects[i]->id == (i == 10 ? 1010 : i), "Moving ChunkedSlotPool keeps all live pointers valid");
+    }
+
+    TrackedObject *freshFromSource = pool.create(77, &liveCounter);
+    require(freshFromSource->id == 77, "Moved-from ChunkedSlotPool remains reusable");
+    pool.destroy(freshFromSource);
+    pool.clear();
+
+    for (TrackedObject *obj : objects)
+    {
+        movedPool.destroy(obj);
+    }
+    require(liveCounter == 0, "Destroying all objects brings live counter back to zero");
+    movedPool.clear();
+
+    TrackedObject *afterClear = movedPool.create(55, &liveCounter);
+    require(afterClear->id == 55 && liveCounter == 1, "ChunkedSlotPool remains reusable after clear()");
+    movedPool.destroy(afterClear);
+    movedPool.clear();
+}
+
 struct TestCase
 {
     const char *name;
@@ -1963,6 +2144,8 @@ int main()
         {"segmented_interval_fast_motion_across_chunks", testSegmentedIntervalListFastMotionAcrossChunks},
         {"segmented_interval_merges_underfull_chunks", testSegmentedIntervalListMergesUnderfullChunks},
         {"flat_id_map_moves_leave_source_reusable", testFlatIdMapMovesLeaveSourceReusable},
+        {"flat_hash_map_and_set_probe_chains_and_semantics", testFlatHashMapAndSetProbeChainsAndSemantics},
+        {"chunked_slot_pool_stability_reuse_and_exception_safety", testChunkedSlotPoolStabilityReuseAndExceptionSafety},
         {"scene_loading", testSceneLoading},
         {"scene_saving_round_trip", testSceneSavingRoundTrip},
         {"restitution_bounce", testRestitutionBounce},

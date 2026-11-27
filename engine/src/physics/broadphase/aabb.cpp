@@ -1,6 +1,7 @@
 #include "physics/broadphase/aabb.h"
 #include "physics/broadphase/grid.h"
 
+#include <algorithm>
 #include <oneapi/tbb/parallel_invoke.h>
 
 namespace
@@ -30,7 +31,7 @@ bool proxySortLess(BoundingRadiusProjectionProxy *a, BoundingRadiusProjectionPro
 } // namespace
 
 AABB::AABB(Grid *owner)
-    : bindingBlocks(), freeBindings(), bindingMap(), intervalListX(this, true), intervalListY(this, false),
+    : bindingPool(), bindingMap(), intervalListX(this, true), intervalListY(this, false),
       pairsWithBothAxisOverlapping(), owner(owner)
 {
 }
@@ -39,42 +40,14 @@ AABB::~AABB()
 {
     intervalListX.clear();
     intervalListY.clear();
-    bindingMap.forEach([](Collider *, ColliderBinding *binding) { std::destroy_at(binding); });
-    bindingMap.clear();
-    freeBindings.clear();
-    bindingBlocks.clear();
-}
-
-AABB::BindingSlot *AABB::allocateBindingSlot()
-{
-    if (!freeBindings.empty())
-    {
-        BindingSlot *slot = freeBindings.back();
-        freeBindings.pop_back();
-        return slot;
-    }
-
-    if (bindingBlocks.empty() || bindingBlocks.back().used == bindingBlocks.back().capacity)
-    {
-        const size_t prevCap = bindingBlocks.empty() ? 0 : bindingBlocks.back().capacity;
-        const size_t nextCap = prevCap == 0 ? 4 : std::min<size_t>(prevCap * 2, 64);
-        BindingBlock block;
-        block.slots = std::make_unique_for_overwrite<BindingSlot[]>(nextCap);
-        block.capacity = nextCap;
-        block.used = 0;
-        bindingBlocks.push_back(std::move(block));
-    }
-
-    BindingBlock &block = bindingBlocks.back();
-    return &block.slots[block.used++];
+    bindingMap.forEach([this](Collider *, ColliderBinding *binding) { bindingPool.destroy(binding); });
+    bindingMap.clearAndRelease();
+    bindingPool.clear();
 }
 
 void AABB::add(Collider *element)
 {
-    ColliderBinding *binding = bindingMap.emplaceIfAbsent(element, [&]() {
-        BindingSlot *slot = allocateBindingSlot();
-        return std::construct_at(reinterpret_cast<ColliderBinding *>(slot), element);
-    });
+    ColliderBinding *binding = bindingMap.emplaceIfAbsent(element, [&]() { return bindingPool.create(element); });
     if (binding == nullptr)
     {
         return;
@@ -99,10 +72,7 @@ void AABB::addBatch(const std::vector<Collider *> &colliders)
     added.reserve(colliders.size());
     for (Collider *collider : colliders)
     {
-        ColliderBinding *binding = bindingMap.emplaceIfAbsent(collider, [&]() {
-            BindingSlot *slot = allocateBindingSlot();
-            return std::construct_at(reinterpret_cast<ColliderBinding *>(slot), collider);
-        });
+        ColliderBinding *binding = bindingMap.emplaceIfAbsent(collider, [&]() { return bindingPool.create(collider); });
         if (binding != nullptr)
         {
             added.push_back(binding);
@@ -193,8 +163,7 @@ void AABB::remove(ColliderBinding *binding)
     intervalListX.remove(&binding->xBinding);
     intervalListY.remove(&binding->yBinding);
     bindingMap.erase(binding->collider);
-    std::destroy_at(binding);
-    freeBindings.push_back(reinterpret_cast<BindingSlot *>(binding));
+    bindingPool.destroy(binding);
 }
 
 bool AABB::tryClearAllRemoved(const std::vector<Collider *> &colliders)
@@ -234,8 +203,7 @@ bool AABB::tryClearAllRemoved(const std::vector<Collider *> &colliders)
     bindingMap.clear();
     for (ColliderBinding *binding : matched)
     {
-        std::destroy_at(binding);
-        freeBindings.push_back(reinterpret_cast<BindingSlot *>(binding));
+        bindingPool.destroy(binding);
     }
     return true;
 }
@@ -291,8 +259,7 @@ void AABB::removeBatch(const std::vector<Collider *> &colliders)
     for (ColliderBinding *binding : toRemove)
     {
         bindingMap.erase(binding->collider);
-        std::destroy_at(binding);
-        freeBindings.push_back(reinterpret_cast<BindingSlot *>(binding));
+        bindingPool.destroy(binding);
     }
 }
 

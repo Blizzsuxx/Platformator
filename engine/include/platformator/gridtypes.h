@@ -9,10 +9,11 @@
 
 struct GridCellKey
 {
-    int x;
-    int y;
+    int x = 0;
+    int y = 0;
 
-    GridCellKey(int x, int y) : x(x), y(y)
+    constexpr GridCellKey() noexcept = default;
+    constexpr GridCellKey(int x, int y) noexcept : x(x), y(y)
     {
     }
 

@@ -1,14 +1,16 @@
 #pragma once
 
-#include <algorithm>
 #include <cstddef>
 #include <cstdint>
-#include <memory>
-#include <new>
+#include <functional>
+#include <iterator>
 #include <vector>
 
-#include "physics/colliderpair.h"
+#include "core/flathash.h"
+#include "core/flatmap.h"
+#include "core/slotpool.h"
 #include "physics/broadphase/gridcell.h"
+#include "physics/colliderpair.h"
 
 class Grid;
 
@@ -29,7 +31,7 @@ class FlatCellMap
     class iterator
     {
       public:
-        using iterator_category = std::random_access_iterator_tag;
+        using iterator_category = std::forward_iterator_tag;
         using value_type = Node;
         using difference_type = std::ptrdiff_t;
         using pointer = Node *;
@@ -74,7 +76,7 @@ class FlatCellMap
     class const_iterator
     {
       public:
-        using iterator_category = std::random_access_iterator_tag;
+        using iterator_category = std::forward_iterator_tag;
         using value_type = const Node;
         using difference_type = std::ptrdiff_t;
         using pointer = const Node *;
@@ -155,126 +157,55 @@ class FlatCellMap
 
     GridCell *find(const GridCellKey &key) noexcept
     {
-        if (activeNodes.empty())
-        {
-            return nullptr;
-        }
-        const size_t mask = table.size() - 1;
-        size_t idx = hashKey(key) & mask;
-        while (table[idx].node != nullptr)
-        {
-            if (table[idx].key == key)
-            {
-                return &table[idx].node->second;
-            }
-            idx = (idx + 1) & mask;
-        }
-        return nullptr;
+        Node *node = table.find(key);
+        return node != nullptr ? &node->second : nullptr;
     }
 
     const GridCell *find(const GridCellKey &key) const noexcept
     {
-        if (activeNodes.empty())
-        {
-            return nullptr;
-        }
-        const size_t mask = table.size() - 1;
-        size_t idx = hashKey(key) & mask;
-        while (table[idx].node != nullptr)
-        {
-            if (table[idx].key == key)
-            {
-                return &table[idx].node->second;
-            }
-            idx = (idx + 1) & mask;
-        }
-        return nullptr;
+        const Node *node = table.find(key);
+        return node != nullptr ? &node->second : nullptr;
     }
 
     GridCell &getOrCreate(const GridCellKey &key, Grid *owner)
     {
-        if (!table.empty())
-        {
-            const size_t mask = table.size() - 1;
-            size_t idx = hashKey(key) & mask;
-            while (table[idx].node != nullptr)
+        Node *node = table.findOrEmplace(key, [&]() {
+            Node *created = nullptr;
+            if (!recycledNodes.empty())
             {
-                if (table[idx].key == key)
-                {
-                    return table[idx].node->second;
-                }
-                idx = (idx + 1) & mask;
+                created = recycledNodes.back();
+                recycledNodes.pop_back();
+                created->first = key;
+                created->second.resetKey(key);
             }
-        }
+            else
+            {
+                created = nodePool.create(key, owner);
+            }
 
-        if (table.empty() || (activeNodes.size() + 1) * 10 >= table.size() * 7)
-        {
-            rehash(table.empty() ? 32 : table.size() * 2);
-        }
-
-        const size_t mask = table.size() - 1;
-        size_t idx = hashKey(key) & mask;
-        while (table[idx].node != nullptr)
-        {
-            idx = (idx + 1) & mask;
-        }
-
-        Node *node = nullptr;
-        if (!recycledNodes.empty())
-        {
-            node = recycledNodes.back();
-            recycledNodes.pop_back();
-            node->first = key;
-            node->second.resetKey(key);
-        }
-        else
-        {
-            RawSlot *slot = allocateSlot();
-            node = std::construct_at(reinterpret_cast<Node *>(slot), key, owner);
-        }
-
-        node->activeIndex = activeNodes.size();
-        activeNodes.push_back(node);
-        table[idx] = Entry{key, node};
+            created->activeIndex = activeNodes.size();
+            try
+            {
+                activeNodes.push_back(created);
+            }
+            catch (...)
+            {
+                created->activeIndex = SIZE_MAX;
+                nodePool.destroy(created);
+                throw;
+            }
+            return created;
+        });
         return node->second;
     }
 
     bool eraseAndMaybeRecycle(const GridCellKey &key, size_t maxRecycled) noexcept
     {
-        if (activeNodes.empty())
+        Node *node = table.extract(key);
+        if (node == nullptr)
         {
             return false;
         }
-        const size_t mask = table.size() - 1;
-        size_t hole = hashKey(key) & mask;
-        while (table[hole].node != nullptr)
-        {
-            if (table[hole].key == key)
-            {
-                break;
-            }
-            hole = (hole + 1) & mask;
-        }
-        if (table[hole].node == nullptr)
-        {
-            return false;
-        }
-
-        Node *node = table[hole].node;
-
-        // Backward-shift deletion preserves probe chains without tombstones.
-        size_t curr = (hole + 1) & mask;
-        while (table[curr].node != nullptr)
-        {
-            const size_t ideal = hashKey(table[curr].key) & mask;
-            if (((curr - ideal) & mask) >= ((curr - hole) & mask))
-            {
-                table[hole] = table[curr];
-                hole = curr;
-            }
-            curr = (curr + 1) & mask;
-        }
-        table[hole] = Entry{};
 
         const size_t removeIdx = node->activeIndex;
         const size_t lastIdx = activeNodes.size() - 1;
@@ -289,13 +220,18 @@ class FlatCellMap
 
         if (recycledNodes.size() < maxRecycled)
         {
-            recycledNodes.push_back(node);
+            try
+            {
+                recycledNodes.push_back(node);
+                return true;
+            }
+            catch (...)
+            {
+                // Fall back to releasing the node to the slot pool if recycling storage cannot grow.
+            }
         }
-        else
-        {
-            std::destroy_at(node);
-            freeRawSlots.push_back(reinterpret_cast<RawSlot *>(node));
-        }
+
+        nodePool.destroy(node);
         return true;
     }
 
@@ -303,97 +239,23 @@ class FlatCellMap
     {
         for (Node *node : activeNodes)
         {
-            std::destroy_at(node);
+            nodePool.destroy(node);
         }
         for (Node *node : recycledNodes)
         {
-            std::destroy_at(node);
+            nodePool.destroy(node);
         }
         activeNodes.clear();
         recycledNodes.clear();
-        freeRawSlots.clear();
-        table.clear();
-        blocks.clear();
+        table.clearAndRelease();
+        nodePool.clear();
     }
 
   private:
-    struct alignas(Node) RawSlot
-    {
-        std::byte data[sizeof(Node)];
-    };
-
-    struct Block
-    {
-        std::unique_ptr<RawSlot[]> slots;
-        size_t capacity = 0;
-        size_t used = 0;
-    };
-
-    struct Entry
-    {
-        GridCellKey key{0, 0};
-        Node *node = nullptr;
-    };
-
-    static size_t hashKey(const GridCellKey &key) noexcept
-    {
-        uint64_t x = (static_cast<uint64_t>(static_cast<uint32_t>(key.x)) << 32) |
-                     static_cast<uint64_t>(static_cast<uint32_t>(key.y));
-        x ^= x >> 30;
-        x *= 0xbf58476d1ce4e5b9ULL;
-        x ^= x >> 27;
-        x *= 0x94d049bb133111ebULL;
-        x ^= x >> 31;
-        return static_cast<size_t>(x);
-    }
-
-    RawSlot *allocateSlot()
-    {
-        if (!freeRawSlots.empty())
-        {
-            RawSlot *slot = freeRawSlots.back();
-            freeRawSlots.pop_back();
-            return slot;
-        }
-        if (blocks.empty() || blocks.back().used == blocks.back().capacity)
-        {
-            const size_t prevCap = blocks.empty() ? 0 : blocks.back().capacity;
-            const size_t nextCap = prevCap == 0 ? 16 : std::min<size_t>(prevCap * 2, 256);
-            Block block;
-            block.slots = std::unique_ptr<RawSlot[]>(new RawSlot[nextCap]);
-            block.capacity = nextCap;
-            block.used = 0;
-            blocks.push_back(std::move(block));
-        }
-        Block &block = blocks.back();
-        return &block.slots[block.used++];
-    }
-
-    void rehash(size_t newCapacity)
-    {
-        std::vector<Entry> next(newCapacity);
-        const size_t mask = newCapacity - 1;
-        for (const Entry &entry : table)
-        {
-            if (entry.node == nullptr)
-            {
-                continue;
-            }
-            size_t idx = hashKey(entry.key) & mask;
-            while (next[idx].node != nullptr)
-            {
-                idx = (idx + 1) & mask;
-            }
-            next[idx] = entry;
-        }
-        table.swap(next);
-    }
-
-    std::vector<Block> blocks;
-    std::vector<RawSlot *> freeRawSlots;
+    platformator_detail::ChunkedSlotPool<Node, 16, 256> nodePool;
     std::vector<Node *> recycledNodes;
     std::vector<Node *> activeNodes;
-    std::vector<Entry> table;
+    FlatHashMap<GridCellKey, Node *, GridCellKey::Hash, std::equal_to<GridCellKey>, 32> table;
 };
 
 class FlatCandidatePairPool
@@ -411,232 +273,70 @@ class FlatCandidatePairPool
 
     size_t size() const noexcept
     {
-        return count;
+        return table.size();
     }
 
     bool empty() const noexcept
     {
-        return count == 0;
+        return table.empty();
     }
 
     const ColliderPair *find(Collider *a, Collider *b) const noexcept
     {
-        if (count == 0)
-        {
-            return nullptr;
-        }
-        if (a > b)
-        {
-            std::swap(a, b);
-        }
-        const size_t mask = table.size() - 1;
-        size_t idx = hashPair(a, b) & mask;
-        while (table[idx].pair != nullptr)
-        {
-            if (table[idx].a == a && table[idx].b == b)
-            {
-                return table[idx].pair;
-            }
-            idx = (idx + 1) & mask;
-        }
-        return nullptr;
+        return table.find(canonicalKey(a, b));
     }
 
     const ColliderPair *findOrEmplace(Collider *origA, Collider *origB)
     {
-        Collider *a = origA <= origB ? origA : origB;
-        Collider *b = origA <= origB ? origB : origA;
-        if (!table.empty())
-        {
-            const size_t mask = table.size() - 1;
-            size_t idx = hashPair(a, b) & mask;
-            while (table[idx].pair != nullptr)
-            {
-                if (table[idx].a == a && table[idx].b == b)
-                {
-                    return table[idx].pair;
-                }
-                idx = (idx + 1) & mask;
-            }
-        }
-
-        if (table.empty() || (count + 1) * 10 >= table.size() * 7)
-        {
-            rehash(table.empty() ? 64 : table.size() * 2);
-        }
-
-        const size_t mask = table.size() - 1;
-        size_t idx = hashPair(a, b) & mask;
-        while (table[idx].pair != nullptr)
-        {
-            idx = (idx + 1) & mask;
-        }
-
-        RawSlot *slot = allocateSlot();
-        ColliderPair *pair = std::construct_at(reinterpret_cast<ColliderPair *>(slot), origA, origB);
-        table[idx] = Entry{a, b, pair};
-        ++count;
-        return pair;
+        return table.findOrEmplace(canonicalKey(origA, origB), [&]() { return pairPool.create(origA, origB); });
     }
 
     bool erase(Collider *a, Collider *b) noexcept
     {
-        if (count == 0)
+        ColliderPair *pair = table.extract(canonicalKey(a, b));
+        if (pair == nullptr)
         {
             return false;
         }
-        if (a > b)
-        {
-            std::swap(a, b);
-        }
-        const size_t mask = table.size() - 1;
-        size_t hole = hashPair(a, b) & mask;
-        while (table[hole].pair != nullptr)
-        {
-            if (table[hole].a == a && table[hole].b == b)
-            {
-                break;
-            }
-            hole = (hole + 1) & mask;
-        }
-        if (table[hole].pair == nullptr)
-        {
-            return false;
-        }
-
-        ColliderPair *pair = table[hole].pair;
-        --count;
-
-        size_t curr = (hole + 1) & mask;
-        while (table[curr].pair != nullptr)
-        {
-            const size_t ideal = hashPair(table[curr].a, table[curr].b) & mask;
-            if (((curr - ideal) & mask) >= ((curr - hole) & mask))
-            {
-                table[hole] = table[curr];
-                hole = curr;
-            }
-            curr = (curr + 1) & mask;
-        }
-        table[hole] = Entry{};
-
-        std::destroy_at(pair);
-        freeSlots.push_back(reinterpret_cast<RawSlot *>(pair));
+        pairPool.destroy(pair);
         return true;
     }
 
     template <typename Fn>
     void forEach(Fn &&fn) const
     {
-        if (count == 0)
-        {
-            return;
-        }
-        for (const Entry &entry : table)
-        {
-            if (entry.pair != nullptr)
-            {
-                fn(*entry.pair);
-            }
-        }
+        table.forEach([&](const PairKey &, ColliderPair *pair) { fn(*pair); });
     }
 
     void clear() noexcept
     {
-        if (count > 0)
-        {
-            for (const Entry &entry : table)
-            {
-                if (entry.pair != nullptr)
-                {
-                    std::destroy_at(entry.pair);
-                }
-            }
-            count = 0;
-        }
-        table.clear();
-        freeSlots.clear();
-        blocks.clear();
+        table.forEach([this](const PairKey &, ColliderPair *pair) { pairPool.destroy(pair); });
+        table.clearAndRelease();
+        pairPool.clear();
     }
 
   private:
-    struct alignas(ColliderPair) RawSlot
-    {
-        std::byte data[sizeof(ColliderPair)];
-    };
-
-    struct Block
-    {
-        std::unique_ptr<RawSlot[]> slots;
-        size_t capacity = 0;
-        size_t used = 0;
-    };
-
-    struct Entry
+    struct PairKey
     {
         Collider *a = nullptr;
         Collider *b = nullptr;
-        ColliderPair *pair = nullptr;
+
+        bool operator==(const PairKey &) const noexcept = default;
     };
 
-    static size_t hashPair(const Collider *a, const Collider *b) noexcept
+    struct PairKeyHash
     {
-        const uintptr_t p1 = reinterpret_cast<uintptr_t>(a);
-        const uintptr_t p2 = reinterpret_cast<uintptr_t>(b);
-        uint64_t x = static_cast<uint64_t>(p1 >> 3) * 0x9e3779b97f4a7c15ULL;
-        x ^= static_cast<uint64_t>(p2 >> 3) + 0x9e3779b97f4a7c15ULL + (x << 6) + (x >> 2);
-        x ^= x >> 30;
-        x *= 0xbf58476d1ce4e5b9ULL;
-        x ^= x >> 27;
-        x *= 0x94d049bb133111ebULL;
-        x ^= x >> 31;
-        return static_cast<size_t>(x);
+        size_t operator()(const PairKey &key) const noexcept
+        {
+            return platformator_detail::hashPointerPair(key.a, key.b);
+        }
+    };
+
+    static PairKey canonicalKey(Collider *a, Collider *b) noexcept
+    {
+        return a <= b ? PairKey{a, b} : PairKey{b, a};
     }
 
-    RawSlot *allocateSlot()
-    {
-        if (!freeSlots.empty())
-        {
-            RawSlot *slot = freeSlots.back();
-            freeSlots.pop_back();
-            return slot;
-        }
-        if (blocks.empty() || blocks.back().used == blocks.back().capacity)
-        {
-            const size_t prevCap = blocks.empty() ? 0 : blocks.back().capacity;
-            const size_t nextCap = prevCap == 0 ? 64 : std::min<size_t>(prevCap * 2, 1024);
-            Block block;
-            block.slots = std::unique_ptr<RawSlot[]>(new RawSlot[nextCap]);
-            block.capacity = nextCap;
-            block.used = 0;
-            blocks.push_back(std::move(block));
-        }
-        Block &block = blocks.back();
-        return &block.slots[block.used++];
-    }
-
-    void rehash(size_t newCapacity)
-    {
-        std::vector<Entry> next(newCapacity);
-        const size_t mask = newCapacity - 1;
-        for (const Entry &entry : table)
-        {
-            if (entry.pair == nullptr)
-            {
-                continue;
-            }
-            size_t idx = hashPair(entry.a, entry.b) & mask;
-            while (next[idx].pair != nullptr)
-            {
-                idx = (idx + 1) & mask;
-            }
-            next[idx] = entry;
-        }
-        table.swap(next);
-    }
-
-    std::vector<Block> blocks;
-    std::vector<RawSlot *> freeSlots;
-    std::vector<Entry> table;
-    size_t count = 0;
+    platformator_detail::ChunkedSlotPool<ColliderPair, 64, 1024> pairPool;
+    FlatHashMap<PairKey, ColliderPair *, PairKeyHash, std::equal_to<PairKey>, 64> table;
 };

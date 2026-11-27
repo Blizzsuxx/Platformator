@@ -24,12 +24,12 @@ namespace platformator
     ScriptInspectionResult inspectRegisteredScriptFields(std::string_view typeName, const Behavior &instance,
                                                          ScriptInspectionLimits limits)
     {
-        return BehaviorFactoryRegistry::getInstance().inspectFields(std::string(typeName), instance, limits);
+        return BehaviorFactoryRegistry::getInstance().inspectFields(typeName, instance, limits);
     }
 
     Behavior *createRegisteredBehavior(std::string_view typeName)
     {
-        return BehaviorFactoryRegistry::getInstance().createBehavior(std::string(typeName));
+        return BehaviorFactoryRegistry::getInstance().createBehavior(typeName);
     }
 
     nlohmann::json exportRegisteredBehaviorCatalog()

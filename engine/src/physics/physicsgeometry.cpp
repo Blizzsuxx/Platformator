@@ -156,10 +156,9 @@ void updateContactGeometry(ColliderPair &pair, const Eigen::Vector2f &gravityDir
         return;
     }
 
-    const float absR10 = std::abs(axesA[1].dot(axesB[0]));
-    const float absR11 = std::abs(axesA[1].dot(axesB[1]));
+    // Both box frames are 2D orthonormal: |A1·B0| == |A0·B1| and |A1·B1| == |A0·B0|.
     const float distA1 = delta.dot(axesA[1]);
-    const float overlapA1 = (hAy + hBx * absR10 + hBy * absR11) - std::abs(distA1);
+    const float overlapA1 = (hAy + hBx * absR01 + hBy * absR00) - std::abs(distA1);
     if (overlapA1 < 0.0f)
     {
         pair.clearCollisionNoEvent();
@@ -167,7 +166,7 @@ void updateContactGeometry(ColliderPair &pair, const Eigen::Vector2f &gravityDir
     }
 
     const float distB0 = delta.dot(axesB[0]);
-    const float overlapB0 = (hBx + hAx * absR00 + hAy * absR10) - std::abs(distB0);
+    const float overlapB0 = (hBx + hAx * absR00 + hAy * absR01) - std::abs(distB0);
     if (overlapB0 < 0.0f)
     {
         pair.clearCollisionNoEvent();
@@ -175,7 +174,7 @@ void updateContactGeometry(ColliderPair &pair, const Eigen::Vector2f &gravityDir
     }
 
     const float distB1 = delta.dot(axesB[1]);
-    const float overlapB1 = (hBy + hAx * absR01 + hAy * absR11) - std::abs(distB1);
+    const float overlapB1 = (hBy + hAx * absR01 + hAy * absR00) - std::abs(distB1);
     if (overlapB1 < 0.0f)
     {
         pair.clearCollisionNoEvent();
@@ -192,7 +191,7 @@ void updateContactGeometry(ColliderPair &pair, const Eigen::Vector2f &gravityDir
         minNormal = distA1 < 0.0f ? (-axesA[1]).eval() : axesA[1];
     }
 
-    if (overlapB0 < minOverlap && overlapB0 < minOverlap * 0.98f - 0.001f)
+    if (overlapB0 < minOverlap * 0.98f - 0.001f)
     {
         minOverlap = overlapB0;
         minNormal = distB0 > 0.0f ? (-axesB[0]).eval() : axesB[0];
@@ -209,7 +208,6 @@ void updateContactGeometry(ColliderPair &pair, const Eigen::Vector2f &gravityDir
     const BoxCollider *incidentBox = swapped ? boxA : boxB;
 
     Collision *collision = pair.getOrCreateCollisionNoEvent();
-    collision->clearSupportState();
     collision->setIncidentObject(incidentBox);
     collision->setReferenceObject(referenceBox);
     collision->setNormal(minNormal);

@@ -354,6 +354,11 @@ void PhysicsManager::clearAll()
     activeIslandIds.clear();
     dirtySplitIslandIds.clear();
     kinematicSolverPairs.clear();
+    splitAdjHead.clear();
+    splitAdjNext.clear();
+    splitAdjTo.clear();
+    splitComponentOfBody.clear();
+    splitQueue.clear();
     splitRemainingContacts.clear();
     splitOldBodies.clear();
     splitComponentContactCounts.clear();
@@ -382,11 +387,16 @@ void PhysicsManager::clearAll()
     {
         chunk.clear();
     }
+#if PLATFORMATOR_ENABLE_WORK_PROBES
+    narrowGeometryCounts.clear();
+#endif
     const auto clearScratch = [](IslandSolverScratch &scratch) {
         scratch.constraints.clear();
         scratch.bodies.clear();
         scratch.bodyForces.clear();
         scratch.writableBodies.clear();
+        scratch.bodyLocalIndices.clear();
+        scratch.kinematicBodies.clear();
         scratch.wideSteps.clear();
     };
     clearScratch(serialSolverScratch);
@@ -394,10 +404,19 @@ void PhysicsManager::clearAll()
     {
         clearScratch(scratch);
     }
-    for (auto &local : parallelBodiesToSleep)
+    const auto clearSleepScratch = [](SleepScratch &scratch) {
+        scratch.parent.clear();
+        scratch.rank.clear();
+        scratch.compQuiet.clear();
+        scratch.compTimer.clear();
+        scratch.toSleep.clear();
+    };
+    clearSleepScratch(serialSleepScratch);
+    for (auto &scratch : parallelSleepScratch)
     {
-        local.clear();
+        clearSleepScratch(scratch);
     }
+    bodiesToSleepScratch.clear();
     solverIslandJobEnds.clear();
     contactPairs.clear();
     supportDeltaBodies.clear();
@@ -473,9 +492,6 @@ void PhysicsManager::narrowPhase()
         for (auto *pair : pendingPairs)
         {
             processNarrowPhasePair(pair);
-        }
-        for (auto *pair : pendingPairs)
-        {
             PLATFORMATOR_WORK_ADD(geometryPairs, pair->resultTestedGeometry ? 1 : 0);
             PLATFORMATOR_WORK_ADD(contactTransitionChecks, 1);
             if (needsSerialTransition(pair))
@@ -625,7 +641,8 @@ void PhysicsManager::updateSleepingStates(double timeDelta)
                std::abs(body->getAngularVelocity()) <= ANGULAR_SLEEP_THRESHOLD;
     };
 
-    const auto evaluateIsland = [&](const PersistentIsland &island, std::vector<Rigidbody *> &toSleep) {
+    const auto evaluateIsland = [&](const PersistentIsland &island, SleepScratch &scratch,
+                                    std::vector<Rigidbody *> &toSleep) {
         bool allCandidates = true;
         bool anyCandidate = false;
         for (Rigidbody *body : island.bodies)
@@ -673,10 +690,14 @@ void PhysicsManager::updateSleepingStates(double timeDelta)
 
         // Mixed island (some bodies supported, some unsupported): preserve exact sleep-candidate connectivity.
         const size_t bodyCount = island.bodies.size();
-        std::vector<uint32_t> parent(bodyCount);
-        std::vector<uint8_t> rank(bodyCount, 0);
-        std::vector<uint8_t> compQuiet(bodyCount, 1);
-        std::vector<double> compTimer(bodyCount, 0.0);
+        auto &parent = scratch.parent;
+        auto &rank = scratch.rank;
+        auto &compQuiet = scratch.compQuiet;
+        auto &compTimer = scratch.compTimer;
+        parent.resize(bodyCount);
+        rank.assign(bodyCount, 0);
+        compQuiet.assign(bodyCount, 1);
+        compTimer.resize(bodyCount);
         for (size_t i = 0; i < bodyCount; ++i)
         {
             parent[i] = static_cast<uint32_t>(i);
@@ -752,36 +773,38 @@ void PhysicsManager::updateSleepingStates(double timeDelta)
         }
     };
 
-    std::vector<Rigidbody *> bodiesToSleep;
+    auto &bodiesToSleep = bodiesToSleepScratch;
+    bodiesToSleep.clear();
     const bool runParallel = activeIslandIds.size() >= 32 && hasParallelPhysicsWorkers();
     if (!runParallel)
     {
         for (int32_t islandId : activeIslandIds)
         {
-            evaluateIsland(persistentIslands[static_cast<size_t>(islandId)], bodiesToSleep);
+            evaluateIsland(persistentIslands[static_cast<size_t>(islandId)], serialSleepScratch, bodiesToSleep);
         }
     }
     else
     {
-        for (auto &local : parallelBodiesToSleep)
+        for (auto &local : parallelSleepScratch)
         {
-            local.clear();
+            local.toSleep.clear();
         }
         tbb::task_group_context context(tbb::task_group_context::isolated);
         tbb::parallel_for(
             tbb::blocked_range<size_t>(0, activeIslandIds.size(), 16),
             [&](const auto &range) {
-                auto &localToSleep = parallelBodiesToSleep.local();
+                auto &localScratch = parallelSleepScratch.local();
                 for (size_t i = range.begin(); i != range.end(); ++i)
                 {
-                    evaluateIsland(persistentIslands[static_cast<size_t>(activeIslandIds[i])], localToSleep);
+                    evaluateIsland(persistentIslands[static_cast<size_t>(activeIslandIds[i])], localScratch,
+                                   localScratch.toSleep);
                 }
             },
             context);
-        for (auto &local : parallelBodiesToSleep)
+        for (auto &local : parallelSleepScratch)
         {
-            bodiesToSleep.insert(bodiesToSleep.end(), local.begin(), local.end());
-            local.clear();
+            bodiesToSleep.insert(bodiesToSleep.end(), local.toSleep.begin(), local.toSleep.end());
+            local.toSleep.clear();
         }
     }
 

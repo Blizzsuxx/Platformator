@@ -185,7 +185,7 @@ void DebugDraw::addCircleColliderDebugObject(const CircleCollider &collider)
         return;
     }
 
-    Eigen::Vector2f center = collider.getGameObject()->getPosition();
+    Eigen::Vector2f center = collider.getWorldPosition();
     float radius = collider.getRadius();
 
     std::vector<Eigen::Vector2f> vertices;

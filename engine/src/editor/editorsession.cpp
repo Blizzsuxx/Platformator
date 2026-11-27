@@ -208,7 +208,7 @@ bool EditorSessionService::pump_impl(std::uint64_t runtimeSerial, ::SDLWindow *w
     }
     if (!flush_events())
         return false;
-    std::array<std::byte, ReadChunkBytes> buffer{};
+    std::array<std::byte, ReadChunkBytes> buffer;
     std::size_t remaining = MaximumPumpBytesPerCall;
     std::size_t handled = 0;
     while (handled < MaximumMessagesPerCall)
@@ -434,7 +434,11 @@ bool EditorSessionService::handle_input_request(const editor_session::Message &m
             window->setEditorKey(event.key.scancode, down);
         SDL_PushEvent(&event);
         if (down)
-            heldKeys_.push_back({scancode, keycode});
+        {
+            const auto keyPair = std::make_pair(scancode, keycode);
+            if (std::find(heldKeys_.begin(), heldKeys_.end(), keyPair) == heldKeys_.end())
+                heldKeys_.push_back(keyPair);
+        }
         else if (auto it = std::find(heldKeys_.begin(), heldKeys_.end(), std::make_pair(scancode, keycode));
                  it != heldKeys_.end())
             heldKeys_.erase(it);
@@ -616,32 +620,40 @@ void EditorSessionService::capture_frame(std::uint64_t runtimeSerial, ::SDL_Rend
 
     using SurfacePtr = std::unique_ptr<SDL_Surface, decltype(&SDL_DestroySurface)>;
     SurfacePtr readback(SDL_RenderReadPixels(renderer, nullptr), SDL_DestroySurface);
-    if (!readback)
+    if (!readback || readback->w != static_cast<int>(FrameWidth) || readback->h != static_cast<int>(FrameHeight) ||
+        readback->pixels == nullptr)
     {
         fail(std::string("session frame readback failed: ") + SDL_GetError(), runtimeSerial);
         return;
     }
-    SurfacePtr rgba(SDL_ConvertSurface(readback.get(), SDL_PIXELFORMAT_RGBA32), SDL_DestroySurface);
-    readback.reset();
-    if (!rgba || rgba->w != static_cast<int>(FrameWidth) || rgba->h != static_cast<int>(FrameHeight) ||
-        rgba->pitch < static_cast<int>(FrameStride) || rgba->pixels == nullptr)
+    if (!SDL_LockSurface(readback.get()))
     {
-        fail("session readback could not be converted to bounded RGBA8 pixels", runtimeSerial);
-        return;
-    }
-    if (!SDL_LockSurface(rgba.get()))
-    {
-        fail(std::string("session RGBA readback could not be locked: ") + SDL_GetError(), runtimeSerial);
+        fail(std::string("session frame readback could not be locked: ") + SDL_GetError(), runtimeSerial);
         return;
     }
 
     auto *destination = static_cast<std::byte *>(mappingAddress_) + slotIndex * FrameSlotBytes;
-    const auto *source = static_cast<const std::byte *>(rgba->pixels);
-    for (std::size_t row = 0; row < FrameHeight; ++row)
-        std::copy_n(source + row * static_cast<std::size_t>(rgba->pitch), FrameStride,
-                    destination + row * FrameStride);
-    SDL_UnlockSurface(rgba.get());
-    rgba.reset();
+    bool converted = true;
+    if (readback->format == SDL_PIXELFORMAT_RGBA32 && readback->pitch >= static_cast<int>(FrameStride))
+    {
+        const auto *source = static_cast<const std::byte *>(readback->pixels);
+        for (std::size_t row = 0; row < FrameHeight; ++row)
+            std::copy_n(source + row * static_cast<std::size_t>(readback->pitch), FrameStride,
+                        destination + row * FrameStride);
+    }
+    else
+    {
+        converted = SDL_ConvertPixels(static_cast<int>(FrameWidth), static_cast<int>(FrameHeight), readback->format,
+                                      readback->pixels, readback->pitch, SDL_PIXELFORMAT_RGBA32, destination,
+                                      static_cast<int>(FrameStride));
+    }
+    SDL_UnlockSurface(readback.get());
+    readback.reset();
+    if (!converted)
+    {
+        fail("session readback could not be converted to bounded RGBA8 pixels", runtimeSerial);
+        return;
+    }
     std::atomic_thread_fence(std::memory_order_release);
 
     const std::uint64_t frameSequence = nextFrameSequence_;

@@ -2,7 +2,6 @@
 
 #include "core/pathmanager.h"
 
-#include <fstream>
 #include <atomic>
 #include <cerrno>
 #include <cstdio>
@@ -10,7 +9,6 @@
 #include <utility>
 
 #include "core/gamemanager.h"
-#include "platformator/scriptregistration.h"
 #include "platformator/gameobject.h"
 #include "platformator/runtime.h"
 #include "core/runtimeaccess.h"

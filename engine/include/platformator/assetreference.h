@@ -129,7 +129,14 @@ template <typename T> class AssetReference
         assertLifetime();
         if (object == value)
         {
-            filePath = value == nullptr ? std::nullopt : std::optional<std::string>(value->getFilePath());
+            if (value == nullptr)
+            {
+                filePath.reset();
+            }
+            else if (!filePath || *filePath != value->getFilePath())
+            {
+                filePath = value->getFilePath();
+            }
             return;
         }
 

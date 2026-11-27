@@ -165,16 +165,15 @@ namespace
             const double rSq = r * r;
             if (originDistSq > rSq)
             {
-                const double dirLenSq = dirX * dirX + dirY * dirY;
-                const double proj = (toCenterX * dirX + toCenterY * dirY) / dirLenSq;
+                const double proj = toCenterX * dirX + toCenterY * dirY;
                 if (proj < 0.0)
                     return false;
                 const double perpX = toCenterX - proj * dirX;
                 const double perpY = toCenterY - proj * dirY;
                 const double perpSq = perpX * perpX + perpY * perpY;
-                const double perpDist = std::sqrt(perpSq);
                 const double tangencyTol = 1e-11 * std::max({1.0, r, std::abs(toCenterX), std::abs(toCenterY)});
-                if (perpDist > r + tangencyTol)
+                const double maxPerp = r + tangencyTol;
+                if (perpSq > maxPerp * maxPerp)
                     return false;
                 const double disc = std::max(0.0, rSq - perpSq);
                 double tHit = std::max(0.0, proj - std::sqrt(disc));
@@ -415,8 +414,6 @@ void PhysicsManager::traverseRayCandidates(const Eigen::Vector2f &origin, const 
                 visitOnce(parallelAltCx, cy, t0, t1);
             if (hasParallelAltY)
                 visitOnce(cx, parallelAltCy, t0, t1);
-            if (hasParallelAltX && hasParallelAltY)
-                visitOnce(parallelAltCx, parallelAltCy, t0, t1);
 
             const double postHitEnd = std::clamp(std::min(limit, tEnd), tStart, tEnd);
             const double postHitLimit = postHitEnd + tCornerEps;

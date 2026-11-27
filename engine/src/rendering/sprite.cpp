@@ -29,6 +29,10 @@ Sprite::Sprite(GameObject *gameObject, const char *filePath, SDL_FlipMode flip, 
     if (filePath != nullptr)
     {
         TextureWrapper *newTextureWrapper = platformator_detail::RuntimeAccess::loadTexture(filePath);
+        if (newTextureWrapper != nullptr && width == 0 && height == 0)
+        {
+            SDL_GetTextureSize(newTextureWrapper->getTexture(), &this->width, &this->height);
+        }
         setTextureWrapper(newTextureWrapper);
     }
 }

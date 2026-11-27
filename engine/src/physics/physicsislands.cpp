@@ -4,6 +4,7 @@
 #include "core/membership.h"
 
 #include <algorithm>
+#include <bit>
 #include <cassert>
 #include <cmath>
 #include <cstdint>
@@ -14,8 +15,8 @@ bool hasWakeMotion(const Rigidbody *other) noexcept
 {
     return other->getVelocity().squaredNorm() > LINEAR_SLEEP_THRESHOLD * LINEAR_SLEEP_THRESHOLD ||
            std::abs(other->getAngularVelocity()) > ANGULAR_SLEEP_THRESHOLD ||
-           (other->getBodyType() == KINEMATIC &&
-            (!other->getVelocity().isZero(0) || other->getAngularVelocity() != 0));
+           (other->getBodyType() == BodyType::KINEMATIC &&
+            (!other->getVelocity().isZero(0) || other->getAngularVelocity() != 0.0f));
 }
 } // namespace
 
@@ -83,7 +84,7 @@ void PhysicsManager::insertContactIntoColorGraph(IslandColorGraph &graph, Collid
     uint8_t color = IslandColorGraph::OVERFLOW_COLOR;
     if (freeMask != 0u)
     {
-        color = static_cast<uint8_t>(__builtin_ctz(freeMask));
+        color = static_cast<uint8_t>(std::countr_zero(freeMask));
         const uint32_t bit = 1u << color;
         if (dynA)
         {
@@ -179,7 +180,7 @@ void PhysicsManager::setPersistentIslandActive(PersistentIsland &island, bool ac
 void PhysicsManager::recyclePersistentIsland(int32_t islandId)
 {
     PersistentIsland &island = persistentIslands[static_cast<size_t>(islandId)];
-    clearIslandColorGraph(island);
+    island.colorGraph.reset();
     setPersistentIslandActive(island, false);
     for (Rigidbody *body : island.bodies)
     {
@@ -512,10 +513,10 @@ void PhysicsManager::splitPersistentIsland(int32_t islandId)
 
     // Separate bodies and contacts across connected components, preserving relative contact order
     // and keeping the largest component's existing color graph intact.
-    splitRemainingContacts.assign(island.contacts.begin(), island.contacts.end());
+    splitRemainingContacts.clear();
+    splitRemainingContacts.swap(island.contacts);
     splitOldBodies.clear();
     splitOldBodies.swap(island.bodies);
-    island.contacts.clear();
     const bool hadSleeping = island.hasSleepingEndpoint;
     island.hasSleepingEndpoint = false;
 
@@ -630,12 +631,19 @@ void PhysicsManager::splitPersistentIsland(int32_t islandId)
                     target.hasSleepingEndpoint = true;
                 }
             }
-            setPersistentIslandActive(target, true);
         }
         else
         {
             pair->solverIslandId = -1;
             pair->solverIslandContactIndex = SIZE_MAX;
+        }
+    }
+
+    for (int32_t targetId : splitComponentIslandIds)
+    {
+        if (targetId != -1)
+        {
+            setPersistentIslandActive(persistentIslands[static_cast<size_t>(targetId)], true);
         }
     }
 
@@ -675,11 +683,17 @@ void PhysicsManager::splitDirtyIslands()
 
 void PhysicsManager::wakePersistentIslandEndpoints()
 {
-    const bool checkAll = !pendingBodyChanges.empty();
+    for (Rigidbody *body : pendingBodyChanges)
+    {
+        if (body->solverIslandId != -1)
+        {
+            persistentIslands[static_cast<size_t>(body->solverIslandId)].hasSleepingEndpoint = true;
+        }
+    }
     for (int32_t islandId : activeIslandIds)
     {
         PersistentIsland &island = persistentIslands[static_cast<size_t>(islandId)];
-        if (!island.hasSleepingEndpoint && !checkAll)
+        if (!island.hasSleepingEndpoint)
         {
             continue;
         }

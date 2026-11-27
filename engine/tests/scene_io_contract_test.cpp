@@ -182,6 +182,17 @@ int main()
         bad = base;
         bad["scale"]["x"] = 0;
         rejects(Json::array({bad}));
+        for (const auto &badCamera : std::vector<Json>{
+                 Json{{"id", 2}, {"type", CAMERA}, {"width", 0}, {"height", 480}},
+                 Json{{"id", 2}, {"type", CAMERA}, {"width", -10}, {"height", 480}},
+                 Json{{"id", 2}, {"type", CAMERA}, {"width", 640}, {"height", 0}},
+                 Json{{"id", 2}, {"type", CAMERA}, {"width", 640}, {"height", -10}},
+             })
+        {
+            bad = base;
+            bad["components"] = Json::array({badCamera});
+            rejects(Json::array({bad}));
+        }
         AssetReference<TextureWrapper> retained(runtime.loadTexture("assets/textures/ball.png"));
         require(static_cast<bool>(retained), "Shared texture fixture must load");
         ThrowingResolver::shared = retained.get();

@@ -94,10 +94,10 @@ GameObject *buildObjectSubtree(const Json &record, platformator::ReferenceResolv
             break;
         }
         case CAMERA: {
+            positive(entry.at("width").get<float>(), "camera.width");
+            positive(entry.at("height").get<float>(), "camera.height");
             auto value = std::make_unique<Camera>();
             from_json(entry, *value);
-            positive(value->getWidth(), "camera.width");
-            positive(value->getHeight(), "camera.height");
             kind = Kind::Camera;
             component = std::move(value);
             break;

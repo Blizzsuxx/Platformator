@@ -153,7 +153,7 @@ class FlatHashTable
 
     void clearAndRelease() noexcept
     {
-        slots.clear();
+        std::vector<Slot>().swap(slots);
         count = 0;
     }
 

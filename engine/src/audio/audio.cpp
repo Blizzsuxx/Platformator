@@ -27,7 +27,7 @@ Audio::Audio(GameObject *gameObject, const char *filePath, float gain, bool auto
 }
 
 Audio::Audio(GameObject *gameObject, AudioWrapper *audioWrapper, float gain, bool autoPlay, int loopCount)
-    : Component(gameObject, ComponentType::AUDIO), audioWrapper(nullptr), gain(gain), loopCount(loopCount),
+    : Component(gameObject, ComponentType::AUDIO), audioWrapper(), gain(gain), loopCount(loopCount),
       autoPlay(autoPlay)
 {
     if (gameObject != nullptr)
@@ -60,7 +60,7 @@ Audio::~Audio()
 Component *Audio::clone() const
 {
     auto cloned = std::make_unique<Audio>();
-    cloned->setAudio(audioWrapper);
+    cloned->setAudio(audioWrapper.get());
     cloned->setGain(gain);
     cloned->setLoopCount(getLoopCount());
     cloned->setAutoPlay(autoPlay);
@@ -69,12 +69,10 @@ Component *Audio::clone() const
 
 void Audio::freeAudio()
 {
-    if (audioWrapper != nullptr)
+    if (audioWrapper)
     {
         stop();
-        AudioWrapper *currentAudioWrapper = audioWrapper;
-        audioWrapper = nullptr;
-        currentAudioWrapper->removeReferenceAndFreeIfNoReferences();
+        audioWrapper.reset();
     }
 }
 
@@ -86,7 +84,7 @@ MIX_Track *Audio::getTrack() const
 
 AudioWrapper *Audio::getAudioWrapper() const
 {
-    return audioWrapper;
+    return audioWrapper.get();
 }
 
 float Audio::getGain() const
@@ -130,7 +128,7 @@ bool Audio::replay(AudioWrapper *audioWrapper, Sint64 fadeOutFrames)
     {
         auto *audioManager = platformator_detail::RuntimeAccess::audioManager();
         audioManager->scheduleReplay(this);
-        pendingReplay = retained.release();
+        pendingReplay = std::move(retained);
         if (!MIX_StopTrack(track.get(), fadeOutFrames))
         {
             cancelPendingReplay();
@@ -182,7 +180,7 @@ void Audio::setAudio(AudioWrapper *audio)
 {
     auto retained = AudioWrapper::retain(audio);
     cancelPendingReplay();
-    if (audioWrapper == audio)
+    if (audioWrapper.get() == audio)
         return;
     if (audio && !track && !platformator_detail::RuntimeAccess::audioManager()->getMixer())
         throw std::logic_error("Audio assets require an enabled audio backend");
@@ -190,10 +188,7 @@ void Audio::setAudio(AudioWrapper *audio)
     {
         throw std::runtime_error(std::string("Failed to bind audio track: ") + SDL_GetError());
     }
-    auto *old = audioWrapper;
-    audioWrapper = retained.release();
-    if (old)
-        old->removeReferenceAndFreeIfNoReferences();
+    audioWrapper = std::move(retained);
 }
 
 void Audio::cancelPendingReplay()
@@ -204,14 +199,12 @@ void Audio::cancelPendingReplay()
     }
 
     platformator_detail::RuntimeAccess::audioManager()->cancelReplay(this);
-    auto *pending = pendingReplay;
-    pendingReplay = nullptr;
-    pending->removeReferenceAndFreeIfNoReferences();
+    pendingReplay.reset();
 }
 
 void Audio::finishPendingReplay()
 {
-    AudioWrapper::Reference pending(std::exchange(pendingReplay, nullptr));
+    auto pending = std::move(pendingReplay);
     if (pending)
     {
         play(pending.get());
@@ -260,10 +253,10 @@ bool Audio::playAndForget(AudioWrapper *audioWrapper)
 
 bool Audio::playAndForget()
 {
-    if (audioWrapper == nullptr)
+    if (!audioWrapper)
     {
         return false;
     }
 
-    return playAndForget(audioWrapper);
+    return playAndForget(audioWrapper.get());
 }

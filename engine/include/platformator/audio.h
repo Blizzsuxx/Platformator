@@ -53,8 +53,8 @@ class Audio : public Component
   private:
     friend class GameManager;
     friend class AudioManager;
-    AudioWrapper *audioWrapper;
-    AudioWrapper *pendingReplay = nullptr;
+    AudioWrapper::Reference audioWrapper;
+    AudioWrapper::Reference pendingReplay;
     std::unique_ptr<MIX_Track, decltype(&MIX_DestroyTrack)> track{nullptr, MIX_DestroyTrack};
     float gain;
     int loopCount;

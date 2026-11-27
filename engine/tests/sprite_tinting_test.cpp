@@ -702,6 +702,33 @@ void testDirectAndBatchedSourceRectParity()
     }
     SDL_DestroySurface(surface);
 }
+
+void testFilePathSpriteAutoSizing()
+{
+    ScopedTempDir tmp("platformator_sprite_filepath_autosize");
+    writeSolidBmp(tmp.dir / "assets" / "textures" / "sized_16x16.bmp", 255, 255, 255);
+
+    RuntimeOptions options;
+    options.assetRoot = (tmp.dir / "assets").string();
+    options.windowSettings.width = 64;
+    options.windowSettings.height = 64;
+    options.windowSettings.headless = false;
+
+    platformator::Runtime runtime(options);
+    GameObject *byPath = runtime.createGameObject()->setName("ByPath");
+    byPath->addComponent<Sprite>("assets/textures/sized_16x16.bmp", 0.0f, 0.0f);
+    Sprite *pathSprite = byPath->getComponent<Sprite>();
+    require(pathSprite != nullptr && pathSprite->getWidth() == 16.0f && pathSprite->getHeight() == 16.0f,
+            "Sprite(GameObject*, const char*, 0, 0) must auto-size from texture dimensions");
+
+    TextureWrapper *tex = runtime.loadTexture("assets/textures/sized_16x16.bmp");
+    GameObject *byTex = runtime.createGameObject()->setName("ByTex");
+    byTex->addComponent<Sprite>(tex, 0.0f, 0.0f);
+    Sprite *texSprite = byTex->getComponent<Sprite>();
+    require(texSprite != nullptr && texSprite->getWidth() == pathSprite->getWidth() &&
+                texSprite->getHeight() == pathSprite->getHeight(),
+            "Sprite filePath and TextureWrapper constructors must agree on 0x0 auto-sizing");
+}
 } // namespace
 
 int main()
@@ -716,6 +743,7 @@ int main()
         testAllRenderPathsSharedTextureTinting();
         testDirectAndBatchedSourceRectParity();
         testClearColorOverride();
+        testFilePathSpriteAutoSizing();
         std::cout << "[PASS] sprite tinting tests\n";
         return 0;
     }

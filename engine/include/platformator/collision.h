@@ -32,7 +32,6 @@ class Collision
 
     CollisionType getResolutionType() const;
     void updateSupportState(const Eigen::Vector2f &gravityVector);
-    void clearSupportState();
 
     void setNormal(const Eigen::Vector2f &normal);
     void setContactPoints(const ClipPoints &contactPoints);
@@ -46,8 +45,7 @@ class Collision
     {
         NONE_SUPPORT = 0,
         SUPPORTS_REFERENCE = 1 << 0,
-        SUPPORTS_INCIDENT = 1 << 1,
-        SUPPORTS_BOTH = SUPPORTS_REFERENCE | SUPPORTS_INCIDENT
+        SUPPORTS_INCIDENT = 1 << 1
     };
 
   private:

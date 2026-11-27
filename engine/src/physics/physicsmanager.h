@@ -287,7 +287,18 @@ private:
         std::vector<SolverBodyState> bodies;
         std::vector<SolverBodyForce> bodyForces;
         std::vector<WritableSolverBody> writableBodies;
+        std::vector<uint32_t> bodyLocalIndices;
+        std::vector<std::pair<Rigidbody *, uint32_t>> kinematicBodies;
         std::vector<platformator_solver_simd::WideConstraint8> wideSteps;
+    };
+
+    struct SleepScratch
+    {
+        std::vector<uint32_t> parent;
+        std::vector<uint8_t> rank;
+        std::vector<uint8_t> compQuiet;
+        std::vector<double> compTimer;
+        std::vector<Rigidbody *> toSleep;
     };
 
     struct IslandColorGraph
@@ -344,11 +355,28 @@ private:
                               const std::vector<SolverBodyState> &states) noexcept;
     bool solveColoredIsland(PersistentIsland &island, const SoftStepParams &params, bool allowParallel);
 
+    static bool constraintHasActiveRestitution(const SolverConstraint &constraint, float restitutionThreshold) noexcept
+    {
+        if (constraint.solverRestitution <= 0.0f)
+        {
+            return false;
+        }
+        for (uint8_t i = 0; i < constraint.pointCount; ++i)
+        {
+            if (constraint.relativeVelocity[i] < -restitutionThreshold)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
     void prepareSolverConstraint(const SolverPreStepJob &job, const SoftStepParams &params,
                                  SolverConstraint &outConstraint) const;
     static void applyWarmStart(const SolverConstraint &constraint, SolverBodyState &bodyA, SolverBodyState &bodyB) noexcept;
+    template <bool UseBias>
     static void solveConstraintSoft(SolverConstraint &constraint, SolverBodyState &bodyA, SolverBodyState &bodyB,
-                                    const SoftStepParams &params, bool useBias) noexcept;
+                                    const SoftStepParams &params) noexcept;
     static void applyRestitutionSoft(SolverConstraint &constraint, SolverBodyState &bodyA, SolverBodyState &bodyB,
                                      const SoftStepParams &params) noexcept;
     static void storeConstraintImpulses(const SolverConstraint &constraint) noexcept;
@@ -407,7 +435,9 @@ private:
 #endif
     IslandSolverScratch serialSolverScratch;
     tbb::enumerable_thread_specific<IslandSolverScratch> solverIslandScratch;
-    tbb::enumerable_thread_specific<std::vector<Rigidbody *>> parallelBodiesToSleep;
+    SleepScratch serialSleepScratch;
+    tbb::enumerable_thread_specific<SleepScratch> parallelSleepScratch;
+    std::vector<Rigidbody *> bodiesToSleepScratch;
 
     std::vector<size_t> solverIslandJobEnds;
 

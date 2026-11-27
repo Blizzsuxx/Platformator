@@ -235,6 +235,7 @@ bool SDLWindow::init()
     {
         rendererName = "Unknown Renderer";
     }
+    isSoftwareRenderer = (std::string_view(rendererName) == "software");
 
     PLATFORMATOR_LOG("Renderer Used: %s\n", rendererName);
     SDL_SetWindowTitle(window, ("Platformator: " + std::string(rendererName)).c_str());
@@ -351,18 +352,24 @@ void SDLWindow::render()
         if (PhysicsManager *physicsManager = platformator_detail::RuntimeAccess::physicsManager();
             physicsManager != nullptr && shouldSimulateFrame())
         {
-            for (const auto &cellEntry : physicsManager->getGrid().getCells())
+            if (debugDraw.isShowingGridCells())
             {
-                debugDraw.addGridCellDebugObject(cellEntry.first);
+                for (const auto &cellEntry : physicsManager->getGrid().getCells())
+                {
+                    debugDraw.addGridCellDebugObject(cellEntry.first);
+                }
             }
-            for (Collider *collider : physicsManager->getColliders())
+            if (debugDraw.isShowingColliders())
             {
-                if (collider == nullptr)
-                    continue;
-                if (collider->getColliderType() == ColliderType::BoxCollider)
-                    debugDraw.addBoxColliderDebugObject(*static_cast<const BoxCollider *>(collider));
-                else if (collider->getColliderType() == ColliderType::CircleCollider)
-                    debugDraw.addCircleColliderDebugObject(*static_cast<const CircleCollider *>(collider));
+                for (Collider *collider : physicsManager->getColliders())
+                {
+                    if (collider == nullptr)
+                        continue;
+                    if (collider->getColliderType() == ColliderType::BoxCollider)
+                        debugDraw.addBoxColliderDebugObject(*static_cast<const BoxCollider *>(collider));
+                    else if (collider->getColliderType() == ColliderType::CircleCollider)
+                        debugDraw.addCircleColliderDebugObject(*static_cast<const CircleCollider *>(collider));
+                }
             }
         }
 #endif

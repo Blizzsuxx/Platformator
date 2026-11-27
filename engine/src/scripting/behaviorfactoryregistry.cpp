@@ -25,7 +25,7 @@ void BehaviorFactoryRegistry::registerInspectionProvider(
 }
 
 platformator::ScriptInspectionResult BehaviorFactoryRegistry::inspectFields(
-    const std::string &typeName, const Behavior &instance, platformator::ScriptInspectionLimits limits) const
+    std::string_view typeName, const Behavior &instance, platformator::ScriptInspectionLimits limits) const
 {
     const auto provider = inspectionProviders.find(typeName);
     if (provider == inspectionProviders.end())
@@ -33,7 +33,7 @@ platformator::ScriptInspectionResult BehaviorFactoryRegistry::inspectFields(
     return provider->second(instance, platformator::bounded_script_inspection_limits(limits));
 }
 
-Behavior *BehaviorFactoryRegistry::createBehavior(const std::string &typeName) const
+Behavior *BehaviorFactoryRegistry::createBehavior(std::string_view typeName) const
 {
     auto it = factories.find(typeName);
     if (it != factories.end())
@@ -44,24 +44,27 @@ Behavior *BehaviorFactoryRegistry::createBehavior(const std::string &typeName) c
 }
 
 std::optional<platformator::ScriptDescriptor>
-BehaviorFactoryRegistry::findDescriptor(const std::string &typeName) const
+BehaviorFactoryRegistry::findDescriptor(std::string_view typeName) const
 {
     if (!factories.contains(typeName))
         return std::nullopt;
     const auto providers = descriptorProviders.find(typeName);
     if (providers == descriptorProviders.end() || providers->second.empty())
-        return platformator::ScriptDescriptor{typeName, false, {}};
+        return platformator::ScriptDescriptor{std::string(typeName), false, {}};
     auto descriptor = providers->second.front()();
-    descriptor.name = typeName;
+    descriptor.name = std::string(typeName);
     descriptor.fieldSchemaAvailable = true;
-    const auto expected = platformator::script_descriptor_json(descriptor);
-    for (std::size_t index = 1; index < providers->second.size(); ++index)
+    if (providers->second.size() > 1)
     {
-        auto duplicate = providers->second[index]();
-        duplicate.name = typeName;
-        duplicate.fieldSchemaAvailable = true;
-        if (platformator::script_descriptor_json(duplicate) != expected)
-            throw std::runtime_error("inconsistent behavior descriptors registered for '" + typeName + "'");
+        const auto expected = platformator::script_descriptor_json(descriptor);
+        for (std::size_t index = 1; index < providers->second.size(); ++index)
+        {
+            auto duplicate = providers->second[index]();
+            duplicate.name = descriptor.name;
+            duplicate.fieldSchemaAvailable = true;
+            if (platformator::script_descriptor_json(duplicate) != expected)
+                throw std::runtime_error("inconsistent behavior descriptors registered for '" + descriptor.name + "'");
+        }
     }
     return descriptor;
 }

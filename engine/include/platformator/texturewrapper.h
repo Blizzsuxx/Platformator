@@ -44,7 +44,10 @@ struct TextureRegion
     {
         if (this != &other)
         {
-            texture = Asset::retain(other.texture.get());
+            if (texture.get() != other.texture.get())
+            {
+                texture = Asset::retain(other.texture.get());
+            }
             sourceRect = other.sourceRect;
             hasSourceRect = other.hasSourceRect;
         }

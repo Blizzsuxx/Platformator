@@ -134,7 +134,7 @@ bool PhysicsManager::solveColoredIsland(PersistentIsland &island, const SoftStep
                         const SolverBodyState &bA = solverBodyStates[sc.bodyIndexA];
                         const SolverBodyState &bB = solverBodyStates[sc.bodyIndexB];
                         packWideLane(wide, lane, &sc, bA.inverseMass, bA.inverseMomentOfInertia, bB.inverseMass,
-                                     bB.inverseMomentOfInertia);
+                                     bB.inverseMomentOfInertia, params.restitutionThreshold);
                     }
                     else
                     {
@@ -170,7 +170,7 @@ bool PhysicsManager::solveColoredIsland(PersistentIsland &island, const SoftStep
                     return;
                 }
                 prepareSolverConstraint(SolverPreStepJob{collision, rbA, rbB, idxA, idxB}, params, tmp);
-                localRestitution |= (tmp.solverRestitution > 0.0f);
+                localRestitution |= constraintHasActiveRestitution(tmp, params.restitutionThreshold);
                 if (tmp.pointCount == 2)
                 {
                     twoPointBatch[twoPointCount++] = tmp;
@@ -235,7 +235,7 @@ bool PhysicsManager::solveColoredIsland(PersistentIsland &island, const SoftStep
                 overflowConstraints.emplace_back();
                 SolverConstraint &sc = overflowConstraints.back();
                 prepareSolverConstraint(SolverPreStepJob{collision, rbA, rbB, idxA, idxB}, params, sc);
-                if (sc.solverRestitution > 0.0f)
+                if (constraintHasActiveRestitution(sc, params.restitutionThreshold))
                 {
                     anyRestitution.store(true, std::memory_order_relaxed);
                 }
@@ -320,7 +320,8 @@ bool PhysicsManager::solveColoredIsland(PersistentIsland &island, const SoftStep
                 runWideColorPass(
                     [&](WideConstraint8 &wide) { solveWide8SoftAVX2<decltype(useBias)::value>(wide, bodyData, params); },
                     [&](SolverConstraint &sc) {
-                        solveConstraintSoft(sc, bodyData[sc.bodyIndexA], bodyData[sc.bodyIndexB], params, useBias);
+                        solveConstraintSoft<decltype(useBias)::value>(sc, bodyData[sc.bodyIndexA],
+                                                                      bodyData[sc.bodyIndexB], params);
                     });
             },
             [&] {
@@ -451,7 +452,7 @@ bool PhysicsManager::solveColoredIsland(PersistentIsland &island, const SoftStep
     bool anyRestitution = false;
     for (size_t i = 0; i < constraintCount; ++i)
     {
-        anyRestitution |= (solverConstraints[i].solverRestitution > 0.0f);
+        anyRestitution |= constraintHasActiveRestitution(solverConstraints[i], params.restitutionThreshold);
     }
 
     const size_t overflowBegin = colorBegin[IslandColorGraph::OVERFLOW_COLOR];
@@ -502,7 +503,8 @@ bool PhysicsManager::solveColoredIsland(PersistentIsland &island, const SoftStep
         [&](auto useBias) {
             runScalarColorPass(
                 [&](SolverConstraint &sc) {
-                    solveConstraintSoft(sc, bodyData[sc.bodyIndexA], bodyData[sc.bodyIndexB], params, useBias);
+                    solveConstraintSoft<decltype(useBias)::value>(sc, bodyData[sc.bodyIndexA], bodyData[sc.bodyIndexB],
+                                                                  params);
                 },
                 true);
         },

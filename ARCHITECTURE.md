@@ -30,7 +30,7 @@ engine/src/
 |---|---|---|
 | **`SDLWindow`** | `rendering/sdlwindow.{h,cpp}` | SDL3 window, 2D renderer, input events, cached-linear sprite culling & incremental Z-order, debug draw triggers |
 | **`AudioManager`** | `audio/audiomanager.{h,cpp}` | SDL3_mixer device lifecycle, pause/resume freeze, transient one-shot playbacks, deferred fade-out replays |
-| **`PhysicsManager`** | `physics/physicsmanager.{h,cpp}`<br>`physics/physicssolver.cpp`<br>`physics/physicsraycast.cpp`<br>`physics/physicscontacts.cpp`<br>`physics/physicsgeometry.cpp`<br>`physics/physicsbodyindexes.cpp` | Integration, sleeping, narrow phase (parallel SAT/circle checks), parallel island & order-preserving batch solver, DDA raycasting, contact events |
+| **`PhysicsManager`** | `physics/physicsmanager.{h,cpp}`<br>`physics/physicssolver.cpp`<br>`physics/physicssolver_colored.cpp`<br>`physics/physicssolver_simd.h`<br>`physics/physicsislands.cpp`<br>`physics/physicsraycast.cpp`<br>`physics/physicscontacts.cpp`<br>`physics/physicsgeometry.cpp`<br>`physics/physicsbodyindexes.cpp` | Soft-step dynamics, sleeping, narrow phase (parallel SAT/circle checks), persistent islands, graph-colored & 8-wide AVX2 impulse solver, DDA raycasting, contact events |
 | **`Grid`** *(owned by `PhysicsManager`)* | `physics/broadphase/grid.{h,cpp}`<br>`physics/broadphase/gridmaps.h`<br>`physics/broadphase/aabb.{h,cpp}`<br>`physics/broadphase/segmentedintervallist.{h,cpp}`<br>`physics/broadphase/localsortarray.{h,cpp}` | Spatial cell partitioning (`FlatCellMap`), pointer-stable candidate pair pool (`FlatCandidatePairPool`), per-cell segmented interval lists with flat open-addressing overlap/checkpoint sets |
 | **`AssetStore`** | `assets/assetstore.{h,cpp}` | Canonicalized texture, audio, animation clip, and template caching with reference counting |
 | **`ObjectRegistry`** | `core/objectregistry.{h,cpp}` | Generational `ObjectHandle` / `ObjectReference<T>` liveness tracking and `FlatIdMap` lookup |
@@ -43,11 +43,9 @@ Each deterministic simulation step (`FIXED_TIME_STEP = 1/120 s`) runs in a stric
 2. **Fixed Script Update** — Dispatch `Behavior::fixedUpdate(dt)` over the sparse `fixedUpdateScripts` list (automatically filtered at compile time via `detectBehaviorUpdateMask<T>()`).
 3. **Physics Step** (`PhysicsManager`)
    - Synchronize dirty transform subtrees.
-   - `broadPhase()` — flush any queued cell/collider updates.
-   - `narrowPhase()` — parallel geometry tests over `pendingNarrowPhasePairs`, fast path for unchanged trigger contacts, deterministic serial contact/support reconciliation.
-   - `applyPhysics(dt)` — integrate gravity/forces on awake dynamic bodies.
-   - `resolveCollisions(dt)` — union-find contact islands solved in parallel (or order-preserving batches for dominant islands), kinematic resolution, sleep-state updates.
-   - `applyMovement(dt)` — deterministic parallel position/rotation integration into `movedBodyChanges`, followed by transform sync.
+   - `broadPhase()` — flush any queued cell/collider updates (with adaptive dynamic grid sizing and fat/tight AABBs).
+   - `narrowPhase()` — parallel geometry tests over `pendingNarrowPhasePairs`, fast path for unchanged trigger/solver contacts, deterministic serial contact/support reconciliation.
+   - `stepDynamics(dt)` — kinematic pair resolution, persistent island split/wake, soft-step substepped solver (parallel 8-wide AVX2 island groups and graph-colored AVX2/scalar solver for dominant islands), integrated movement commit into transform sync, and island sleep-state updates.
 4. **Collision Event Dispatch** — Deliver queued `onCollisionEnter` / `onCollisionExit` callbacks.
 5. **Frame Scripts & Animation** — Dispatch `update` (sparse `updateScripts`), `Animator::update`, and `lateUpdate` (sparse `lateUpdateScripts`).
 6. **Cleanup & Mutation Commit**

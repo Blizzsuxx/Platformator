@@ -75,14 +75,17 @@ bool SDLWindow::prepareVisibleSelection(Camera *camera, const platformator_detai
         PLATFORMATOR_RENDER_CULLING_ADD(renderCullingProjectionRebuilds, 1);
 
     GameManager &manager = RuntimeAccess::gameManager();
-    const auto resolveRecordSprite = [&](const RenderCullingState::Record &record) {
+    const auto resolveRecordSprite = [&](RenderCullingState::RecordIndex index,
+                                         const RenderCullingState::Record &record) {
         PLATFORMATOR_RENDER_CULLING_ADD(renderCullingHandleResolutions, 1);
+        if (index < spriteComponents.size() && spriteComponents[index]->getHandle() == record.spriteHandle)
+            return spriteComponents[index];
         return static_cast<Sprite *>(manager.resolveHandle(record.spriteHandle, ObjectKind::Sprite));
     };
 
     const auto refreshRecord = [&](RenderCullingState::RecordIndex index) -> Sprite * {
         auto &record = state.recordAt(index);
-        Sprite *sprite = resolveRecordSprite(record);
+        Sprite *sprite = resolveRecordSprite(index, record);
         if (sprite == nullptr || sprite->getTexture() == nullptr)
         {
             record.boundsValid = false;
@@ -109,7 +112,7 @@ bool SDLWindow::prepareVisibleSelection(Camera *camera, const platformator_detai
         if (!spriteBoundsOverlap(record.bounds, query))
             return false;
 
-        Sprite *sprite = hasResolvedSprite ? resolvedSprite : resolveRecordSprite(record);
+        Sprite *sprite = hasResolvedSprite ? resolvedSprite : resolveRecordSprite(rank, record);
         if (sprite == nullptr)
             return true;
         SDL_FRect destination{};
@@ -478,6 +481,11 @@ void SDLWindow::renderSpritesBatched(Camera *camera, const platformator_detail::
 
     constexpr float inv255 = 1.0f / 255.0f;
     spriteBatchVertices.clear();
+    if (const size_t expectedVertices = spriteDrawOrder->entries.size() * 4;
+        spriteBatchVertices.capacity() < expectedVertices)
+    {
+        spriteBatchVertices.reserve(expectedVertices);
+    }
 
     SDL_Texture *batchTexture = nullptr;
     SDL_BlendMode batchTexBlendMode = SDL_BLENDMODE_BLEND;
@@ -527,9 +535,12 @@ void SDLWindow::renderSpritesBatched(Camera *camera, const platformator_detail::
                               spriteBatchIndices.data(), static_cast<int>(requiredIndices),
                               static_cast<int>(sizeof(int)));
 
-        // SDL3's software RenderGeometryRaw fast path mutates texture color/alpha mod internally.
-        SDL_SetTextureColorModFloat(batchTexture, batchTexR, batchTexG, batchTexB);
-        SDL_SetTextureAlphaModFloat(batchTexture, batchTexA);
+        if (isSoftwareRenderer)
+        {
+            // SDL3's software RenderGeometryRaw fast path mutates texture color/alpha mod internally.
+            SDL_SetTextureColorModFloat(batchTexture, batchTexR, batchTexG, batchTexB);
+            SDL_SetTextureAlphaModFloat(batchTexture, batchTexA);
+        }
         if (batchPromoteAlphaBlend)
         {
             SDL_SetTextureBlendMode(batchTexture, batchTexBlendMode);
@@ -669,12 +680,10 @@ void SDLWindow::renderSpritesBatched(Camera *camera, const platformator_detail::
             y3 = cy - hs + vc;
         }
 
-        const size_t base = spriteBatchVertices.size();
-        spriteBatchVertices.resize(base + 4);
-        spriteBatchVertices[base + 0] = SDL_Vertex{{x0, y0}, fcolor, {u0, v0}};
-        spriteBatchVertices[base + 1] = SDL_Vertex{{x1, y1}, fcolor, {u1, v0}};
-        spriteBatchVertices[base + 2] = SDL_Vertex{{x2, y2}, fcolor, {u1, v1}};
-        spriteBatchVertices[base + 3] = SDL_Vertex{{x3, y3}, fcolor, {u0, v1}};
+        spriteBatchVertices.push_back(SDL_Vertex{{x0, y0}, fcolor, {u0, v0}});
+        spriteBatchVertices.push_back(SDL_Vertex{{x1, y1}, fcolor, {u1, v0}});
+        spriteBatchVertices.push_back(SDL_Vertex{{x2, y2}, fcolor, {u1, v1}});
+        spriteBatchVertices.push_back(SDL_Vertex{{x3, y3}, fcolor, {u0, v1}});
     }
 
     flushBatch();

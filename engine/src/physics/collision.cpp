@@ -124,11 +124,6 @@ void Collision::updateSupportState(const Eigen::Vector2f &gravityVectorNormalize
         supportState |= SUPPORTS_INCIDENT;
 }
 
-void Collision::clearSupportState()
-{
-    supportState = NONE_SUPPORT;
-}
-
 bool Collision::isVerticalCollision() const
 {
     const Eigen::Vector2f &gravityVectorNormalized =

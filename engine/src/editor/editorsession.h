@@ -1,5 +1,6 @@
 #pragma once
 
+#include "platformator/objecthandle.h"
 #include "platformator/runtimeoptions.h"
 
 #include <cstddef>
@@ -49,6 +50,21 @@ class EditorSessionService
         std::size_t encodedBytes = 0;
     };
 
+    struct HierarchySnapshotEntry
+    {
+        ObjectHandle handle{};
+        ObjectHandle parent{};
+        int fileId = -1;
+        std::string name;
+        bool nameTruncated = false;
+        bool active = false;
+        bool hasParent = false;
+        std::size_t depth = 0;
+        std::size_t siblingIndex = 0;
+
+        bool operator==(const HierarchySnapshotEntry &) const noexcept = default;
+    };
+
     bool accept_request(editor_session::Message message, std::uint64_t runtimeSerial,
                         ::SDLWindow *window);
     bool handle_hello_request(editor_session::Message message, std::uint64_t runtimeSerial,
@@ -59,6 +75,8 @@ class EditorSessionService
     bool handle_list_objects(const editor_session::Message &message, std::uint64_t runtimeSerial);
     bool handle_inspect_object(const editor_session::Message &message, std::uint64_t runtimeSerial);
     bool enqueue_inspection_event(std::string type, nlohmann::json body, std::uint64_t runtimeSerial);
+    bool enqueue_inspection_response(const char *eventType, std::uint64_t requestSequence, std::string status,
+                                     nlohmann::json details, std::uint64_t runtimeSerial);
     bool begin_inspection_request(const editor_session::Message &message, std::uint64_t runtimeSerial,
                                   const char *responseEvent, bool resetSnapshotOnStale,
                                   Runtime *&outRuntime, bool &outOk);
@@ -84,7 +102,7 @@ class EditorSessionService
     editor_session::BoundedQueue outgoing_{editor_session::Direction::Event};
     std::deque<PendingRequest> pendingRequests_;
     std::size_t pendingRequestBytes_ = 0;
-    std::vector<nlohmann::json> hierarchySnapshot_;
+    std::vector<HierarchySnapshotEntry> hierarchySnapshot_;
     std::uint64_t hierarchySnapshotRevision_ = 0;
     std::uint64_t nextInspectionRevision_ = 1;
     std::size_t nextHierarchyCursor_ = 0;

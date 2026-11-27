@@ -86,8 +86,9 @@ struct PendingHierarchyObject
     std::size_t siblingIndex = 0;
 };
 
+template <typename EntryT>
 bool build_hierarchy_snapshot(platformator::Runtime &runtime,
-                              std::vector<nlohmann::json> &snapshot, std::string &error)
+                              std::vector<EntryT> &snapshot, std::string &error)
 {
     const auto &allObjects = runtime.getAllGameObjects();
     if (allObjects.size() > MaximumInspectionObjects)
@@ -138,15 +139,9 @@ bool build_hierarchy_snapshot(platformator::Runtime &runtime,
             return false;
         }
         bool nameTruncated = false;
-        const std::string name = bounded_utf8_prefix(object->getName(), MaximumHierarchyNameBytes, nameTruncated);
-        nlohmann::json parent = nullptr;
-        if (current.hasParent)
-            parent = handle_json(current.parent, platformator_detail::ObjectKind::GameObject);
-        snapshot.push_back({{"handle", handle_json(handle, platformator_detail::ObjectKind::GameObject)},
-                            {"file_id", object->getId()}, {"name", name},
-                            {"name_truncated", nameTruncated}, {"active", object->getActive()},
-                            {"parent", std::move(parent)}, {"depth", current.depth},
-                            {"sibling_index", current.siblingIndex}});
+        std::string name = bounded_utf8_prefix(object->getName(), MaximumHierarchyNameBytes, nameTruncated);
+        snapshot.push_back(EntryT{handle, current.parent, object->getId(), std::move(name), nameTruncated,
+                                  object->getActive(), current.hasParent, current.depth, current.siblingIndex});
 
         const auto &children = object->getChildren();
         for (std::size_t index = children.size(); index > 0; --index)
@@ -162,6 +157,19 @@ bool build_hierarchy_snapshot(platformator::Runtime &runtime,
         return false;
     }
     return true;
+}
+
+template <typename EntryT>
+nlohmann::json hierarchy_entry_json(const EntryT &entry)
+{
+    nlohmann::json parent = nullptr;
+    if (entry.hasParent)
+        parent = handle_json(entry.parent, platformator_detail::ObjectKind::GameObject);
+    return {{"handle", handle_json(entry.handle, platformator_detail::ObjectKind::GameObject)},
+            {"file_id", entry.fileId}, {"name", entry.name},
+            {"name_truncated", entry.nameTruncated}, {"active", entry.active},
+            {"parent", std::move(parent)}, {"depth", entry.depth},
+            {"sibling_index", entry.siblingIndex}};
 }
 
 nlohmann::json script_component_snapshot(const ScriptComponent &component)
@@ -377,6 +385,15 @@ bool EditorSessionService::enqueue_inspection_event(std::string type, nlohmann::
     return false;
 }
 
+bool EditorSessionService::enqueue_inspection_response(const char *eventType, std::uint64_t requestSequence,
+                                                       std::string status, nlohmann::json details,
+                                                       std::uint64_t runtimeSerial)
+{
+    details["status"] = std::move(status);
+    details["request_sequence"] = requestSequence;
+    return enqueue_inspection_event(eventType, std::move(details), runtimeSerial);
+}
+
 bool EditorSessionService::begin_inspection_request(const editor_session::Message &message,
                                                     std::uint64_t runtimeSerial, const char *responseEvent,
                                                     bool resetSnapshotOnStale, Runtime *&outRuntime, bool &outOk)
@@ -392,9 +409,8 @@ bool EditorSessionService::begin_inspection_request(const editor_session::Messag
     }
 
     auto respond = [&](std::string status, nlohmann::json details = nlohmann::json::object()) {
-        details["status"] = std::move(status);
-        details["request_sequence"] = message.sequence;
-        return enqueue_inspection_event(responseEvent, std::move(details), runtimeSerial);
+        return enqueue_inspection_response(responseEvent, message.sequence, std::move(status), std::move(details),
+                                           runtimeSerial);
     };
     if (!capabilities_.runtimeInspection)
     {
@@ -430,9 +446,8 @@ bool EditorSessionService::handle_list_objects(const editor_session::Message &me
         return ok;
 
     auto respond = [&](std::string status, nlohmann::json details = nlohmann::json::object()) {
-        details["status"] = std::move(status);
-        details["request_sequence"] = message.sequence;
-        return enqueue_inspection_event("object_page", std::move(details), runtimeSerial);
+        return enqueue_inspection_response("object_page", message.sequence, std::move(status), std::move(details),
+                                           runtimeSerial);
     };
 
     std::uint64_t cursor = 0;
@@ -459,7 +474,7 @@ bool EditorSessionService::handle_list_objects(const editor_session::Message &me
     {
         if (nextInspectionRevision_ == 0)
             return respond("unavailable", {{"message", "inspection revision space is exhausted"}});
-        std::vector<nlohmann::json> newSnapshot;
+        std::vector<HierarchySnapshotEntry> newSnapshot;
         std::string snapshotError;
         if (!build_hierarchy_snapshot(*runtime, newSnapshot, snapshotError))
         {
@@ -481,7 +496,7 @@ bool EditorSessionService::handle_list_objects(const editor_session::Message &me
             return respond("stale", {{"snapshot_revision", snapshotRevision},
                                       {"message", "snapshot continuation is expired or out of order"}});
         }
-        std::vector<nlohmann::json> currentSnapshot;
+        std::vector<HierarchySnapshotEntry> currentSnapshot;
         std::string snapshotError;
         if (!build_hierarchy_snapshot(*runtime, currentSnapshot, snapshotError) ||
             currentSnapshot != hierarchySnapshot_)
@@ -500,7 +515,7 @@ bool EditorSessionService::handle_list_objects(const editor_session::Message &me
     const std::size_t finish = std::min(start + pageSize, hierarchySnapshot_.size());
     nlohmann::json objects = nlohmann::json::array();
     for (std::size_t index = start; index < finish; ++index)
-        objects.push_back(hierarchySnapshot_[index]);
+        objects.push_back(hierarchy_entry_json(hierarchySnapshot_[index]));
     const bool hasMore = finish < hierarchySnapshot_.size();
     nlohmann::json nextCursor = hasMore ? nlohmann::json(finish) : nlohmann::json(nullptr);
     const bool enqueued = respond("ok", {{"runtime_serial", runtimeSerial},
@@ -524,9 +539,8 @@ bool EditorSessionService::handle_inspect_object(const editor_session::Message &
         return ok;
 
     auto respond = [&](std::string status, nlohmann::json details = nlohmann::json::object()) {
-        details["status"] = std::move(status);
-        details["request_sequence"] = message.sequence;
-        return enqueue_inspection_event("object_snapshot", std::move(details), runtimeSerial);
+        return enqueue_inspection_response("object_snapshot", message.sequence, std::move(status), std::move(details),
+                                           runtimeSerial);
     };
     const auto handleValue = message.body.find("handle");
     std::uint64_t slot = 0;

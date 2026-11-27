@@ -195,6 +195,7 @@ class SDLWindow
     bool quit;
     bool paused;
     bool advanceFrameRequested;
+    bool isSoftwareRenderer = false;
     bool editorSessionControlsEnabled = false;
     std::function<void(SDL_Renderer *, int, int)> editorSessionFrameCapture;
     RenderFallbackCounts observedFallbackCounts{};

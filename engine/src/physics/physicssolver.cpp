@@ -186,6 +186,8 @@ void PhysicsManager::solvePersistentIsland(const PersistentIsland &island, const
     auto &bodies = scratch.bodies;
     auto &bodyForces = scratch.bodyForces;
     auto &writable = scratch.writableBodies;
+    auto &localIndices = scratch.bodyLocalIndices;
+    auto &kinematics = scratch.kinematicBodies;
     local.clear();
     if (local.capacity() < island.contacts.size())
     {
@@ -196,26 +198,33 @@ void PhysicsManager::solvePersistentIsland(const PersistentIsland &island, const
     bodies.push_back(SolverBodyState{}); // slot 0: shared zero-velocity read-only body (static/sleeping)
     bodyForces.push_back(SolverBodyForce{});
     writable.clear();
-
-    ScopedSolverBodyMapGuard mapGuard{solverBodyLocalIndices, writable};
+    kinematics.clear();
+    localIndices.assign(island.bodies.size(), UNMAPPED_SOLVER_BODY);
 
     const auto mapBody = [&](Rigidbody *rb) -> uint32_t {
         if (!rb->isAwakeDynamic())
         {
             if (rb->isMovingKinematic())
             {
+                for (const auto &[kinBody, kinSlot] : kinematics)
+                {
+                    if (kinBody == rb)
+                    {
+                        return kinSlot;
+                    }
+                }
                 const uint32_t localIdx = static_cast<uint32_t>(bodies.size());
                 const auto &v = rb->getVelocity();
                 bodies.push_back(SolverBodyState{v.x(), v.y(), rb->getAngularVelocity(), 0.0f, 0.0f, 0.0f, 0.0f, 0.0f});
                 bodyForces.push_back(SolverBodyForce{});
+                kinematics.emplace_back(rb, localIdx);
                 return localIdx;
             }
             return 0;
         }
-        const size_t regIdx = rb->getPhysicsManagerIndex();
-        if (regIdx < registeredBodies.size() && registeredBodies[regIdx] == rb)
+        if (rb->solverIslandId == island.id && rb->solverIslandBodyIndex < localIndices.size())
         {
-            uint32_t &mapped = solverBodyLocalIndices[regIdx];
+            uint32_t &mapped = localIndices[rb->solverIslandBodyIndex];
             if (mapped == UNMAPPED_SOLVER_BODY)
             {
                 mapped = static_cast<uint32_t>(bodies.size());
@@ -223,11 +232,10 @@ void PhysicsManager::solvePersistentIsland(const PersistentIsland &island, const
                 bodies.push_back(SolverBodyState{v.x(), v.y(), rb->getAngularVelocity(), rb->getInverseMass(), 0.0f,
                                                  0.0f, 0.0f, rb->getInverseMomentOfInertia()});
                 bodyForces.push_back(makeBodyForce(rb));
-                writable.push_back(WritableSolverBody{regIdx, mapped, rb});
+                writable.push_back(WritableSolverBody{rb->getPhysicsManagerIndex(), mapped, rb});
             }
             return mapped;
         }
-        // Unregistered dynamic body: reuse its local slot via linear scan of writable bodies.
         for (const WritableSolverBody &entry : writable)
         {
             if (entry.body == rb)
@@ -257,7 +265,7 @@ void PhysicsManager::solvePersistentIsland(const PersistentIsland &island, const
         local.emplace_back();
         SolverConstraint &c = local.back();
         prepareSolverConstraint(SolverPreStepJob{collision, rbA, rbB, mapBody(rbA), mapBody(rbB)}, params, c);
-        anyRestitution |= (c.solverRestitution > 0.0f);
+        anyRestitution |= constraintHasActiveRestitution(c, params.restitutionThreshold);
     }
 
     if (local.empty())
@@ -277,8 +285,8 @@ void PhysicsManager::solvePersistentIsland(const PersistentIsland &island, const
         },
         [&](auto useBias) {
             for (SolverConstraint &constraint : local)
-                solveConstraintSoft(constraint, bodies[constraint.bodyIndexA], bodies[constraint.bodyIndexB],
-                                    params, useBias);
+                solveConstraintSoft<decltype(useBias)::value>(constraint, bodies[constraint.bodyIndexA],
+                                                              bodies[constraint.bodyIndexB], params);
         },
         [&] { integrateSolverPositions(bodies.data(), 1, bodyCount, h); },
         [&] {
@@ -305,13 +313,19 @@ bool PhysicsManager::solvePersistentIslandGroup8(const int32_t *islandIds, size_
     auto &bodies = scratch.bodies;
     auto &bodyForces = scratch.bodyForces;
     auto &writable = scratch.writableBodies;
+    auto &localIndices = scratch.bodyLocalIndices;
+    auto &kinematics = scratch.kinematicBodies;
     auto &wideSteps = scratch.wideSteps;
 
     size_t maxPossibleSteps = 0;
+    size_t laneBodyOffset[8] = {};
+    size_t totalLaneBodies = 0;
     for (size_t lane = 0; lane < groupSize; ++lane)
     {
-        maxPossibleSteps =
-            std::max(maxPossibleSteps, persistentIslands[static_cast<size_t>(islandIds[lane])].contacts.size());
+        const PersistentIsland &island = persistentIslands[static_cast<size_t>(islandIds[lane])];
+        maxPossibleSteps = std::max(maxPossibleSteps, island.contacts.size());
+        laneBodyOffset[lane] = totalLaneBodies;
+        totalLaneBodies += island.bodies.size();
     }
     if (maxPossibleSteps == 0)
     {
@@ -323,27 +337,35 @@ bool PhysicsManager::solvePersistentIslandGroup8(const int32_t *islandIds, size_
     bodies.push_back(SolverBodyState{}); // slot 0: shared static/sleeping zero-velocity body
     bodyForces.push_back(SolverBodyForce{});
     writable.clear();
-
-    ScopedSolverBodyMapGuard mapGuard{solverBodyLocalIndices, writable};
+    kinematics.clear();
+    localIndices.assign(totalLaneBodies, UNMAPPED_SOLVER_BODY);
 
     bool allIndexed = true;
-    const auto mapBody = [&](Rigidbody *rb, float &outInvM, float &outInvI) -> uint32_t {
+    const auto mapBody = [&](const PersistentIsland &island, size_t bodyBase, Rigidbody *rb, float &outInvM,
+                             float &outInvI) -> uint32_t {
         if (!rb->isAwakeDynamic())
         {
             outInvM = 0.0f;
             outInvI = 0.0f;
             if (rb->isMovingKinematic())
             {
+                for (const auto &[kinBody, kinSlot] : kinematics)
+                {
+                    if (kinBody == rb)
+                    {
+                        return kinSlot;
+                    }
+                }
                 const uint32_t localIdx = static_cast<uint32_t>(bodies.size());
                 const auto &v = rb->getVelocity();
                 bodies.push_back(SolverBodyState{v.x(), v.y(), rb->getAngularVelocity(), 0.0f, 0.0f, 0.0f, 0.0f, 0.0f});
                 bodyForces.push_back(SolverBodyForce{});
+                kinematics.emplace_back(rb, localIdx);
                 return localIdx;
             }
             return 0;
         }
-        const size_t regIdx = rb->getPhysicsManagerIndex();
-        if (regIdx >= registeredBodies.size() || registeredBodies[regIdx] != rb)
+        if (rb->solverIslandId != island.id || rb->solverIslandBodyIndex >= island.bodies.size())
         {
             allIndexed = false;
             outInvM = 0.0f;
@@ -352,7 +374,7 @@ bool PhysicsManager::solvePersistentIslandGroup8(const int32_t *islandIds, size_
         }
         outInvM = rb->getInverseMass();
         outInvI = rb->getInverseMomentOfInertia();
-        uint32_t &mapped = solverBodyLocalIndices[regIdx];
+        uint32_t &mapped = localIndices[bodyBase + rb->solverIslandBodyIndex];
         if (mapped == UNMAPPED_SOLVER_BODY)
         {
             mapped = static_cast<uint32_t>(bodies.size());
@@ -360,7 +382,7 @@ bool PhysicsManager::solvePersistentIslandGroup8(const int32_t *islandIds, size_
             bodies.push_back(
                 SolverBodyState{v.x(), v.y(), rb->getAngularVelocity(), outInvM, 0.0f, 0.0f, 0.0f, outInvI});
             bodyForces.push_back(makeBodyForce(rb));
-            writable.push_back(WritableSolverBody{regIdx, mapped, rb});
+            writable.push_back(WritableSolverBody{rb->getPhysicsManagerIndex(), mapped, rb});
         }
         return mapped;
     };
@@ -378,6 +400,7 @@ bool PhysicsManager::solvePersistentIslandGroup8(const int32_t *islandIds, size_
     for (size_t lane = 0; lane < groupSize; ++lane)
     {
         const PersistentIsland &island = persistentIslands[static_cast<size_t>(islandIds[lane])];
+        const size_t bodyBase = laneBodyOffset[lane];
         size_t step = 0;
         for (ColliderPair *pair : island.contacts)
         {
@@ -389,15 +412,16 @@ bool PhysicsManager::solvePersistentIslandGroup8(const int32_t *islandIds, size_
                 continue;
             }
             float invMA = 0.0f, invIA = 0.0f, invMB = 0.0f, invIB = 0.0f;
-            const uint32_t idxA = mapBody(rbA, invMA, invIA);
-            const uint32_t idxB = mapBody(rbB, invMB, invIB);
+            const uint32_t idxA = mapBody(island, bodyBase, rbA, invMA, invIA);
+            const uint32_t idxB = mapBody(island, bodyBase, rbB, invMB, invIB);
             if (!allIndexed)
             {
                 return false;
             }
             prepareSolverConstraint(SolverPreStepJob{collision, rbA, rbB, idxA, idxB}, params, tmpConstraint);
-            packWideLane(wideSteps[step], lane, &tmpConstraint, invMA, invIA, invMB, invIB);
-            anyRestitution |= (tmpConstraint.solverRestitution > 0.0f);
+            packWideLane(wideSteps[step], lane, &tmpConstraint, invMA, invIA, invMB, invIB,
+                         params.restitutionThreshold);
+            anyRestitution |= constraintHasActiveRestitution(tmpConstraint, params.restitutionThreshold);
             ++step;
         }
         laneCounts[lane] = step;
@@ -784,8 +808,9 @@ void PhysicsManager::applyWarmStart(const SolverConstraint &constraint, SolverBo
     }
 }
 
+template <bool UseBias>
 void PhysicsManager::solveConstraintSoft(SolverConstraint &constraint, SolverBodyState &bodyA, SolverBodyState &bodyB,
-                                         const SoftStepParams &params, bool useBias) noexcept
+                                         const SoftStepParams &params) noexcept
 {
     const float invMassA = bodyA.inverseMass;
     const float invInertiaA = bodyA.inverseMomentOfInertia;
@@ -799,7 +824,11 @@ void PhysicsManager::solveConstraintSoft(SolverConstraint &constraint, SolverBod
 
     const Eigen::Vector2f &normal = constraint.normal;
     const Eigen::Vector2f &tangent = constraint.tangent;
-    const Eigen::Vector2f dp(bodyB.dpX - bodyA.dpX, bodyB.dpY - bodyA.dpY);
+    Eigen::Vector2f dp = Eigen::Vector2f::Zero();
+    if constexpr (UseBias)
+    {
+        dp = Eigen::Vector2f(bodyB.dpX - bodyA.dpX, bodyB.dpY - bodyA.dpY);
+    }
 
     for (uint8_t i = 0; i < constraint.pointCount; ++i)
     {
@@ -810,7 +839,7 @@ void PhysicsManager::solveConstraintSoft(SolverConstraint &constraint, SolverBod
         const float vn = relativeVelocity.dot(normal);
 
         float normalImpulse = 0.0f;
-        if (useBias)
+        if constexpr (UseBias)
         {
             const Eigen::Vector2f ds =
                 dp + physics_geometry::crossSV(bodyB.dAngle, rB) - physics_geometry::crossSV(bodyA.dAngle, rA);
@@ -831,6 +860,7 @@ void PhysicsManager::solveConstraintSoft(SolverConstraint &constraint, SolverBod
         }
         else
         {
+            (void)params;
             normalImpulse = -constraint.massNormal[i] * vn;
         }
 
@@ -871,6 +901,11 @@ void PhysicsManager::solveConstraintSoft(SolverConstraint &constraint, SolverBod
         bodyB.w = wB;
     }
 }
+
+template void PhysicsManager::solveConstraintSoft<true>(SolverConstraint &, SolverBodyState &, SolverBodyState &,
+                                                        const SoftStepParams &) noexcept;
+template void PhysicsManager::solveConstraintSoft<false>(SolverConstraint &, SolverBodyState &, SolverBodyState &,
+                                                         const SoftStepParams &) noexcept;
 
 void PhysicsManager::applyRestitutionSoft(SolverConstraint &constraint, SolverBodyState &bodyA, SolverBodyState &bodyB,
                                           const SoftStepParams &params) noexcept

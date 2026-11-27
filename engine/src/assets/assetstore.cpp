@@ -227,9 +227,8 @@ TextureWrapper *AssetStore::findTexture(const std::string &filePath)
 std::uint64_t AssetStore::textureCacheBytes() const noexcept
 {
     std::uint64_t total = 0;
-    std::unordered_set<const TextureWrapper *> seen;
-    const auto account = [&](const TextureWrapper *wrapper) {
-        if (wrapper == nullptr || !seen.insert(wrapper).second || wrapper->getTexture() == nullptr)
+    const auto account = [&](const TextureWrapper *wrapper) noexcept {
+        if (wrapper == nullptr || wrapper->getTexture() == nullptr)
         {
             return true;
         }
@@ -391,12 +390,15 @@ AnimationClip *AssetStore::reloadAnimationClip(const std::string &filePath, cons
                     continue;
                 }
                 const auto texturePath = frame.find("textureWrapperFilePath");
-                if (texturePath == frame.end() || !texturePath->is_string() ||
-                    texturePath->get<std::string>().empty())
+                if (texturePath == frame.end() || !texturePath->is_string())
                 {
                     continue;
                 }
-                const auto request = texturePath->get<std::string>();
+                const auto &request = texturePath->get_ref<const std::string &>();
+                if (request.empty())
+                {
+                    continue;
+                }
                 const auto resolvedTexture = PathManager::getInstance().resolveAssetPath(request);
                 const auto cachedTexture = textures.entries.find(resolvedTexture.canonicalPath);
                 if (cachedTexture == textures.entries.end())

@@ -60,6 +60,15 @@ class DebugDraw
     void toggleShowGridCells();
     void toggleShowFps();
 
+    bool isShowingColliders() const noexcept
+    {
+        return showColliders;
+    }
+    bool isShowingGridCells() const noexcept
+    {
+        return showGridCells;
+    }
+
   private:
     DebugDraw();
     ~DebugDraw() = default;
@@ -135,6 +144,14 @@ class DebugDraw
     }
     void toggleShowFps()
     {
+    }
+    bool isShowingColliders() const noexcept
+    {
+        return false;
+    }
+    bool isShowingGridCells() const noexcept
+    {
+        return false;
     }
 
   private:

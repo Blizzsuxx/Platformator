@@ -94,7 +94,9 @@ void ScriptComponent::startPendingBehaviors(platformator::ReferenceResolver &res
     }
     for (size_t i = 0; i < processed; ++i)
     {
-        activeUpdateMask |= pendingBehaviors[i]->getUpdateMask();
+        const uint8_t mask = pendingBehaviors[i]->getUpdateMask();
+        pendingBehaviors[i]->detectedUpdateMask = mask;
+        activeUpdateMask |= mask;
     }
     behaviors.insert(behaviors.end(), pendingBehaviors.begin(), pendingBehaviors.begin() + processed);
     pendingBehaviors.erase(pendingBehaviors.begin(), pendingBehaviors.begin() + processed);
@@ -106,7 +108,7 @@ void ScriptComponent::update(double timeDelta)
     const size_t count = behaviors.size();
     for (size_t i = 0; i < count && canDispatch(); ++i)
     {
-        if ((behaviors[i]->getUpdateMask() & BEHAVIOR_UPDATE_FRAME) != 0)
+        if ((behaviors[i]->detectedUpdateMask & BEHAVIOR_UPDATE_FRAME) != 0)
             behaviors[i]->update(timeDelta);
     }
 }
@@ -116,7 +118,7 @@ void ScriptComponent::fixedUpdate(double timeDelta)
     const size_t count = behaviors.size();
     for (size_t i = 0; i < count && canDispatch(); ++i)
     {
-        if ((behaviors[i]->getUpdateMask() & BEHAVIOR_UPDATE_FIXED) != 0)
+        if ((behaviors[i]->detectedUpdateMask & BEHAVIOR_UPDATE_FIXED) != 0)
             behaviors[i]->fixedUpdate(timeDelta);
     }
 }
@@ -126,7 +128,7 @@ void ScriptComponent::lateUpdate(double timeDelta)
     const size_t count = behaviors.size();
     for (size_t i = 0; i < count && canDispatch(); ++i)
     {
-        if ((behaviors[i]->getUpdateMask() & BEHAVIOR_UPDATE_LATE) != 0)
+        if ((behaviors[i]->detectedUpdateMask & BEHAVIOR_UPDATE_LATE) != 0)
             behaviors[i]->lateUpdate(timeDelta);
     }
 }

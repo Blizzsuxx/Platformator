@@ -80,7 +80,7 @@ class BoxCollider : public Collider
     std::array<Eigen::Vector2f, 4> vertices;
     std::array<Eigen::Vector2f, 2> normals;
 
-    void updateCollider() override;
+    void updateCollider() final;
 };
 
 template <> struct ComponentTypeFor<BoxCollider>

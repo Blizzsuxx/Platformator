@@ -74,8 +74,7 @@ void PhysicsManager::insertContactIntoColorGraph(IslandColorGraph &graph, Collid
     {
         return;
     }
-    auto *rbA = pair->getObjectA()->getAttachedRigidbody();
-    auto *rbB = pair->getObjectB()->getAttachedRigidbody();
+    const auto [rbA, rbB] = pairRigidbodies(pair);
     const bool dynA = rbA != nullptr && rbA->getBodyType() == BodyType::DYNAMIC;
     const bool dynB = rbB != nullptr && rbB->getBodyType() == BodyType::DYNAMIC;
     const uint32_t usedMask = (dynA ? rbA->solverColorMask : 0u) | (dynB ? rbB->solverColorMask : 0u);
@@ -126,8 +125,7 @@ void PhysicsManager::removeContactFromColorGraph(IslandColorGraph &graph, Collid
     if (color < IslandColorGraph::MAX_PARALLEL_COLORS)
     {
         const uint32_t clearMask = ~(1u << color);
-        auto *rbA = pair->getObjectA()->getAttachedRigidbody();
-        auto *rbB = pair->getObjectB()->getAttachedRigidbody();
+        const auto [rbA, rbB] = pairRigidbodies(pair);
         if (rbA != nullptr && rbA->getBodyType() == BodyType::DYNAMIC)
         {
             rbA->solverColorMask &= clearMask;
@@ -315,6 +313,8 @@ void PhysicsManager::removeContactFromPersistentIsland(ColliderPair *pair)
     }
     membership(island.contacts, pair, &ColliderPair::solverIslandContactIndex, false);
     pair->solverIslandId = -1;
+    pair->cachedRbA = nullptr;
+    pair->cachedRbB = nullptr;
 
     if (island.contacts.empty())
     {
@@ -338,13 +338,12 @@ void PhysicsManager::updatePersistentIslandContact(ColliderPair *pair, bool solv
         return;
     }
 
-    pair->cachedRbA = rbA;
-    pair->cachedRbB = rbB;
-
     if (response == Collision::KINEMATIC)
     {
         removeContactFromPersistentIsland(pair);
         membership(kinematicSolverPairs, pair, &ColliderPair::kinematicSolverIndex, true);
+        pair->cachedRbA = rbA;
+        pair->cachedRbB = rbB;
         return;
     }
 
@@ -355,6 +354,8 @@ void PhysicsManager::updatePersistentIslandContact(ColliderPair *pair, bool solv
     if (!dynA && !dynB)
     {
         removeContactFromPersistentIsland(pair);
+        pair->cachedRbA = nullptr;
+        pair->cachedRbB = nullptr;
         return;
     }
 
@@ -365,6 +366,8 @@ void PhysicsManager::updatePersistentIslandContact(ColliderPair *pair, bool solv
         const bool matchB = !dynB || rbB->solverIslandId == existingId;
         if (matchA && matchB)
         {
+            pair->cachedRbA = rbA;
+            pair->cachedRbB = rbB;
             if ((rbA != nullptr && rbA->getIsSleeping()) || (rbB != nullptr && rbB->getIsSleeping()))
             {
                 persistentIslands[static_cast<size_t>(existingId)].hasSleepingEndpoint = true;
@@ -416,6 +419,8 @@ void PhysicsManager::updatePersistentIslandContact(ColliderPair *pair, bool solv
     }
 
     PersistentIsland &island = persistentIslands[static_cast<size_t>(targetId)];
+    pair->cachedRbA = rbA;
+    pair->cachedRbB = rbB;
     pair->solverIslandId = targetId;
     pair->solverIslandContactIndex = static_cast<uint32_t>(island.contacts.size());
     island.contacts.push_back(pair);
@@ -464,8 +469,7 @@ void PhysicsManager::splitPersistentIsland(int32_t islandId)
 
     for (const ColliderPair *pair : island.contacts)
     {
-        auto *rbA = pair->getObjectA()->getAttachedRigidbody();
-        auto *rbB = pair->getObjectB()->getAttachedRigidbody();
+        const auto [rbA, rbB] = pairRigidbodies(pair);
         if (rbA != nullptr && rbB != nullptr && rbA->solverIslandId == islandId && rbB->solverIslandId == islandId)
         {
             const uint32_t u = static_cast<uint32_t>(rbA->solverIslandBodyIndex);
@@ -532,8 +536,7 @@ void PhysicsManager::splitPersistentIsland(int32_t islandId)
     for (size_t i = 0; i < splitRemainingContacts.size(); ++i)
     {
         const ColliderPair *pair = splitRemainingContacts[i];
-        auto *rbA = pair->getObjectA()->getAttachedRigidbody();
-        auto *rbB = pair->getObjectB()->getAttachedRigidbody();
+        const auto [rbA, rbB] = pairRigidbodies(pair);
         int32_t comp = -1;
         if (rbA != nullptr && rbA->solverIslandId == islandId)
         {
@@ -631,8 +634,7 @@ void PhysicsManager::splitPersistentIsland(int32_t islandId)
             target.contacts.push_back(pair);
             if (hadSleeping)
             {
-                auto *rbA = pair->getObjectA()->getAttachedRigidbody();
-                auto *rbB = pair->getObjectB()->getAttachedRigidbody();
+                const auto [rbA, rbB] = pairRigidbodies(pair);
                 if ((rbA != nullptr && rbA->getIsSleeping()) || (rbB != nullptr && rbB->getIsSleeping()))
                 {
                     target.hasSleepingEndpoint = true;
@@ -643,6 +645,8 @@ void PhysicsManager::splitPersistentIsland(int32_t islandId)
         {
             pair->solverIslandId = -1;
             pair->solverIslandContactIndex = ColliderPair::INVALID_INDEX;
+            pair->cachedRbA = nullptr;
+            pair->cachedRbB = nullptr;
         }
     }
 

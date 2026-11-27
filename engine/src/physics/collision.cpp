@@ -19,21 +19,37 @@ Collision::Collision(Collider *colliderA, Collider *colliderB)
 
 void Collision::setContactPoints(const ClipPoints &newContactPoints)
 {
-    ClipPointsWithData contactPointsWithData;
+    const size_t oldCount = contactPoints.count;
+    const uint32_t oldKey0 = oldCount > 0 ? contactPoints.points[0].point.feature.key : 0;
+    const float oldN0 = oldCount > 0 ? contactPoints.points[0].accumulatedNormalImpulse : 0.0f;
+    const float oldT0 = oldCount > 0 ? contactPoints.points[0].accumulatedTangentImpulse : 0.0f;
+    const uint32_t oldKey1 = oldCount > 1 ? contactPoints.points[1].point.feature.key : 0;
+    const float oldN1 = oldCount > 1 ? contactPoints.points[1].accumulatedNormalImpulse : 0.0f;
+    const float oldT1 = oldCount > 1 ? contactPoints.points[1].accumulatedTangentImpulse : 0.0f;
+
     for (size_t i = 0; i < newContactPoints.count; ++i)
     {
-        size_t index = contactPoints.findIndex(newContactPoints.points[i].feature);
-        contactPointsWithData.points[i] = ClipPointWithData(newContactPoints.points[i]);
-        if (index != SIZE_MAX)
+        ClipPointWithData &dst = contactPoints.points[i];
+        dst.point = newContactPoints.points[i];
+        dst.separation = 0.0f;
+        const uint32_t key = dst.point.feature.key;
+        if (oldCount > 0 && key == oldKey0)
         {
-            contactPointsWithData.points[i].accumulatedNormalImpulse =
-                contactPoints.points[index].accumulatedNormalImpulse;
-            contactPointsWithData.points[i].accumulatedTangentImpulse =
-                contactPoints.points[index].accumulatedTangentImpulse;
+            dst.accumulatedNormalImpulse = oldN0;
+            dst.accumulatedTangentImpulse = oldT0;
+        }
+        else if (oldCount > 1 && key == oldKey1)
+        {
+            dst.accumulatedNormalImpulse = oldN1;
+            dst.accumulatedTangentImpulse = oldT1;
+        }
+        else
+        {
+            dst.accumulatedNormalImpulse = 0.0f;
+            dst.accumulatedTangentImpulse = 0.0f;
         }
     }
-    contactPointsWithData.count = newContactPoints.count;
-    this->contactPoints = contactPointsWithData;
+    contactPoints.count = newContactPoints.count;
 }
 
 Collision::CollisionType Collision::getResolutionType() const

@@ -369,6 +369,8 @@ void PhysicsManager::clearAll()
     solverBodyLocalIndices.clear();
     solverBodyStates.clear();
     solverBodyForces.clear();
+    solverBodyPrep.clear();
+    solverKinematicBodies.clear();
     solverBodyDeltas.clear();
     solverStep = 0;
     solverTouchedWritableBodies.clear();

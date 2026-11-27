@@ -1,6 +1,5 @@
 #pragma once
 
-#include <bit>
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
@@ -125,94 +124,6 @@ inline void clearWideLane(WideConstraint8 &out, WideConstraint8Cold &cold, size_
     cold.restitution[lane] = 0.0f;
 }
 
-template <typename ConstraintT>
-inline void packWideLane(WideConstraint8 &out, WideConstraint8Cold &cold, size_t lane, const ConstraintT *c,
-                         float invMA = 0.0f, float invIA = 0.0f, float invMB = 0.0f, float invIB = 0.0f,
-                         float restitutionThreshold = 0.0f) noexcept
-{
-    if (c == nullptr || c->pointCount == 0)
-    {
-        clearWideLane(out, cold, lane);
-        return;
-    }
-
-    out.bodyIndexA[lane] = c->bodyIndexA;
-    out.bodyIndexB[lane] = c->bodyIndexB;
-    cold.contactPoints[lane] = c->contactPoints;
-    cold.pointCount[lane] = c->pointCount;
-
-    const float nX = c->normal.x();
-    const float nY = c->normal.y();
-    out.normalX[lane] = nX;
-    out.normalY[lane] = nY;
-
-    const float rAx0 = c->rA[0].x();
-    const float rAy0 = c->rA[0].y();
-    const float rBx0 = c->rB[0].x();
-    const float rBy0 = c->rB[0].y();
-    out.rnA0[lane] = rAx0 * nY - rAy0 * nX;
-    out.rnB0[lane] = rBx0 * nY - rBy0 * nX;
-    out.rtA0[lane] = rAx0 * nX + rAy0 * nY;
-    out.rtB0[lane] = rBx0 * nX + rBy0 * nY;
-    out.massNormal0[lane] = c->massNormal[0];
-    out.massTangent0[lane] = c->massTangent[0];
-    out.baseSep0[lane] = c->baseSeparation[0];
-    out.accumNormal0[lane] = c->accumulatedNormalImpulse[0];
-    out.accumTangent0[lane] = c->accumulatedTangentImpulse[0];
-    cold.relVel0[lane] = c->relativeVelocity[0];
-
-    if (c->pointCount == 2)
-    {
-        const float rAx1 = c->rA[1].x();
-        const float rAy1 = c->rA[1].y();
-        const float rBx1 = c->rB[1].x();
-        const float rBy1 = c->rB[1].y();
-        out.rnA1[lane] = rAx1 * nY - rAy1 * nX;
-        out.rnB1[lane] = rBx1 * nY - rBy1 * nX;
-        out.rtA1[lane] = rAx1 * nX + rAy1 * nY;
-        out.rtB1[lane] = rBx1 * nX + rBy1 * nY;
-        out.massNormal1[lane] = c->massNormal[1];
-        out.massTangent1[lane] = c->massTangent[1];
-        out.baseSep1[lane] = c->baseSeparation[1];
-        out.accumNormal1[lane] = c->accumulatedNormalImpulse[1];
-        out.accumTangent1[lane] = c->accumulatedTangentImpulse[1];
-        cold.relVel1[lane] = c->relativeVelocity[1];
-        out.twoPointMask |= static_cast<uint8_t>(1u << lane);
-    }
-    else
-    {
-        out.rnA1[lane] = 0.0f;
-        out.rnB1[lane] = 0.0f;
-        out.rtA1[lane] = 0.0f;
-        out.rtB1[lane] = 0.0f;
-        out.massNormal1[lane] = 0.0f;
-        out.massTangent1[lane] = 0.0f;
-        out.baseSep1[lane] = 0.0f;
-        out.accumNormal1[lane] = 0.0f;
-        out.accumTangent1[lane] = 0.0f;
-        cold.relVel1[lane] = 0.0f;
-    }
-
-    out.friction[lane] = c->solverFriction;
-    cold.restitution[lane] = c->solverRestitution;
-    if (c->solverRestitution > 0.0f &&
-        (c->relativeVelocity[0] < -restitutionThreshold ||
-         (c->pointCount == 2 && c->relativeVelocity[1] < -restitutionThreshold)))
-    {
-        out.restitutionMask |= static_cast<uint8_t>(1u << lane);
-    }
-    out.invIA[lane] = invIA;
-    out.invIB[lane] = invIB;
-    if (invMA != 0.0f || invIA != 0.0f)
-    {
-        out.writeMaskA |= static_cast<uint8_t>(1u << lane);
-    }
-    if (invMB != 0.0f || invIB != 0.0f)
-    {
-        out.writeMaskB |= static_cast<uint8_t>(1u << lane);
-    }
-}
-
 inline void storeWideImpulses(const WideConstraint8 &wide, const WideConstraint8Cold &cold) noexcept
 {
     for (size_t lane = 0; lane < 8; ++lane)
@@ -235,6 +146,17 @@ inline void storeWideImpulses(const WideConstraint8 &wide, const WideConstraint8
 
 #if PLATFORMATOR_HAS_RUNTIME_AVX2
 
+__attribute__((target("avx2,fma"))) inline __m256 invEffectiveMass8AVX2(const float *armA, const float *armB,
+                                                                        __m256 invMSum, __m256 invIA, __m256 invIB,
+                                                                        __m256 zero, __m256 one) noexcept
+{
+    const __m256 rA = _mm256_load_ps(armA);
+    const __m256 rB = _mm256_load_ps(armB);
+    const __m256 k = _mm256_fmadd_ps(invIB, _mm256_mul_ps(rB, rB),
+                                     _mm256_fmadd_ps(invIA, _mm256_mul_ps(rA, rA), invMSum));
+    return _mm256_and_ps(_mm256_cmp_ps(k, zero, _CMP_GT_OQ), _mm256_div_ps(one, k));
+}
+
 template <typename BodyStateT>
 __attribute__((target("avx2,fma"))) inline void finalizeWideEffectiveMasses8AVX2(WideConstraint8 &c,
                                                                                  const BodyStateT *bodies) noexcept
@@ -253,43 +175,19 @@ __attribute__((target("avx2,fma"))) inline void finalizeWideEffectiveMasses8AVX2
     const __m256 zero = _mm256_setzero_ps();
     const __m256 one = _mm256_set1_ps(1.0f);
 
-    {
-        const __m256 rnA = _mm256_load_ps(c.rnA0);
-        const __m256 rnB = _mm256_load_ps(c.rnB0);
-        const __m256 kN = _mm256_fmadd_ps(invIB, _mm256_mul_ps(rnB, rnB),
-                                          _mm256_fmadd_ps(invIA, _mm256_mul_ps(rnA, rnA), invMSum));
-        const __m256 mN = _mm256_and_ps(_mm256_cmp_ps(kN, zero, _CMP_GT_OQ), _mm256_div_ps(one, kN));
-        _mm256_store_ps(c.massNormal0, mN);
-
-        const __m256 rtA = _mm256_load_ps(c.rtA0);
-        const __m256 rtB = _mm256_load_ps(c.rtB0);
-        const __m256 kT = _mm256_fmadd_ps(invIB, _mm256_mul_ps(rtB, rtB),
-                                          _mm256_fmadd_ps(invIA, _mm256_mul_ps(rtA, rtA), invMSum));
-        const __m256 mT = _mm256_and_ps(_mm256_cmp_ps(kT, zero, _CMP_GT_OQ), _mm256_div_ps(one, kT));
-        _mm256_store_ps(c.massTangent0, mT);
-    }
+    _mm256_store_ps(c.massNormal0, invEffectiveMass8AVX2(c.rnA0, c.rnB0, invMSum, invIA, invIB, zero, one));
+    _mm256_store_ps(c.massTangent0, invEffectiveMass8AVX2(c.rtA0, c.rtB0, invMSum, invIA, invIB, zero, one));
 
     if (c.twoPointMask != 0)
     {
         const __m256i bits = _mm256_setr_epi32(1, 2, 4, 8, 16, 32, 64, 128);
         const __m256 active2 = _mm256_castsi256_ps(
             _mm256_cmpeq_epi32(_mm256_and_si256(_mm256_set1_epi32(c.twoPointMask), bits), bits));
-
-        const __m256 rnA = _mm256_load_ps(c.rnA1);
-        const __m256 rnB = _mm256_load_ps(c.rnB1);
-        const __m256 kN = _mm256_fmadd_ps(invIB, _mm256_mul_ps(rnB, rnB),
-                                          _mm256_fmadd_ps(invIA, _mm256_mul_ps(rnA, rnA), invMSum));
-        const __m256 mN =
-            _mm256_and_ps(active2, _mm256_and_ps(_mm256_cmp_ps(kN, zero, _CMP_GT_OQ), _mm256_div_ps(one, kN)));
-        _mm256_store_ps(c.massNormal1, mN);
-
-        const __m256 rtA = _mm256_load_ps(c.rtA1);
-        const __m256 rtB = _mm256_load_ps(c.rtB1);
-        const __m256 kT = _mm256_fmadd_ps(invIB, _mm256_mul_ps(rtB, rtB),
-                                          _mm256_fmadd_ps(invIA, _mm256_mul_ps(rtA, rtA), invMSum));
-        const __m256 mT =
-            _mm256_and_ps(active2, _mm256_and_ps(_mm256_cmp_ps(kT, zero, _CMP_GT_OQ), _mm256_div_ps(one, kT)));
-        _mm256_store_ps(c.massTangent1, mT);
+        _mm256_store_ps(c.massNormal1,
+                        _mm256_and_ps(active2, invEffectiveMass8AVX2(c.rnA1, c.rnB1, invMSum, invIA, invIB, zero, one)));
+        _mm256_store_ps(
+            c.massTangent1,
+            _mm256_and_ps(active2, invEffectiveMass8AVX2(c.rtA1, c.rtB1, invMSum, invIA, invIB, zero, one)));
     }
 }
 

@@ -22,17 +22,18 @@ bool PhysicsManager::solveColoredIsland(PersistentIsland &island, const SoftStep
 
     solverBodyStates.clear();
     solverBodyForces.clear();
+    solverBodyPrep.clear();
+    solverKinematicBodies.clear();
     solverTouchedWritableBodies.clear();
     if (solverBodyStates.capacity() < island.bodies.size() + 1)
     {
         solverBodyStates.reserve(island.bodies.size() + 1);
-    }
-    if (solverBodyForces.capacity() < island.bodies.size() + 1)
-    {
         solverBodyForces.reserve(island.bodies.size() + 1);
+        solverBodyPrep.reserve(island.bodies.size() + 1);
     }
     solverBodyStates.push_back(SolverBodyState{}); // slot 0: static/sleeping read-only
     solverBodyForces.push_back(SolverBodyForce{});
+    solverBodyPrep.push_back(BodyPrepCache{});
 
     ScopedSolverBodyMapGuard mapGuard{solverBodyLocalIndices, solverTouchedWritableBodies};
 
@@ -51,10 +52,9 @@ bool PhysicsManager::solveColoredIsland(PersistentIsland &island, const SoftStep
         if (mapped == UNMAPPED_SOLVER_BODY)
         {
             mapped = static_cast<uint32_t>(solverBodyStates.size());
-            const auto &v = rb->getVelocity();
-            solverBodyStates.push_back(SolverBodyState{v.x(), v.y(), rb->getAngularVelocity(), rb->getInverseMass(),
-                                                       0.0f, 0.0f, 0.0f, rb->getInverseMomentOfInertia()});
+            solverBodyStates.push_back(makeDynamicBodyState(rb));
             solverBodyForces.push_back(makeBodyForce(rb));
+            solverBodyPrep.push_back(makeBodyPrepCache(rb));
             solverTouchedWritableBodies.push_back(WritableSolverBody{regIdx, mapped, rb});
         }
     }
@@ -113,7 +113,7 @@ bool PhysicsManager::solveColoredIsland(PersistentIsland &island, const SoftStep
             tailOut.clear();
             bool localRestitution = false;
 
-            const auto emitBatch = [&](const SolverConstraint *batch, size_t count) {
+            const auto emitBatch = [&](const SolverPreStepJob *batch, size_t count) {
                 if (count == 0)
                 {
                     return;
@@ -122,7 +122,10 @@ bool PhysicsManager::solveColoredIsland(PersistentIsland &island, const SoftStep
                 {
                     for (size_t i = 0; i < count; ++i)
                     {
-                        tailOut.push_back(batch[i]);
+                        tailOut.emplace_back();
+                        SolverConstraint &sc = tailOut.back();
+                        prepareSolverConstraint(batch[i], params, sc);
+                        localRestitution |= constraintHasActiveRestitution(sc, params.restitutionThreshold);
                     }
                     return;
                 }
@@ -135,17 +138,17 @@ bool PhysicsManager::solveColoredIsland(PersistentIsland &island, const SoftStep
                 {
                     if (lane < count)
                     {
-                        const SolverConstraint &sc = batch[lane];
-                        const SolverBodyState &bA = solverBodyStates[sc.bodyIndexA];
-                        const SolverBodyState &bB = solverBodyStates[sc.bodyIndexB];
-                        packWideLane(wide, cold, lane, &sc, bA.inverseMass, bA.inverseMomentOfInertia, bB.inverseMass,
-                                     bB.inverseMomentOfInertia, params.restitutionThreshold);
+                        const SolverPreStepJob &job = batch[lane];
+                        localRestitution |= packWideContactLane(
+                            wide, cold, lane, job.collision, job.rbA, job.rbB, job.bodyIndexA, job.bodyIndexB,
+                            solverBodyStates.data(), solverBodyForces.data(), solverBodyPrep.data(), params);
                     }
                     else
                     {
-                        packWideLane<SolverConstraint>(wide, cold, lane, nullptr);
+                        clearWideLane(wide, cold, lane);
                     }
                 }
+                finalizeWideEffectiveMasses8AVX2(wide, solverBodyStates.data());
             };
 
             if (pairs.size() >= 4 && wideOut.capacity() < (pairs.size() + 7) / 8 + 1)
@@ -153,18 +156,27 @@ bool PhysicsManager::solveColoredIsland(PersistentIsland &island, const SoftStep
                 wideOut.reserve((pairs.size() + 7) / 8 + 1);
                 coldOut.reserve((pairs.size() + 7) / 8 + 1);
             }
-            SolverConstraint twoPointBatch[8];
-            SolverConstraint onePointBatch[8];
+            SolverPreStepJob twoPointBatch[8];
+            SolverPreStepJob onePointBatch[8];
             size_t twoPointCount = 0;
             size_t onePointCount = 0;
-            SolverConstraint tmp;
 
-            for (ColliderPair *pair : pairs)
+            const size_t pairCount = pairs.size();
+            for (size_t i = 0; i < pairCount; ++i)
             {
+                if (i + 4 < pairCount)
+                {
+                    __builtin_prefetch(pairs[i + 4], 0, 1);
+                }
                 Collision *collision = nullptr;
                 Rigidbody *rbA = nullptr;
                 Rigidbody *rbB = nullptr;
-                if (!extractSolverPair(pair, collision, rbA, rbB))
+                if (!extractSolverPair(pairs[i], collision, rbA, rbB))
+                {
+                    continue;
+                }
+                const size_t pointCount = collision->getContactPoints().count;
+                if (pointCount == 0)
                 {
                     continue;
                 }
@@ -175,20 +187,19 @@ bool PhysicsManager::solveColoredIsland(PersistentIsland &island, const SoftStep
                     allMapped.store(false, std::memory_order_relaxed);
                     return;
                 }
-                prepareSolverConstraint(SolverPreStepJob{collision, rbA, rbB, idxA, idxB}, params, tmp);
-                localRestitution |= constraintHasActiveRestitution(tmp, params.restitutionThreshold);
-                if (tmp.pointCount == 2)
+                const SolverPreStepJob job{collision, rbA, rbB, idxA, idxB};
+                if (pointCount >= 2)
                 {
-                    twoPointBatch[twoPointCount++] = tmp;
+                    twoPointBatch[twoPointCount++] = job;
                     if (twoPointCount == 8)
                     {
                         emitBatch(twoPointBatch, 8);
                         twoPointCount = 0;
                     }
                 }
-                else if (tmp.pointCount == 1)
+                else
                 {
-                    onePointBatch[onePointCount++] = tmp;
+                    onePointBatch[onePointCount++] = job;
                     if (onePointCount == 8)
                     {
                         emitBatch(onePointBatch, 8);
@@ -400,12 +411,7 @@ bool PhysicsManager::solveColoredIsland(PersistentIsland &island, const SoftStep
         }
         if (hasMovingKinematic && rb->isMovingKinematic())
         {
-            const uint32_t slot = static_cast<uint32_t>(solverBodyStates.size());
-            const auto &v = rb->getVelocity();
-            solverBodyStates.push_back(SolverBodyState{v.x(), v.y(), rb->getAngularVelocity(), 0.0f, 0.0f, 0.0f, 0.0f,
-                                                       0.0f});
-            solverBodyForces.push_back(SolverBodyForce{});
-            return slot;
+            return findOrAddKinematicBody(rb, solverBodyStates, solverBodyForces, solverKinematicBodies);
         }
         return 0;
     };

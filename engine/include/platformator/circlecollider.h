@@ -29,7 +29,7 @@ class CircleCollider : public Collider
     float radius;
     float publishedRadius;
 
-    void updateCollider() override;
+    void updateCollider() final;
 };
 
 template <> struct ComponentTypeFor<CircleCollider>

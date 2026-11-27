@@ -671,8 +671,13 @@ void Grid::flushPendingCellUpdates()
 
 void Grid::flushPendingWork()
 {
+    const size_t opCount = pendingColliderOperations.size();
     std::atomic<bool> anyStructuralWork{false};
-    forEachIndexParallelOrSerial(pendingColliderOperations.size(), GRID_GEOMETRY_PREP_PARALLEL_THRESHOLD, [&](size_t i) {
+    forEachIndexParallelOrSerial(opCount, GRID_GEOMETRY_PREP_PARALLEL_THRESHOLD, [&](size_t i) {
+        if (i + 4 < opCount)
+        {
+            __builtin_prefetch(pendingColliderOperations[i + 4], 0, 1);
+        }
         Collider *collider = pendingColliderOperations[i];
         const bool registered = collider->getIsRegisteredInGrid();
         if (collider->desiredInGrid && (!registered || (collider->dirty & Collider::Geometry)))
@@ -777,10 +782,7 @@ void Grid::flushPendingWork()
         responseDirtyColliders.clear();
     }
 
-    const size_t opCount = pendingColliderOperations.size();
-    const bool hasWorkers =
-        tbb::global_control::active_value(tbb::global_control::max_allowed_parallelism) > 1 &&
-        tbb::this_task_arena::max_concurrency() > 1;
+    const bool hasWorkers = PhysicsManager::hasParallelPhysicsWorkers();
     bool runPairQueueParallel = false;
     bool useUniformChunks = false;
     size_t totalAdjacentPairs = 0;
@@ -805,8 +807,13 @@ void Grid::flushPendingWork()
     }
     if (!runPairQueueParallel)
     {
-        for (auto *collider : pendingColliderOperations)
+        for (size_t i = 0; i < opCount; ++i)
         {
+            if (i + 4 < opCount)
+            {
+                __builtin_prefetch(pendingColliderOperations[i + 4], 0, 1);
+            }
+            Collider *collider = pendingColliderOperations[i];
             if (collider->desiredInGrid)
             {
                 queuePairsForCollider(collider);

@@ -7,8 +7,10 @@ namespace
 {
 bool isLiveContact(const ColliderPair *pair) noexcept
 {
-    return pair->getCollision() != nullptr && !pair->getObjectA()->isRetired() && !pair->getObjectB()->isRetired() &&
-           pair->getObjectA()->getGameObject()->getActive() && pair->getObjectB()->getGameObject()->getActive();
+    const Collider *a = pair->getObjectA();
+    const Collider *b = pair->getObjectB();
+    return pair->getCollision() != nullptr && !a->isRetired() && !b->isRetired() && a->getIsOwnerActive() &&
+           b->getIsOwnerActive();
 }
 } // namespace
 

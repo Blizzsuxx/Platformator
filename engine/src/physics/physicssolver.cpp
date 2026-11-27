@@ -1,5 +1,4 @@
 #include "physics/physicsmanager.h"
-#include "physics/physicsgeometry.h"
 
 #include "benchmark/benchmark.h"
 #include "benchmark/workprobe.h"
@@ -16,23 +15,6 @@
 #include <cmath>
 #include <cstdint>
 #include <numbers>
-
-namespace
-{
-inline void applyLocalImpulse(Eigen::Vector2f &velocity, float &angularVelocity, float inverseMass,
-                              float inverseMomentOfInertia, const Eigen::Vector2f &impulse,
-                              const Eigen::Vector2f &arm) noexcept
-{
-    velocity += impulse * inverseMass;
-    angularVelocity += inverseMomentOfInertia * (arm.x() * impulse.y() - arm.y() * impulse.x());
-}
-
-inline Eigen::Vector2f relativeContactVelocity(const Eigen::Vector2f &vA, float wA, const Eigen::Vector2f &rA,
-                                               const Eigen::Vector2f &vB, float wB, const Eigen::Vector2f &rB) noexcept
-{
-    return (vB + physics_geometry::crossSV(wB, rB)) - (vA + physics_geometry::crossSV(wA, rA));
-}
-} // namespace
 
 // ============================================================================
 // Soft Step Parameters, Entry Points & Body Integration Helpers
@@ -204,23 +186,7 @@ void PhysicsManager::solvePersistentIsland(const PersistentIsland &island, const
     const auto mapBody = [&](Rigidbody *rb) -> uint32_t {
         if (!rb->isAwakeDynamic())
         {
-            if (rb->isMovingKinematic())
-            {
-                for (const auto &[kinBody, kinSlot] : kinematics)
-                {
-                    if (kinBody == rb)
-                    {
-                        return kinSlot;
-                    }
-                }
-                const uint32_t localIdx = static_cast<uint32_t>(bodies.size());
-                const auto &v = rb->getVelocity();
-                bodies.push_back(SolverBodyState{v.x(), v.y(), rb->getAngularVelocity(), 0.0f, 0.0f, 0.0f, 0.0f, 0.0f});
-                bodyForces.push_back(SolverBodyForce{});
-                kinematics.emplace_back(rb, localIdx);
-                return localIdx;
-            }
-            return 0;
+            return rb->isMovingKinematic() ? findOrAddKinematicBody(rb, bodies, bodyForces, kinematics) : 0u;
         }
         if (rb->solverIslandId == island.id && rb->solverIslandBodyIndex < localIndices.size())
         {
@@ -228,9 +194,7 @@ void PhysicsManager::solvePersistentIsland(const PersistentIsland &island, const
             if (mapped == UNMAPPED_SOLVER_BODY)
             {
                 mapped = static_cast<uint32_t>(bodies.size());
-                const auto &v = rb->getVelocity();
-                bodies.push_back(SolverBodyState{v.x(), v.y(), rb->getAngularVelocity(), rb->getInverseMass(), 0.0f,
-                                                 0.0f, 0.0f, rb->getInverseMomentOfInertia()});
+                bodies.push_back(makeDynamicBodyState(rb));
                 bodyForces.push_back(makeBodyForce(rb));
                 writable.push_back(WritableSolverBody{rb->getPhysicsManagerIndex(), mapped, rb});
             }
@@ -244,9 +208,7 @@ void PhysicsManager::solvePersistentIsland(const PersistentIsland &island, const
             }
         }
         const uint32_t localIdx = static_cast<uint32_t>(bodies.size());
-        const auto &v = rb->getVelocity();
-        bodies.push_back(SolverBodyState{v.x(), v.y(), rb->getAngularVelocity(), rb->getInverseMass(), 0.0f, 0.0f, 0.0f,
-                                         rb->getInverseMomentOfInertia()});
+        bodies.push_back(makeDynamicBodyState(rb));
         bodyForces.push_back(makeBodyForce(rb));
         writable.push_back(WritableSolverBody{SIZE_MAX, localIdx, rb});
         return localIdx;
@@ -304,6 +266,154 @@ void PhysicsManager::solvePersistentIsland(const PersistentIsland &island, const
 // ============================================================================
 // 8-Wide AVX2 Independent Island-Group Soft Step Solver (Zero-Barrier Substeps)
 // ============================================================================
+
+bool PhysicsManager::packWideContactLane(platformator_solver_simd::WideConstraint8 &wide,
+                                         platformator_solver_simd::WideConstraint8Cold &cold, size_t lane,
+                                         Collision *collision, const Rigidbody *rbA, const Rigidbody *rbB,
+                                         uint32_t idxA, uint32_t idxB, const SolverBodyState *bodies,
+                                         const SolverBodyForce *bodyForces, const BodyPrepCache *bodyPrep,
+                                         const SoftStepParams &params) noexcept
+{
+    ClipPointsWithData &contactPoints = collision->getContactPoints();
+    const uint8_t pointCount = static_cast<uint8_t>(std::min<size_t>(contactPoints.count, 2));
+    if (pointCount == 0)
+    {
+        platformator_solver_simd::clearWideLane(wide, cold, lane);
+        return false;
+    }
+
+    const uint8_t laneBit = static_cast<uint8_t>(1u << lane);
+    const SolverBodyState &bA = bodies[idxA];
+    const SolverBodyState &bB = bodies[idxB];
+    const float posAx = idxA != 0 ? bodyPrep[idxA].posX : 0.0f;
+    const float posAy = idxA != 0 ? bodyPrep[idxA].posY : 0.0f;
+    const float posBx = idxB != 0 ? bodyPrep[idxB].posX : 0.0f;
+    const float posBy = idxB != 0 ? bodyPrep[idxB].posY : 0.0f;
+    const float frictionA = idxA != 0 ? bodyPrep[idxA].friction : rbA->getFriction();
+    const float frictionB = idxB != 0 ? bodyPrep[idxB].friction : rbB->getFriction();
+    const float restitutionA = idxA != 0 ? bodyPrep[idxA].restitution : rbA->getRestitution();
+    const float restitutionB = idxB != 0 ? bodyPrep[idxB].restitution : rbB->getRestitution();
+    const float combinedFriction = (frictionA == frictionB) ? frictionA : std::sqrt(frictionA * frictionB);
+    const float combinedRestitution = std::max(restitutionA, restitutionB);
+
+    const Eigen::Vector2f &normal = collision->getNormal();
+    const float nX = normal.x();
+    const float nY = normal.y();
+
+    wide.bodyIndexA[lane] = idxA;
+    wide.bodyIndexB[lane] = idxB;
+    wide.normalX[lane] = nX;
+    wide.normalY[lane] = nY;
+    wide.friction[lane] = combinedFriction;
+    wide.invIA[lane] = bA.inverseMomentOfInertia;
+    wide.invIB[lane] = bB.inverseMomentOfInertia;
+    if (bA.inverseMass != 0.0f || bA.inverseMomentOfInertia != 0.0f)
+    {
+        wide.writeMaskA |= laneBit;
+    }
+    if (bB.inverseMass != 0.0f || bB.inverseMomentOfInertia != 0.0f)
+    {
+        wide.writeMaskB |= laneBit;
+    }
+
+    cold.contactPoints[lane] = &contactPoints;
+    cold.pointCount[lane] = pointCount;
+    cold.restitution[lane] = combinedRestitution;
+
+    const ClipPointWithData &cp0 = contactPoints.points[0];
+    const float p0x = cp0.point.point.x();
+    const float p0y = cp0.point.point.y();
+    const float rAx0 = idxA != 0 ? (p0x - posAx) : 0.0f;
+    const float rAy0 = idxA != 0 ? (p0y - posAy) : 0.0f;
+    const float rBx0 = idxB != 0 ? (p0x - posBx) : 0.0f;
+    const float rBy0 = idxB != 0 ? (p0y - posBy) : 0.0f;
+    const float rnA0 = rAx0 * nY - rAy0 * nX;
+    const float rnB0 = rBx0 * nY - rBy0 * nX;
+    wide.rnA0[lane] = rnA0;
+    wide.rnB0[lane] = rnB0;
+    wide.rtA0[lane] = rAx0 * nX + rAy0 * nY;
+    wide.rtB0[lane] = rBx0 * nX + rBy0 * nY;
+    wide.baseSep0[lane] = cp0.separation;
+    wide.accumNormal0[lane] = cp0.accumulatedNormalImpulse;
+    wide.accumTangent0[lane] = cp0.accumulatedTangentImpulse;
+
+    float rnA1 = 0.0f;
+    float rnB1 = 0.0f;
+    if (pointCount == 2)
+    {
+        const ClipPointWithData &cp1 = contactPoints.points[1];
+        const float p1x = cp1.point.point.x();
+        const float p1y = cp1.point.point.y();
+        const float rAx1 = idxA != 0 ? (p1x - posAx) : 0.0f;
+        const float rAy1 = idxA != 0 ? (p1y - posAy) : 0.0f;
+        const float rBx1 = idxB != 0 ? (p1x - posBx) : 0.0f;
+        const float rBy1 = idxB != 0 ? (p1y - posBy) : 0.0f;
+        rnA1 = rAx1 * nY - rAy1 * nX;
+        rnB1 = rBx1 * nY - rBy1 * nX;
+        wide.rnA1[lane] = rnA1;
+        wide.rnB1[lane] = rnB1;
+        wide.rtA1[lane] = rAx1 * nX + rAy1 * nY;
+        wide.rtB1[lane] = rBx1 * nX + rBy1 * nY;
+        wide.baseSep1[lane] = cp1.separation;
+        wide.accumNormal1[lane] = cp1.accumulatedNormalImpulse;
+        wide.accumTangent1[lane] = cp1.accumulatedTangentImpulse;
+        wide.twoPointMask |= laneBit;
+    }
+    else
+    {
+        wide.rnA1[lane] = 0.0f;
+        wide.rnB1[lane] = 0.0f;
+        wide.rtA1[lane] = 0.0f;
+        wide.rtB1[lane] = 0.0f;
+        wide.massNormal1[lane] = 0.0f;
+        wide.massTangent1[lane] = 0.0f;
+        wide.baseSep1[lane] = 0.0f;
+        wide.accumNormal1[lane] = 0.0f;
+        wide.accumTangent1[lane] = 0.0f;
+    }
+
+    if (combinedRestitution > 0.0f)
+    {
+        float vAx = bA.vx;
+        float vAy = bA.vy;
+        float wA = bA.w;
+        float vBx = bB.vx;
+        float vBy = bB.vy;
+        float wB = bB.w;
+        const float h = params.h;
+        if (h > 0.0f)
+        {
+            if (bodyForces[idxA].isDynamic)
+            {
+                vAx += bodyForces[idxA].accelX * h;
+                vAy += bodyForces[idxA].accelY * h;
+                wA += bodyForces[idxA].angAccel * h;
+            }
+            if (bodyForces[idxB].isDynamic)
+            {
+                vBx += bodyForces[idxB].accelX * h;
+                vBy += bodyForces[idxB].accelY * h;
+                wB += bodyForces[idxB].angAccel * h;
+            }
+        }
+        const float dvN = (vBx - vAx) * nX + (vBy - vAy) * nY;
+        const float rv0 = dvN + wB * rnB0 - wA * rnA0;
+        cold.relVel0[lane] = rv0;
+        const float rv1 = pointCount == 2 ? (dvN + wB * rnB1 - wA * rnA1) : 0.0f;
+        cold.relVel1[lane] = rv1;
+        if (rv0 < -params.restitutionThreshold || (pointCount == 2 && rv1 < -params.restitutionThreshold))
+        {
+            wide.restitutionMask |= laneBit;
+            return true;
+        }
+    }
+    else
+    {
+        cold.relVel0[lane] = 0.0f;
+        cold.relVel1[lane] = 0.0f;
+    }
+    return false;
+}
 
 bool PhysicsManager::solvePersistentIslandGroup8(const int32_t *islandIds, size_t groupSize,
                                                  const SoftStepParams &params, IslandSolverScratch &scratch)
@@ -365,12 +475,9 @@ bool PhysicsManager::solvePersistentIslandGroup8(const int32_t *islandIds, size_
             }
             const uint32_t mapped = static_cast<uint32_t>(bodies.size());
             localIndices[bodyBase + bi] = mapped;
-            const auto &v = rb->getVelocity();
-            bodies.push_back(SolverBodyState{v.x(), v.y(), rb->getAngularVelocity(), rb->getInverseMass(), 0.0f, 0.0f,
-                                             0.0f, rb->getInverseMomentOfInertia()});
+            bodies.push_back(makeDynamicBodyState(rb));
             bodyForces.push_back(makeBodyForce(rb));
-            const auto &pos = rb->getGameObject()->worldPosition;
-            bodyPrep.push_back(BodyPrepCache{pos.x(), pos.y(), rb->getFriction(), rb->getRestitution()});
+            bodyPrep.push_back(makeBodyPrepCache(rb));
             writable.push_back(WritableSolverBody{rb->getPhysicsManagerIndex(), mapped, rb});
         }
     }
@@ -379,25 +486,7 @@ bool PhysicsManager::solvePersistentIslandGroup8(const int32_t *islandIds, size_
     const auto mapBody = [&](const PersistentIsland &island, size_t bodyBase, Rigidbody *rb) -> uint32_t {
         if (!rb->isAwakeDynamic())
         {
-            if (rb->isMovingKinematic())
-            {
-                for (const auto &[kinBody, kinSlot] : kinematics)
-                {
-                    if (kinBody == rb)
-                    {
-                        return kinSlot;
-                    }
-                }
-                const uint32_t localIdx = static_cast<uint32_t>(bodies.size());
-                const auto &v = rb->getVelocity();
-                bodies.push_back(SolverBodyState{v.x(), v.y(), rb->getAngularVelocity(), 0.0f, 0.0f, 0.0f, 0.0f, 0.0f});
-                bodyForces.push_back(SolverBodyForce{});
-                const auto &pos = rb->getGameObject()->worldPosition;
-                bodyPrep.push_back(BodyPrepCache{pos.x(), pos.y(), rb->getFriction(), rb->getRestitution()});
-                kinematics.emplace_back(rb, localIdx);
-                return localIdx;
-            }
-            return 0;
+            return rb->isMovingKinematic() ? findOrAddKinematicBody(rb, bodies, bodyForces, kinematics, &bodyPrep) : 0u;
         }
         if (rb->solverIslandId != island.id || rb->solverIslandBodyIndex >= island.bodies.size())
         {
@@ -455,8 +544,7 @@ bool PhysicsManager::solvePersistentIslandGroup8(const int32_t *islandIds, size_
             Collision *collision = nullptr;
             Rigidbody *rbA = nullptr;
             Rigidbody *rbB = nullptr;
-            ClipPointsWithData *contactPointsPtr = nullptr;
-            uint8_t pointCount = 0;
+            bool found = false;
 
             while (cursor < totalContacts)
             {
@@ -465,22 +553,14 @@ bool PhysicsManager::solvePersistentIslandGroup8(const int32_t *islandIds, size_
                     __builtin_prefetch(contacts[cursor + 4], 0, 1);
                 }
                 ColliderPair *pair = contacts[cursor++];
-                if (!extractSolverPair(pair, collision, rbA, rbB))
+                if (extractSolverPair(pair, collision, rbA, rbB) && collision->getContactPoints().count > 0)
                 {
-                    continue;
+                    found = true;
+                    break;
                 }
-                ClipPointsWithData &cp = collision->getContactPoints();
-                const uint8_t pc = static_cast<uint8_t>(std::min<size_t>(cp.count, 2));
-                if (pc == 0)
-                {
-                    continue;
-                }
-                contactPointsPtr = &cp;
-                pointCount = pc;
-                break;
             }
 
-            if (pointCount == 0)
+            if (!found)
             {
                 clearWideLane(wide, cold, lane);
                 continue;
@@ -495,135 +575,8 @@ bool PhysicsManager::solvePersistentIslandGroup8(const int32_t *islandIds, size_
                 return false;
             }
 
-            const uint8_t laneBit = static_cast<uint8_t>(1u << lane);
-            const SolverBodyState &bA = bodies[idxA];
-            const SolverBodyState &bB = bodies[idxB];
-            const float posAx = idxA != 0 ? bodyPrep[idxA].posX : 0.0f;
-            const float posAy = idxA != 0 ? bodyPrep[idxA].posY : 0.0f;
-            const float posBx = idxB != 0 ? bodyPrep[idxB].posX : 0.0f;
-            const float posBy = idxB != 0 ? bodyPrep[idxB].posY : 0.0f;
-            const float frictionA = idxA != 0 ? bodyPrep[idxA].friction : rbA->getFriction();
-            const float frictionB = idxB != 0 ? bodyPrep[idxB].friction : rbB->getFriction();
-            const float restitutionA = idxA != 0 ? bodyPrep[idxA].restitution : rbA->getRestitution();
-            const float restitutionB = idxB != 0 ? bodyPrep[idxB].restitution : rbB->getRestitution();
-            const float combinedFriction = (frictionA == frictionB) ? frictionA : std::sqrt(frictionA * frictionB);
-            const float combinedRestitution = std::max(restitutionA, restitutionB);
-
-            const Eigen::Vector2f &normal = collision->getNormal();
-            const float nX = normal.x();
-            const float nY = normal.y();
-
-            wide.bodyIndexA[lane] = idxA;
-            wide.bodyIndexB[lane] = idxB;
-            wide.normalX[lane] = nX;
-            wide.normalY[lane] = nY;
-            wide.friction[lane] = combinedFriction;
-            wide.invIA[lane] = bA.inverseMomentOfInertia;
-            wide.invIB[lane] = bB.inverseMomentOfInertia;
-            if (bA.inverseMass != 0.0f || bA.inverseMomentOfInertia != 0.0f)
-            {
-                wide.writeMaskA |= laneBit;
-            }
-            if (bB.inverseMass != 0.0f || bB.inverseMomentOfInertia != 0.0f)
-            {
-                wide.writeMaskB |= laneBit;
-            }
-
-            cold.contactPoints[lane] = contactPointsPtr;
-            cold.pointCount[lane] = pointCount;
-            cold.restitution[lane] = combinedRestitution;
-
-            const ClipPointWithData &cp0 = contactPointsPtr->points[0];
-            const float p0x = cp0.point.point.x();
-            const float p0y = cp0.point.point.y();
-            const float rAx0 = idxA != 0 ? (p0x - posAx) : 0.0f;
-            const float rAy0 = idxA != 0 ? (p0y - posAy) : 0.0f;
-            const float rBx0 = idxB != 0 ? (p0x - posBx) : 0.0f;
-            const float rBy0 = idxB != 0 ? (p0y - posBy) : 0.0f;
-            const float rnA0 = rAx0 * nY - rAy0 * nX;
-            const float rnB0 = rBx0 * nY - rBy0 * nX;
-            wide.rnA0[lane] = rnA0;
-            wide.rnB0[lane] = rnB0;
-            wide.rtA0[lane] = rAx0 * nX + rAy0 * nY;
-            wide.rtB0[lane] = rBx0 * nX + rBy0 * nY;
-            wide.baseSep0[lane] = cp0.separation;
-            wide.accumNormal0[lane] = cp0.accumulatedNormalImpulse;
-            wide.accumTangent0[lane] = cp0.accumulatedTangentImpulse;
-
-            float rnA1 = 0.0f;
-            float rnB1 = 0.0f;
-            if (pointCount == 2)
-            {
-                const ClipPointWithData &cp1 = contactPointsPtr->points[1];
-                const float p1x = cp1.point.point.x();
-                const float p1y = cp1.point.point.y();
-                const float rAx1 = idxA != 0 ? (p1x - posAx) : 0.0f;
-                const float rAy1 = idxA != 0 ? (p1y - posAy) : 0.0f;
-                const float rBx1 = idxB != 0 ? (p1x - posBx) : 0.0f;
-                const float rBy1 = idxB != 0 ? (p1y - posBy) : 0.0f;
-                rnA1 = rAx1 * nY - rAy1 * nX;
-                rnB1 = rBx1 * nY - rBy1 * nX;
-                wide.rnA1[lane] = rnA1;
-                wide.rnB1[lane] = rnB1;
-                wide.rtA1[lane] = rAx1 * nX + rAy1 * nY;
-                wide.rtB1[lane] = rBx1 * nX + rBy1 * nY;
-                wide.baseSep1[lane] = cp1.separation;
-                wide.accumNormal1[lane] = cp1.accumulatedNormalImpulse;
-                wide.accumTangent1[lane] = cp1.accumulatedTangentImpulse;
-                wide.twoPointMask |= laneBit;
-            }
-            else
-            {
-                wide.rnA1[lane] = 0.0f;
-                wide.rnB1[lane] = 0.0f;
-                wide.rtA1[lane] = 0.0f;
-                wide.rtB1[lane] = 0.0f;
-                wide.massNormal1[lane] = 0.0f;
-                wide.massTangent1[lane] = 0.0f;
-                wide.baseSep1[lane] = 0.0f;
-                wide.accumNormal1[lane] = 0.0f;
-                wide.accumTangent1[lane] = 0.0f;
-            }
-
-            if (combinedRestitution > 0.0f)
-            {
-                float vAx = bA.vx;
-                float vAy = bA.vy;
-                float wA = bA.w;
-                float vBx = bB.vx;
-                float vBy = bB.vy;
-                float wB = bB.w;
-                if (h > 0.0f)
-                {
-                    if (bodyForces[idxA].isDynamic)
-                    {
-                        vAx += bodyForces[idxA].accelX * h;
-                        vAy += bodyForces[idxA].accelY * h;
-                        wA += bodyForces[idxA].angAccel * h;
-                    }
-                    if (bodyForces[idxB].isDynamic)
-                    {
-                        vBx += bodyForces[idxB].accelX * h;
-                        vBy += bodyForces[idxB].accelY * h;
-                        wB += bodyForces[idxB].angAccel * h;
-                    }
-                }
-                const float dvN = (vBx - vAx) * nX + (vBy - vAy) * nY;
-                const float rv0 = dvN + wB * rnB0 - wA * rnA0;
-                cold.relVel0[lane] = rv0;
-                const float rv1 = pointCount == 2 ? (dvN + wB * rnB1 - wA * rnA1) : 0.0f;
-                cold.relVel1[lane] = rv1;
-                if (rv0 < -params.restitutionThreshold || (pointCount == 2 && rv1 < -params.restitutionThreshold))
-                {
-                    wide.restitutionMask |= laneBit;
-                    anyRestitution = true;
-                }
-            }
-            else
-            {
-                cold.relVel0[lane] = 0.0f;
-                cold.relVel1[lane] = 0.0f;
-            }
+            anyRestitution |= packWideContactLane(wide, cold, lane, collision, rbA, rbB, idxA, idxB, bodies.data(),
+                                                  bodyForces.data(), bodyPrep.data(), params);
         }
 
         if (!anyLaneActive)
@@ -886,16 +839,19 @@ void PhysicsManager::prepareSolverConstraint(const SolverPreStepJob &job, const 
 
     const bool dynA = rbA->isAwakeDynamic();
     const bool dynB = rbB->isAwakeDynamic();
+    const bool activeA = dynA || rbA->isMovingKinematic();
+    const bool activeB = dynB || rbB->isMovingKinematic();
     const float invMassA = dynA ? rbA->getInverseMass() : 0.0f;
     const float invMassB = dynB ? rbB->getInverseMass() : 0.0f;
     const float invInertiaA = dynA ? rbA->getInverseMomentOfInertia() : 0.0f;
     const float invInertiaB = dynB ? rbB->getInverseMomentOfInertia() : 0.0f;
 
-    const Eigen::Vector2f &positionA = rbA->getGameObject()->worldPosition;
-    const Eigen::Vector2f &positionB = rbB->getGameObject()->worldPosition;
+    const Eigen::Vector2f positionA = activeA ? rbA->getGameObject()->worldPosition : Eigen::Vector2f::Zero();
+    const Eigen::Vector2f positionB = activeB ? rbB->getGameObject()->worldPosition : Eigen::Vector2f::Zero();
 
     const Eigen::Vector2f &normal = collision->getNormal();
-    const Eigen::Vector2f tangent = physics_geometry::crossSV(1.0f, normal);
+    const float nX = normal.x();
+    const float nY = normal.y();
     const float inverseMassSum = invMassA + invMassB;
     ClipPointsWithData &contactPoints = collision->getContactPoints();
     const uint8_t pointCount = static_cast<uint8_t>(std::min<size_t>(contactPoints.count, 2));
@@ -909,19 +865,17 @@ void PhysicsManager::prepareSolverConstraint(const SolverPreStepJob &job, const 
     outConstraint.bodyIndexA = job.bodyIndexA;
     outConstraint.bodyIndexB = job.bodyIndexB;
     outConstraint.normal = normal;
-    outConstraint.tangent = tangent;
     outConstraint.solverFriction = combinedFriction;
     outConstraint.solverRestitution = combinedRestitution;
     outConstraint.pointCount = pointCount;
 
-    Eigen::Vector2f velA = Eigen::Vector2f::Zero();
-    Eigen::Vector2f velB = Eigen::Vector2f::Zero();
+    float dvN = 0.0f;
     float angVelA = 0.0f;
     float angVelB = 0.0f;
     if (combinedRestitution > 0.0f)
     {
-        velA = rbA->getVelocity();
-        velB = rbB->getVelocity();
+        Eigen::Vector2f velA = rbA->getVelocity();
+        Eigen::Vector2f velB = rbB->getVelocity();
         angVelA = rbA->getAngularVelocity();
         angVelB = rbB->getAngularVelocity();
         if (params.h > 0.0f)
@@ -941,33 +895,38 @@ void PhysicsManager::prepareSolverConstraint(const SolverPreStepJob &job, const 
                 angVelB += fB.angAccel * params.h;
             }
         }
+        dvN = (velB.x() - velA.x()) * nX + (velB.y() - velA.y()) * nY;
     }
 
     for (uint8_t i = 0; i < pointCount; ++i)
     {
-        const Eigen::Vector2f rA = contactPoints.points[i].point.point - positionA;
-        const Eigen::Vector2f rB = contactPoints.points[i].point.point - positionB;
-        outConstraint.rA[i] = rA;
-        outConstraint.rB[i] = rB;
+        const ClipPointWithData &cp = contactPoints.points[i];
+        const float px = cp.point.point.x();
+        const float py = cp.point.point.y();
+        const float rAx = activeA ? (px - positionA.x()) : 0.0f;
+        const float rAy = activeA ? (py - positionA.y()) : 0.0f;
+        const float rBx = activeB ? (px - positionB.x()) : 0.0f;
+        const float rBy = activeB ? (py - positionB.y()) : 0.0f;
 
-        const float rA2 = rA.dot(rA);
-        const float rB2 = rB.dot(rB);
-        const float rnA = rA.dot(normal);
-        const float rnB = rB.dot(normal);
-        const float kNormal = inverseMassSum + invInertiaA * (rA2 - rnA * rnA) + invInertiaB * (rB2 - rnB * rnB);
+        const float rnA = rAx * nY - rAy * nX;
+        const float rnB = rBx * nY - rBy * nX;
+        const float rtA = rAx * nX + rAy * nY;
+        const float rtB = rBx * nX + rBy * nY;
+        outConstraint.rnA[i] = rnA;
+        outConstraint.rnB[i] = rnB;
+        outConstraint.rtA[i] = rtA;
+        outConstraint.rtB[i] = rtB;
+
+        const float kNormal = inverseMassSum + invInertiaA * rnA * rnA + invInertiaB * rnB * rnB;
         outConstraint.massNormal[i] = kNormal > 0.0f ? 1.0f / kNormal : 0.0f;
 
-        const float rtA = rA.dot(tangent);
-        const float rtB = rB.dot(tangent);
-        const float kTangent = inverseMassSum + invInertiaA * (rA2 - rtA * rtA) + invInertiaB * (rB2 - rtB * rtB);
+        const float kTangent = inverseMassSum + invInertiaA * rtA * rtA + invInertiaB * rtB * rtB;
         outConstraint.massTangent[i] = kTangent > 0.0f ? 1.0f / kTangent : 0.0f;
 
-        outConstraint.baseSeparation[i] = contactPoints.points[i].separation;
-        outConstraint.relativeVelocity[i] =
-            combinedRestitution > 0.0f ? relativeContactVelocity(velA, angVelA, rA, velB, angVelB, rB).dot(normal)
-                                       : 0.0f;
-        outConstraint.accumulatedNormalImpulse[i] = contactPoints.points[i].accumulatedNormalImpulse;
-        outConstraint.accumulatedTangentImpulse[i] = contactPoints.points[i].accumulatedTangentImpulse;
+        outConstraint.baseSeparation[i] = cp.separation;
+        outConstraint.relativeVelocity[i] = combinedRestitution > 0.0f ? (dvN + angVelB * rnB - angVelA * rnA) : 0.0f;
+        outConstraint.accumulatedNormalImpulse[i] = cp.accumulatedNormalImpulse;
+        outConstraint.accumulatedTangentImpulse[i] = cp.accumulatedTangentImpulse;
     }
 }
 
@@ -979,32 +938,36 @@ void PhysicsManager::applyWarmStart(const SolverConstraint &constraint, SolverBo
     const float invMassB = bodyB.inverseMass;
     const float invInertiaB = bodyB.inverseMomentOfInertia;
 
-    Eigen::Vector2f vA(bodyA.vx, bodyA.vy);
-    float wA = bodyA.w;
-    Eigen::Vector2f vB(bodyB.vx, bodyB.vy);
-    float wB = bodyB.w;
-
-    const Eigen::Vector2f &normal = constraint.normal;
-    const Eigen::Vector2f &tangent = constraint.tangent;
+    float sumN = 0.0f;
+    float sumT = 0.0f;
+    float angA = 0.0f;
+    float angB = 0.0f;
     for (uint8_t i = 0; i < constraint.pointCount; ++i)
     {
-        const Eigen::Vector2f accumulatedImpulse =
-            constraint.accumulatedNormalImpulse[i] * normal + constraint.accumulatedTangentImpulse[i] * tangent;
-        applyLocalImpulse(vA, wA, invMassA, invInertiaA, -accumulatedImpulse, constraint.rA[i]);
-        applyLocalImpulse(vB, wB, invMassB, invInertiaB, accumulatedImpulse, constraint.rB[i]);
+        const float aN = constraint.accumulatedNormalImpulse[i];
+        const float aT = constraint.accumulatedTangentImpulse[i];
+        sumN += aN;
+        sumT += aT;
+        angA += aN * constraint.rnA[i] + aT * constraint.rtA[i];
+        angB += aN * constraint.rnB[i] + aT * constraint.rtB[i];
     }
+
+    const float nX = constraint.normal.x();
+    const float nY = constraint.normal.y();
+    const float impX = sumN * nX - sumT * nY;
+    const float impY = sumN * nY + sumT * nX;
 
     if (invMassA != 0.0f || invInertiaA != 0.0f)
     {
-        bodyA.vx = vA.x();
-        bodyA.vy = vA.y();
-        bodyA.w = wA;
+        bodyA.vx -= invMassA * impX;
+        bodyA.vy -= invMassA * impY;
+        bodyA.w -= invInertiaA * angA;
     }
     if (invMassB != 0.0f || invInertiaB != 0.0f)
     {
-        bodyB.vx = vB.x();
-        bodyB.vy = vB.y();
-        bodyB.w = wB;
+        bodyB.vx += invMassB * impX;
+        bodyB.vy += invMassB * impY;
+        bodyB.w += invInertiaB * angB;
     }
 }
 
@@ -1016,34 +979,34 @@ void PhysicsManager::solveConstraintSoft(SolverConstraint &constraint, SolverBod
     const float invInertiaA = bodyA.inverseMomentOfInertia;
     const float invMassB = bodyB.inverseMass;
     const float invInertiaB = bodyB.inverseMomentOfInertia;
+    const float invMassSum = invMassA + invMassB;
 
-    Eigen::Vector2f vA(bodyA.vx, bodyA.vy);
+    const float nX = constraint.normal.x();
+    const float nY = constraint.normal.y();
+    const float dvX = bodyB.vx - bodyA.vx;
+    const float dvY = bodyB.vy - bodyA.vy;
+    float dvN = dvX * nX + dvY * nY;
+    float dvT = dvY * nX - dvX * nY;
     float wA = bodyA.w;
-    Eigen::Vector2f vB(bodyB.vx, bodyB.vy);
     float wB = bodyB.w;
-
-    const Eigen::Vector2f &normal = constraint.normal;
-    const Eigen::Vector2f &tangent = constraint.tangent;
-    Eigen::Vector2f dp = Eigen::Vector2f::Zero();
+    float dpN = 0.0f;
     if constexpr (UseBias)
     {
-        dp = Eigen::Vector2f(bodyB.dpX - bodyA.dpX, bodyB.dpY - bodyA.dpY);
+        dpN = (bodyB.dpX - bodyA.dpX) * nX + (bodyB.dpY - bodyA.dpY) * nY;
     }
 
+    float totalN = 0.0f;
+    float totalT = 0.0f;
     for (uint8_t i = 0; i < constraint.pointCount; ++i)
     {
-        const Eigen::Vector2f &rA = constraint.rA[i];
-        const Eigen::Vector2f &rB = constraint.rB[i];
-
-        Eigen::Vector2f relativeVelocity = relativeContactVelocity(vA, wA, rA, vB, wB, rB);
-        const float vn = relativeVelocity.dot(normal);
+        const float rnA = constraint.rnA[i];
+        const float rnB = constraint.rnB[i];
+        const float vn = dvN + wB * rnB - wA * rnA;
 
         float normalImpulse = 0.0f;
         if constexpr (UseBias)
         {
-            const Eigen::Vector2f ds =
-                dp + physics_geometry::crossSV(bodyB.dAngle, rB) - physics_geometry::crossSV(bodyA.dAngle, rA);
-            const float sep = constraint.baseSeparation[i] + ds.dot(normal);
+            const float sep = constraint.baseSeparation[i] + dpN + bodyB.dAngle * rnB - bodyA.dAngle * rnA;
             float bias = 0.0f;
             if (sep > 0.0f)
             {
@@ -1068,36 +1031,39 @@ void PhysicsManager::solveConstraintSoft(SolverConstraint &constraint, SolverBod
         const float newNormal = std::max(oldNormal + normalImpulse, 0.0f);
         constraint.accumulatedNormalImpulse[i] = newNormal;
         const float appliedNormal = newNormal - oldNormal;
+        totalN += appliedNormal;
+        dvN += invMassSum * appliedNormal;
+        wA -= invInertiaA * rnA * appliedNormal;
+        wB += invInertiaB * rnB * appliedNormal;
 
-        const Eigen::Vector2f impulse = appliedNormal * normal;
-        applyLocalImpulse(vA, wA, invMassA, invInertiaA, -impulse, rA);
-        applyLocalImpulse(vB, wB, invMassB, invInertiaB, impulse, rB);
-
-        relativeVelocity = relativeContactVelocity(vA, wA, rA, vB, wB, rB);
-        const float vt = relativeVelocity.dot(tangent);
-        float tangentImpulse = constraint.massTangent[i] * (-vt);
+        const float rtA = constraint.rtA[i];
+        const float rtB = constraint.rtB[i];
+        const float vt = dvT + wB * rtB - wA * rtA;
+        const float rawTangent = -constraint.massTangent[i] * vt;
 
         const float oldTangent = constraint.accumulatedTangentImpulse[i];
         const float maxTangent = constraint.solverFriction * newNormal;
-        const float newTangent = std::clamp(oldTangent + tangentImpulse, -maxTangent, maxTangent);
+        const float newTangent = std::clamp(oldTangent + rawTangent, -maxTangent, maxTangent);
         constraint.accumulatedTangentImpulse[i] = newTangent;
-        tangentImpulse = newTangent - oldTangent;
-
-        const Eigen::Vector2f contactImpulse = tangentImpulse * tangent;
-        applyLocalImpulse(vA, wA, invMassA, invInertiaA, -contactImpulse, rA);
-        applyLocalImpulse(vB, wB, invMassB, invInertiaB, contactImpulse, rB);
+        const float appliedTangent = newTangent - oldTangent;
+        totalT += appliedTangent;
+        dvT += invMassSum * appliedTangent;
+        wA -= invInertiaA * rtA * appliedTangent;
+        wB += invInertiaB * rtB * appliedTangent;
     }
 
+    const float impX = totalN * nX - totalT * nY;
+    const float impY = totalN * nY + totalT * nX;
     if (invMassA != 0.0f || invInertiaA != 0.0f)
     {
-        bodyA.vx = vA.x();
-        bodyA.vy = vA.y();
+        bodyA.vx -= invMassA * impX;
+        bodyA.vy -= invMassA * impY;
         bodyA.w = wA;
     }
     if (invMassB != 0.0f || invInertiaB != 0.0f)
     {
-        bodyB.vx = vB.x();
-        bodyB.vy = vB.y();
+        bodyB.vx += invMassB * impX;
+        bodyB.vy += invMassB * impY;
         bodyB.w = wB;
     }
 }
@@ -1120,12 +1086,14 @@ void PhysicsManager::applyRestitutionSoft(SolverConstraint &constraint, SolverBo
     const float invInertiaA = bodyA.inverseMomentOfInertia;
     const float invMassB = bodyB.inverseMass;
     const float invInertiaB = bodyB.inverseMomentOfInertia;
+    const float invMassSum = invMassA + invMassB;
 
-    Eigen::Vector2f vA(bodyA.vx, bodyA.vy);
+    const float nX = constraint.normal.x();
+    const float nY = constraint.normal.y();
+    float dvN = (bodyB.vx - bodyA.vx) * nX + (bodyB.vy - bodyA.vy) * nY;
     float wA = bodyA.w;
-    Eigen::Vector2f vB(bodyB.vx, bodyB.vy);
     float wB = bodyB.w;
-    const Eigen::Vector2f &normal = constraint.normal;
+    float totalN = 0.0f;
     bool changed = false;
 
     for (uint8_t i = 0; i < constraint.pointCount; ++i)
@@ -1135,17 +1103,18 @@ void PhysicsManager::applyRestitutionSoft(SolverConstraint &constraint, SolverBo
         {
             continue;
         }
-        const Eigen::Vector2f &rA = constraint.rA[i];
-        const Eigen::Vector2f &rB = constraint.rB[i];
-        const float vn = relativeContactVelocity(vA, wA, rA, vB, wB, rB).dot(normal);
+        const float rnA = constraint.rnA[i];
+        const float rnB = constraint.rnB[i];
+        const float vn = dvN + wB * rnB - wA * rnA;
         const float applied = std::max(constraint.massNormal[i] * (-restitution * relVel - vn), 0.0f);
         if (applied <= 0.0f)
         {
             continue;
         }
-        const Eigen::Vector2f impulse = applied * normal;
-        applyLocalImpulse(vA, wA, invMassA, invInertiaA, -impulse, rA);
-        applyLocalImpulse(vB, wB, invMassB, invInertiaB, impulse, rB);
+        totalN += applied;
+        dvN += invMassSum * applied;
+        wA -= invInertiaA * rnA * applied;
+        wB += invInertiaB * rnB * applied;
         changed = true;
     }
 
@@ -1153,16 +1122,18 @@ void PhysicsManager::applyRestitutionSoft(SolverConstraint &constraint, SolverBo
     {
         return;
     }
+    const float impX = totalN * nX;
+    const float impY = totalN * nY;
     if (invMassA != 0.0f || invInertiaA != 0.0f)
     {
-        bodyA.vx = vA.x();
-        bodyA.vy = vA.y();
+        bodyA.vx -= invMassA * impX;
+        bodyA.vy -= invMassA * impY;
         bodyA.w = wA;
     }
     if (invMassB != 0.0f || invInertiaB != 0.0f)
     {
-        bodyB.vx = vB.x();
-        bodyB.vy = vB.y();
+        bodyB.vx += invMassB * impX;
+        bodyB.vy += invMassB * impY;
         bodyB.w = wB;
     }
 }

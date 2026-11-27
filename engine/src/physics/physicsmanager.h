@@ -97,6 +97,7 @@ public:
                                                      const Eigen::Vector2f &direction, float maxDistance,
                                                      uint64_t collisionMask = ~uint64_t{0},
                                                      bool includeTriggers = false) const;
+    static bool hasParallelPhysicsWorkers() noexcept;
 
 private:
     static constexpr uint32_t UNMAPPED_SOLVER_BODY = std::numeric_limits<uint32_t>::max();
@@ -114,7 +115,16 @@ private:
     void flushPendingColliderOperations();
     void clearAll();
 
-    static bool hasParallelPhysicsWorkers() noexcept;
+    static std::pair<Rigidbody *, Rigidbody *> pairRigidbodies(const ColliderPair *pair) noexcept
+    {
+        Rigidbody *rbA = pair->cachedRbA;
+        Rigidbody *rbB = pair->cachedRbB;
+        if (rbA != nullptr && rbB != nullptr && !rbA->isRetired() && !rbB->isRetired())
+        {
+            return {rbA, rbB};
+        }
+        return {pair->getObjectA()->getAttachedRigidbody(), pair->getObjectB()->getAttachedRigidbody()};
+    }
     static std::pair<bool, bool> pairSupportFlags(const ColliderPair *pair, const Collision *collision) noexcept
     {
         if (collision == nullptr)
@@ -138,18 +148,15 @@ private:
         {
             return false;
         }
-        Rigidbody *rbA = pair->cachedRbA;
-        Rigidbody *rbB = pair->cachedRbB;
-        if (rbA != nullptr && rbB != nullptr && !rbA->isRetired() && !rbB->isRetired())
+        const auto [rbA, rbB] = pairRigidbodies(pair);
+        if (rbA == nullptr || rbB == nullptr)
         {
-            const bool refIsA = outCollision->getReferenceObject() == pair->getObjectA();
-            outRbA = refIsA ? rbA : rbB;
-            outRbB = refIsA ? rbB : rbA;
-            return true;
+            return false;
         }
-        outRbA = outCollision->getReferenceObject()->getAttachedRigidbody();
-        outRbB = outCollision->getIncidentObject()->getAttachedRigidbody();
-        return outRbA != nullptr && outRbB != nullptr;
+        const bool refIsA = outCollision->getReferenceObject() == pair->getObjectA();
+        outRbA = refIsA ? rbA : rbB;
+        outRbB = refIsA ? rbB : rbA;
+        return true;
     }
 
     void updateSleepingStates(double timeDelta);
@@ -276,9 +283,10 @@ private:
         uint32_t bodyIndexA = 0;
         uint32_t bodyIndexB = 0;
         Eigen::Vector2f normal = Eigen::Vector2f::Zero();
-        Eigen::Vector2f tangent = Eigen::Vector2f::Zero();
-        Eigen::Vector2f rA[2] = {Eigen::Vector2f::Zero(), Eigen::Vector2f::Zero()};
-        Eigen::Vector2f rB[2] = {Eigen::Vector2f::Zero(), Eigen::Vector2f::Zero()};
+        float rnA[2] = {0.0f, 0.0f};
+        float rnB[2] = {0.0f, 0.0f};
+        float rtA[2] = {0.0f, 0.0f};
+        float rtB[2] = {0.0f, 0.0f};
         float massNormal[2] = {0.0f, 0.0f};
         float massTangent[2] = {0.0f, 0.0f};
         float baseSeparation[2] = {0.0f, 0.0f};
@@ -297,6 +305,50 @@ private:
         float friction = 0.0f;
         float restitution = 0.0f;
     };
+
+    static SolverBodyState makeDynamicBodyState(const Rigidbody *rb) noexcept
+    {
+        const auto &v = rb->getVelocity();
+        return SolverBodyState{v.x(), v.y(), rb->getAngularVelocity(), rb->getInverseMass(), 0.0f, 0.0f, 0.0f,
+                               rb->getInverseMomentOfInertia()};
+    }
+    static SolverBodyState makeKinematicBodyState(const Rigidbody *rb) noexcept
+    {
+        const auto &v = rb->getVelocity();
+        return SolverBodyState{v.x(), v.y(), rb->getAngularVelocity(), 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
+    }
+    static BodyPrepCache makeBodyPrepCache(const Rigidbody *rb) noexcept
+    {
+        const auto &pos = rb->getGameObject()->worldPosition;
+        return BodyPrepCache{pos.x(), pos.y(), rb->getFriction(), rb->getRestitution()};
+    }
+    static uint32_t findOrAddKinematicBody(Rigidbody *rb, std::vector<SolverBodyState> &bodies,
+                                           std::vector<SolverBodyForce> &forces,
+                                           std::vector<std::pair<Rigidbody *, uint32_t>> &kinematics,
+                                           std::vector<BodyPrepCache> *prep = nullptr)
+    {
+        for (const auto &[kinBody, kinSlot] : kinematics)
+        {
+            if (kinBody == rb)
+            {
+                return kinSlot;
+            }
+        }
+        const uint32_t localIdx = static_cast<uint32_t>(bodies.size());
+        bodies.push_back(makeKinematicBodyState(rb));
+        forces.push_back(SolverBodyForce{});
+        if (prep != nullptr)
+        {
+            prep->push_back(makeBodyPrepCache(rb));
+        }
+        kinematics.emplace_back(rb, localIdx);
+        return localIdx;
+    }
+    static bool packWideContactLane(platformator_solver_simd::WideConstraint8 &wide,
+                                    platformator_solver_simd::WideConstraint8Cold &cold, size_t lane,
+                                    Collision *collision, const Rigidbody *rbA, const Rigidbody *rbB, uint32_t idxA,
+                                    uint32_t idxB, const SolverBodyState *bodies, const SolverBodyForce *bodyForces,
+                                    const BodyPrepCache *bodyPrep, const SoftStepParams &params) noexcept;
 
     struct IslandSolverScratch
     {
@@ -439,6 +491,8 @@ private:
     std::vector<uint32_t> solverBodyLocalIndices;
     std::vector<SolverBodyState> solverBodyStates;
     std::vector<SolverBodyForce> solverBodyForces;
+    std::vector<BodyPrepCache> solverBodyPrep;
+    std::vector<std::pair<Rigidbody *, uint32_t>> solverKinematicBodies;
     std::vector<SolverBodyDelta> solverBodyDeltas;
     uint32_t solverStep = 0;
     std::vector<WritableSolverBody> solverTouchedWritableBodies;

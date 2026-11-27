@@ -10,6 +10,8 @@ class ColliderPair
     friend class PhysicsManager;
 
   public:
+    static constexpr uint32_t INVALID_INDEX = UINT32_MAX;
+
     ColliderPair(Collider *a, Collider *b);
     ~ColliderPair();
     ColliderPair(const ColliderPair &) = delete;
@@ -27,44 +29,44 @@ class ColliderPair
 
     void updateCachedCollisionVersions() noexcept
     {
-        objectAStateVersion = objectA ? objectA->getStateVersion() : static_cast<uint64_t>(-1);
-        objectBStateVersion = objectB ? objectB->getStateVersion() : static_cast<uint64_t>(-1);
+        objectAStateVersion = objectA ? static_cast<uint32_t>(objectA->getStateVersion()) : UINT32_MAX;
+        objectBStateVersion = objectB ? static_cast<uint32_t>(objectB->getStateVersion()) : UINT32_MAX;
     }
     bool shouldUpdate() const noexcept
     {
-        const uint64_t currentObjectAVersion = objectA ? objectA->getStateVersion() : static_cast<uint64_t>(-1);
-        const uint64_t currentObjectBVersion = objectB ? objectB->getStateVersion() : static_cast<uint64_t>(-1);
+        const uint32_t currentObjectAVersion = objectA ? static_cast<uint32_t>(objectA->getStateVersion()) : UINT32_MAX;
+        const uint32_t currentObjectBVersion = objectB ? static_cast<uint32_t>(objectB->getStateVersion()) : UINT32_MAX;
         return currentObjectAVersion != objectAStateVersion || currentObjectBVersion != objectBStateVersion;
     }
     void clearCollisionNoEvent() noexcept;
 
     bool getIsQueuedForNarrowPhase() const noexcept
     {
-        return narrowPhaseQueueIndex != SIZE_MAX;
+        return narrowPhaseQueueIndex != INVALID_INDEX;
     }
     size_t getNarrowPhaseQueueIndex() const noexcept
     {
-        return narrowPhaseQueueIndex;
+        return narrowPhaseQueueIndex == INVALID_INDEX ? SIZE_MAX : static_cast<size_t>(narrowPhaseQueueIndex);
     }
     void setNarrowPhaseQueueIndex(size_t index) noexcept
     {
-        narrowPhaseQueueIndex = index;
+        narrowPhaseQueueIndex = index == SIZE_MAX ? INVALID_INDEX : static_cast<uint32_t>(index);
     }
     size_t getAdjacencyIndexA() const noexcept
     {
-        return adjacencyIndexA;
+        return adjacencyIndexA == INVALID_INDEX ? SIZE_MAX : static_cast<size_t>(adjacencyIndexA);
     }
     void setAdjacencyIndexA(size_t index) noexcept
     {
-        adjacencyIndexA = index;
+        adjacencyIndexA = index == SIZE_MAX ? INVALID_INDEX : static_cast<uint32_t>(index);
     }
     size_t getAdjacencyIndexB() const noexcept
     {
-        return adjacencyIndexB;
+        return adjacencyIndexB == INVALID_INDEX ? SIZE_MAX : static_cast<size_t>(adjacencyIndexB);
     }
     void setAdjacencyIndexB(size_t index) noexcept
     {
-        adjacencyIndexB = index;
+        adjacencyIndexB = index == SIZE_MAX ? INVALID_INDEX : static_cast<uint32_t>(index);
     }
 
     Collider *getObjectA() const noexcept
@@ -78,7 +80,7 @@ class ColliderPair
 
     bool isInSolver() const noexcept
     {
-        return solverIslandId != -1 || kinematicSolverIndex != SIZE_MAX;
+        return solverIslandId != -1 || kinematicSolverIndex != INVALID_INDEX;
     }
 
     int getWitnessCount() const noexcept
@@ -95,16 +97,16 @@ class ColliderPair
     Collider *objectB;
 
     Collision collisionStorage;
-    uint64_t objectAStateVersion;
-    uint64_t objectBStateVersion;
-    size_t narrowPhaseQueueIndex;
-    size_t adjacencyIndexA;
-    size_t adjacencyIndexB;
-    int witnessCount;
-    size_t contactIndex = SIZE_MAX;
+    uint32_t objectAStateVersion;
+    uint32_t objectBStateVersion;
+    uint32_t narrowPhaseQueueIndex;
+    uint32_t adjacencyIndexA;
+    uint32_t adjacencyIndexB;
+    int32_t witnessCount;
+    uint32_t contactIndex = INVALID_INDEX;
     int32_t solverIslandId = -1;
-    size_t solverIslandContactIndex = SIZE_MAX;
-    size_t kinematicSolverIndex = SIZE_MAX;
+    uint32_t solverIslandContactIndex = INVALID_INDEX;
+    uint32_t kinematicSolverIndex = INVALID_INDEX;
     uint32_t solverColorSlot = UINT32_MAX;
     uint8_t solverColor = 0xFFu;
     bool hasCollision = false;
@@ -115,4 +117,7 @@ class ColliderPair
     // Exact recipients of this pair's applied-or-queued support credit, not current component caches.
     Rigidbody *contributedSupportBodyA = nullptr;
     Rigidbody *contributedSupportBodyB = nullptr;
+    // Cached endpoints for island contacts (eliminates BoxCollider dereferences during solver packing).
+    Rigidbody *cachedRbA = nullptr;
+    Rigidbody *cachedRbB = nullptr;
 };

@@ -191,9 +191,11 @@ void PhysicsManager::recyclePersistentIsland(int32_t islandId)
     for (ColliderPair *pair : island.contacts)
     {
         pair->solverIslandId = -1;
-        pair->solverIslandContactIndex = SIZE_MAX;
+        pair->solverIslandContactIndex = ColliderPair::INVALID_INDEX;
         pair->solverColor = 0xFFu;
         pair->solverColorSlot = UINT32_MAX;
+        pair->cachedRbA = nullptr;
+        pair->cachedRbB = nullptr;
     }
     island.bodies.clear();
     island.contacts.clear();
@@ -279,7 +281,7 @@ int32_t PhysicsManager::mergePersistentIslands(int32_t islandIdA, int32_t island
     for (ColliderPair *pair : drop.contacts)
     {
         pair->solverIslandId = keepId;
-        pair->solverIslandContactIndex = keep.contacts.size();
+        pair->solverIslandContactIndex = static_cast<uint32_t>(keep.contacts.size());
         keep.contacts.push_back(pair);
         if (keep.colorGraph)
         {
@@ -331,8 +333,13 @@ void PhysicsManager::updatePersistentIslandContact(ColliderPair *pair, bool solv
     {
         removeContactFromPersistentIsland(pair);
         membership(kinematicSolverPairs, pair, &ColliderPair::kinematicSolverIndex, false);
+        pair->cachedRbA = nullptr;
+        pair->cachedRbB = nullptr;
         return;
     }
+
+    pair->cachedRbA = rbA;
+    pair->cachedRbB = rbB;
 
     if (response == Collision::KINEMATIC)
     {
@@ -410,7 +417,7 @@ void PhysicsManager::updatePersistentIslandContact(ColliderPair *pair, bool solv
 
     PersistentIsland &island = persistentIslands[static_cast<size_t>(targetId)];
     pair->solverIslandId = targetId;
-    pair->solverIslandContactIndex = island.contacts.size();
+    pair->solverIslandContactIndex = static_cast<uint32_t>(island.contacts.size());
     island.contacts.push_back(pair);
     if (island.colorGraph)
     {
@@ -504,7 +511,7 @@ void PhysicsManager::splitPersistentIsland(int32_t islandId)
     {
         if (bodyCount >= 32)
         {
-            island.splitCooldown = static_cast<uint16_t>(std::min<size_t>(16, std::max<size_t>(4, bodyCount / 16)));
+            island.splitCooldown = static_cast<uint16_t>(std::min<size_t>(24, std::max<size_t>(12, bodyCount / 8)));
         }
         return;
     }
@@ -620,7 +627,7 @@ void PhysicsManager::splitPersistentIsland(int32_t islandId)
         {
             PersistentIsland &target = persistentIslands[static_cast<size_t>(targetId)];
             pair->solverIslandId = targetId;
-            pair->solverIslandContactIndex = target.contacts.size();
+            pair->solverIslandContactIndex = static_cast<uint32_t>(target.contacts.size());
             target.contacts.push_back(pair);
             if (hadSleeping)
             {
@@ -635,7 +642,7 @@ void PhysicsManager::splitPersistentIsland(int32_t islandId)
         else
         {
             pair->solverIslandId = -1;
-            pair->solverIslandContactIndex = SIZE_MAX;
+            pair->solverIslandContactIndex = ColliderPair::INVALID_INDEX;
         }
     }
 

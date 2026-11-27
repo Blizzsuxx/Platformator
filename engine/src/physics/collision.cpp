@@ -17,36 +17,6 @@ Collision::Collision(Collider *colliderA, Collider *colliderB)
 {
 }
 
-const Eigen::Vector2f &Collision::getNormal() const
-{
-    return normal;
-}
-
-const ClipPointsWithData &Collision::getContactPoints() const
-{
-    return contactPoints;
-}
-
-ClipPointsWithData &Collision::getContactPoints()
-{
-    return contactPoints;
-}
-
-const Collider *Collision::getReferenceObject() const
-{
-    return referenceObject;
-}
-
-const Collider *Collision::getIncidentObject() const
-{
-    return incidentObject;
-}
-
-void Collision::setNormal(const Eigen::Vector2f &normal)
-{
-    this->normal = normal;
-}
-
 void Collision::setContactPoints(const ClipPoints &newContactPoints)
 {
     ClipPointsWithData contactPointsWithData;
@@ -64,18 +34,6 @@ void Collision::setContactPoints(const ClipPoints &newContactPoints)
     }
     contactPointsWithData.count = newContactPoints.count;
     this->contactPoints = contactPointsWithData;
-}
-
-void Collision::setReferenceObject(const Collider *colliderA)
-{
-    if (referenceObject != colliderA)
-        contactPoints = ClipPointsWithData();
-    this->referenceObject = colliderA;
-}
-
-void Collision::setIncidentObject(const Collider *colliderB)
-{
-    this->incidentObject = colliderB;
 }
 
 Collision::CollisionType Collision::getResolutionType() const
@@ -114,13 +72,18 @@ void Collision::updateSupportState(const Eigen::Vector2f &gravityVectorNormalize
     supportState = NONE_SUPPORT;
     if (referenceObject->getIsTrigger() || incidentObject->getIsTrigger())
         return;
-    const Rigidbody *a = referenceObject->getAttachedRigidbody();
-    const Rigidbody *b = incidentObject->getAttachedRigidbody();
-    if (!a || !b)
+    const bool refNonStatic = referenceObject->hasNonStaticRigidbody();
+    const bool incNonStatic = incidentObject->hasNonStaticRigidbody();
+    if (!refNonStatic && !incNonStatic)
         return;
-    if (a->qualifiesAsSupportContact(-normal, gravityVectorNormalized))
+    // Both endpoints must have a Rigidbody (checked lazily only if the other is static).
+    if ((!refNonStatic && referenceObject->getAttachedRigidbody() == nullptr) ||
+        (!incNonStatic && incidentObject->getAttachedRigidbody() == nullptr))
+        return;
+    const float proj = normal.dot(gravityVectorNormalized);
+    if (refNonStatic && proj >= SUPPORT_NORMAL_THRESHOLD)
         supportState |= SUPPORTS_REFERENCE;
-    if (b->qualifiesAsSupportContact(normal, gravityVectorNormalized))
+    if (incNonStatic && -proj >= SUPPORT_NORMAL_THRESHOLD)
         supportState |= SUPPORTS_INCIDENT;
 }
 

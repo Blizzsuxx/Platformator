@@ -144,34 +144,32 @@ class Rigidbody : public Component
     static constexpr uint8_t INTEGRATE_TRANSLATED = 1 << 0;
     static constexpr uint8_t INTEGRATE_ROTATED = 1 << 1;
 
+    // Hot solver/island state packed into the first cache line after Component.
     Eigen::Vector2f velocity;
-    Eigen::Vector2f force;
-
-    float mass;
-    float inverseMass;
-
     float angularVelocity;
-    float torque;
-
-    float momentOfInertia;
+    float inverseMass;
     float inverseMomentOfInertia;
-
     float friction;
     float restitution;
-
     BodyType bodyType;
     bool gravity;
     bool sleeping;
+    bool isRegisteredInPhysicsManager;
+    int32_t solverIslandId = -1;
+    size_t solverIslandBodyIndex = SIZE_MAX;
+
+    // Cold/integration/bookkeeping state.
+    Eigen::Vector2f force;
+    float torque;
+    float mass;
+    float momentOfInertia;
     size_t supportContactCount;
     double sleepTimer;
-    bool isRegisteredInPhysicsManager;
     size_t physicsManagerIndex;
     int64_t supportDelta = 0;
     size_t supportDeltaIndex = SIZE_MAX;
     size_t awakeDynamicIndex = SIZE_MAX, movingKinematicIndex = SIZE_MAX, sleepCandidateIndex = SIZE_MAX;
     size_t participationQueueIndex = SIZE_MAX;
-    int32_t solverIslandId = -1;
-    size_t solverIslandBodyIndex = SIZE_MAX;
     uint32_t solverColorMask = 0;
 
     bool isAwakeDynamic() const noexcept

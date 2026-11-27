@@ -2,22 +2,24 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <type_traits>
 #include <vector>
 
 // Indexed dense-list membership helper supporting const pointers with mutable index fields.
-template <typename T>
-inline void membership(std::vector<T *> &list, T *item, size_t std::remove_const_t<T>::*index, bool desired)
+template <typename T, typename IndexT>
+inline void membership(std::vector<T *> &list, T *item, IndexT std::remove_const_t<T>::*index, bool desired)
 {
+    constexpr IndexT invalid = std::numeric_limits<IndexT>::max();
     using Mutable = std::remove_const_t<T>;
     auto &position = const_cast<Mutable *>(item)->*index;
-    if (desired == (position != SIZE_MAX))
+    if (desired == (position != invalid))
     {
         return;
     }
     if (desired)
     {
-        const auto indexToInsert = list.size();
+        const auto indexToInsert = static_cast<IndexT>(list.size());
         list.push_back(item);
         position = indexToInsert;
     }
@@ -27,7 +29,7 @@ inline void membership(std::vector<T *> &list, T *item, size_t std::remove_const
         list[position] = moved;
         const_cast<Mutable *>(moved)->*index = position;
         list.pop_back();
-        position = SIZE_MAX;
+        position = invalid;
     }
 }
 

@@ -94,6 +94,10 @@ GameObject *GameObject::setActive(const bool active)
     if (this->active == active)
         return this;
     this->active = active;
+    if (auto *collider = static_cast<Collider *>(components[ComponentType::COLLIDER]))
+    {
+        collider->setOwnerActive(active);
+    }
     if (getIsRegisteredInGameManager())
     {
         auto &manager = platformator_detail::RuntimeAccess::gameManager();
@@ -247,6 +251,9 @@ void GameObject::attachComponent(Component *component)
         if (auto *collider = getComponent<Collider>())
         {
             collider->attachedRigidbody = rigidbodyComponent;
+            collider->setOwnerActive(active);
+            collider->setHasNonStaticRigidbody(rigidbodyComponent != nullptr &&
+                                               rigidbodyComponent->getBodyType() != BodyType::STATIC);
         }
         if (rigidbodyComponent != nullptr)
         {
@@ -295,6 +302,7 @@ bool GameObject::removeComponent(ComponentType componentType)
         if (auto *collider = getComponent<Collider>())
         {
             collider->attachedRigidbody = nullptr;
+            collider->setHasNonStaticRigidbody(false);
             collider->invalidateResponse();
         }
     flushMutations();

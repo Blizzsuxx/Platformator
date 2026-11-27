@@ -138,6 +138,15 @@ private:
         {
             return false;
         }
+        Rigidbody *rbA = pair->cachedRbA;
+        Rigidbody *rbB = pair->cachedRbB;
+        if (rbA != nullptr && rbB != nullptr && !rbA->isRetired() && !rbB->isRetired())
+        {
+            const bool refIsA = outCollision->getReferenceObject() == pair->getObjectA();
+            outRbA = refIsA ? rbA : rbB;
+            outRbB = refIsA ? rbB : rbA;
+            return true;
+        }
         outRbA = outCollision->getReferenceObject()->getAttachedRigidbody();
         outRbB = outCollision->getIncidentObject()->getAttachedRigidbody();
         return outRbA != nullptr && outRbB != nullptr;
@@ -281,15 +290,25 @@ private:
         uint8_t pointCount = 0;
     };
 
+    struct BodyPrepCache
+    {
+        float posX = 0.0f;
+        float posY = 0.0f;
+        float friction = 0.0f;
+        float restitution = 0.0f;
+    };
+
     struct IslandSolverScratch
     {
         std::vector<SolverConstraint> constraints;
         std::vector<SolverBodyState> bodies;
         std::vector<SolverBodyForce> bodyForces;
+        std::vector<BodyPrepCache> bodyPrep;
         std::vector<WritableSolverBody> writableBodies;
         std::vector<uint32_t> bodyLocalIndices;
         std::vector<std::pair<Rigidbody *, uint32_t>> kinematicBodies;
         std::vector<platformator_solver_simd::WideConstraint8> wideSteps;
+        std::vector<platformator_solver_simd::WideConstraint8Cold> wideCold;
     };
 
     struct SleepScratch
@@ -425,6 +444,8 @@ private:
     std::vector<WritableSolverBody> solverTouchedWritableBodies;
     std::array<std::vector<platformator_solver_simd::WideConstraint8>, IslandColorGraph::MAX_PARALLEL_COLORS>
         colorWideBlocks;
+    std::array<std::vector<platformator_solver_simd::WideConstraint8Cold>, IslandColorGraph::MAX_PARALLEL_COLORS>
+        colorWideColdBlocks;
     std::array<std::vector<SolverConstraint>, IslandColorGraph::MAX_PARALLEL_COLORS> colorTailConstraints;
     std::vector<SolverConstraint> overflowConstraints;
     std::vector<int32_t> bucketedIslandIds;

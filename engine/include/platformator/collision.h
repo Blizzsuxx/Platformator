@@ -23,20 +23,46 @@ class Collision
     Collision(Collider *colliderA, Collider *colliderB);
     ~Collision() = default;
 
-    const Eigen::Vector2f &getNormal() const;
-    const ClipPointsWithData &getContactPoints() const;
-    ClipPointsWithData &getContactPoints();
+    const Eigen::Vector2f &getNormal() const noexcept
+    {
+        return normal;
+    }
+    const ClipPointsWithData &getContactPoints() const noexcept
+    {
+        return contactPoints;
+    }
+    ClipPointsWithData &getContactPoints() noexcept
+    {
+        return contactPoints;
+    }
 
-    const Collider *getReferenceObject() const;
-    const Collider *getIncidentObject() const;
+    const Collider *getReferenceObject() const noexcept
+    {
+        return referenceObject;
+    }
+    const Collider *getIncidentObject() const noexcept
+    {
+        return incidentObject;
+    }
 
     CollisionType getResolutionType() const;
     void updateSupportState(const Eigen::Vector2f &gravityVector);
 
-    void setNormal(const Eigen::Vector2f &normal);
+    void setNormal(const Eigen::Vector2f &normal) noexcept
+    {
+        this->normal = normal;
+    }
     void setContactPoints(const ClipPoints &contactPoints);
-    void setReferenceObject(const Collider *colliderA);
-    void setIncidentObject(const Collider *colliderB);
+    void setReferenceObject(const Collider *colliderA) noexcept
+    {
+        if (referenceObject != colliderA)
+            contactPoints = ClipPointsWithData();
+        this->referenceObject = colliderA;
+    }
+    void setIncidentObject(const Collider *colliderB) noexcept
+    {
+        this->incidentObject = colliderB;
+    }
 
     bool isVerticalCollision() const;
     bool isHorizontalCollision() const;

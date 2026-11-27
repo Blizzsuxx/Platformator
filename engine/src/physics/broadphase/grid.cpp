@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <cmath>
 #include <oneapi/tbb/global_control.h>
 #include <oneapi/tbb/parallel_for.h>
@@ -415,11 +416,11 @@ void Grid::applyPairWitnessDelta(Collider *colliderA, Collider *colliderB, int d
         Collider *objectA = pair->getObjectA();
         Collider *objectB = pair->getObjectB();
 
-        std::vector<ColliderPair *> &adjacencyA = objectA->adjacentPairs;
+        auto &adjacencyA = objectA->adjacentPairs;
         pair->setAdjacencyIndexA(adjacencyA.size());
         adjacencyA.push_back(pair);
 
-        std::vector<ColliderPair *> &adjacencyB = objectB->adjacentPairs;
+        auto &adjacencyB = objectB->adjacentPairs;
         pair->setAdjacencyIndexB(adjacencyB.size());
         adjacencyB.push_back(pair);
 
@@ -444,7 +445,7 @@ void Grid::applyPairWitnessDelta(Collider *colliderA, Collider *colliderB, int d
         dequeuePairFromNarrowPhase(pair);
 
         const auto detachAdjacency = [](Collider *endpoint, size_t removeIndex) {
-            std::vector<ColliderPair *> &pairs = endpoint->adjacentPairs;
+            auto &pairs = endpoint->adjacentPairs;
             if (removeIndex >= pairs.size())
             {
                 return;
@@ -670,11 +671,21 @@ void Grid::flushPendingCellUpdates()
 
 void Grid::flushPendingWork()
 {
+    std::atomic<bool> anyStructuralWork{false};
     forEachIndexParallelOrSerial(pendingColliderOperations.size(), GRID_GEOMETRY_PREP_PARALLEL_THRESHOLD, [&](size_t i) {
         Collider *collider = pendingColliderOperations[i];
-        if (collider->desiredInGrid && (!collider->getIsRegisteredInGrid() || (collider->dirty & Collider::Geometry)))
+        const bool registered = collider->getIsRegisteredInGrid();
+        if (collider->desiredInGrid && (!registered || (collider->dirty & Collider::Geometry)))
         {
             collider->prepareSyncFromCache(cellSize);
+        }
+        if (!collider->desiredInGrid || !registered || collider->broadPhaseSyncNeeded ||
+            (collider->dirty & (Collider::Filter | Collider::Response)) != 0)
+        {
+            if (!anyStructuralWork.load(std::memory_order_relaxed))
+            {
+                anyStructuralWork.store(true, std::memory_order_relaxed);
+            }
         }
     });
     if (cells.empty() && pendingColliderOperations.size() >= 32)
@@ -694,25 +705,28 @@ void Grid::flushPendingWork()
         }
     }
     responseDirtyColliders.clear();
-    for (auto *collider : pendingColliderOperations)
+    if (anyStructuralWork.load(std::memory_order_relaxed))
     {
-        if (!collider->desiredInGrid)
+        for (auto *collider : pendingColliderOperations)
         {
-            if (collider->getIsRegisteredInGrid())
-                removeColliderInternal(collider);
-        }
-        else if (!collider->getIsRegisteredInGrid())
-        {
-            addColliderInternal(collider);
-            if (owner && (collider->dirty & Collider::Response))
-                responseDirtyColliders.push_back(collider);
-        }
-        else
-        {
-            if (collider->broadPhaseSyncNeeded || (collider->dirty & Collider::Filter))
-                syncColliderInternal(collider);
-            if (owner && (collider->dirty & Collider::Response))
-                responseDirtyColliders.push_back(collider);
+            if (!collider->desiredInGrid)
+            {
+                if (collider->getIsRegisteredInGrid())
+                    removeColliderInternal(collider);
+            }
+            else if (!collider->getIsRegisteredInGrid())
+            {
+                addColliderInternal(collider);
+                if (owner && (collider->dirty & Collider::Response))
+                    responseDirtyColliders.push_back(collider);
+            }
+            else
+            {
+                if (collider->broadPhaseSyncNeeded || (collider->dirty & Collider::Filter))
+                    syncColliderInternal(collider);
+                if (owner && (collider->dirty & Collider::Response))
+                    responseDirtyColliders.push_back(collider);
+            }
         }
     }
     if (!cellsWithOperations.empty())
@@ -869,7 +883,8 @@ void Grid::flushPendingWork()
                     }
                     const Collider *other =
                         pair->getObjectA() == collider ? pair->getObjectB() : pair->getObjectA();
-                    if ((!other->desiredInGrid || other->gridQueueIndex > idx) && pairNeedsNarrowPhaseCheck(pair))
+                    if ((!other->desiredInGrid || other->gridQueueIndex > idx) &&
+                        (pair->getCollision() != nullptr || collider->overlapsTightBounds(*other)))
                     {
                         local.push_back(pair);
                     }

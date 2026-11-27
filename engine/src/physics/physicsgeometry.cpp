@@ -267,25 +267,43 @@ void calculateBoxContactPoints(Collision *collision, const BoxCollider *referenc
 
     const float max = normal.dot(referenceEdge.v1);
 
-    ClipPoints cp;
-    float separations[2];
+    ClipPointsWithData &dst = collision->getContactPoints();
+    const size_t oldCount = dst.count;
+    const uint32_t oldKey0 = oldCount > 0 ? dst.points[0].point.feature.key : 0;
+    const float oldN0 = oldCount > 0 ? dst.points[0].accumulatedNormalImpulse : 0.0f;
+    const float oldT0 = oldCount > 0 ? dst.points[0].accumulatedTangentImpulse : 0.0f;
+    const uint32_t oldKey1 = oldCount > 1 ? dst.points[1].point.feature.key : 0;
+    const float oldN1 = oldCount > 1 ? dst.points[1].accumulatedNormalImpulse : 0.0f;
+    const float oldT1 = oldCount > 1 ? dst.points[1].accumulatedTangentImpulse : 0.0f;
+
+    size_t outCount = 0;
     for (int i = 0; i < clippedCount; ++i)
     {
         const float separation = normal.dot(clippedVertices2[i].point) - max;
         if (separation <= 0.0f)
         {
-            separations[cp.count] = separation;
-            cp.add(clippedVertices2[i]);
+            ClipPointWithData &out = dst.points[outCount++];
+            out.point = clippedVertices2[i];
+            out.separation = separation;
+            const uint32_t key = clippedVertices2[i].feature.key;
+            if (oldCount > 0 && key == oldKey0)
+            {
+                out.accumulatedNormalImpulse = oldN0;
+                out.accumulatedTangentImpulse = oldT0;
+            }
+            else if (oldCount > 1 && key == oldKey1)
+            {
+                out.accumulatedNormalImpulse = oldN1;
+                out.accumulatedTangentImpulse = oldT1;
+            }
+            else
+            {
+                out.accumulatedNormalImpulse = 0.0f;
+                out.accumulatedTangentImpulse = 0.0f;
+            }
         }
     }
-
-    collision->setContactPoints(cp);
-
-    ClipPointsWithData &contactPoints = collision->getContactPoints();
-    for (size_t i = 0; i < contactPoints.count; i++)
-    {
-        contactPoints.points[i].separation = separations[i];
-    }
+    dst.count = outCount;
 }
 } // namespace
 } // namespace physics_geometry

@@ -15,17 +15,19 @@
 #include "platformator/scriptcomponent.h"
 
 Collider::Collider(GameObject *gameObject, ComponentType type, ColliderType colliderType)
-    : Component(gameObject, type), collisionGroup(1), collisionMask(1), colliderType(colliderType), stateVersion(0),
-      offset(Eigen::Vector2f::Zero()), physicsManagerIndex(SIZE_MAX), gridCellRange(),
-      flags(static_cast<ColliderFlags>(0)), gridCellRangeCache(),
+    : Component(gameObject, type), stateVersion(0), colliderType(colliderType), flags(static_cast<ColliderFlags>(0)),
+      offset(Eigen::Vector2f::Zero()), collisionGroup(1), collisionMask(1), physicsManagerIndex(SIZE_MAX),
+      gridCellRange(), gridCellRangeCache(),
       attachedRigidbody(gameObject ? gameObject->getComponent<Rigidbody>() : nullptr)
 {
+    setOwnerActive(gameObject != nullptr && gameObject->getActive());
+    setHasNonStaticRigidbody(attachedRigidbody != nullptr && attachedRigidbody->getBodyType() != BodyType::STATIC);
 }
 
 Collider::Collider(ComponentType type, ColliderType colliderType)
-    : Component(type), collisionGroup(1), collisionMask(1), colliderType(colliderType), stateVersion(0),
-      offset(Eigen::Vector2f::Zero()), physicsManagerIndex(SIZE_MAX), gridCellRange(),
-      flags(static_cast<ColliderFlags>(0)), gridCellRangeCache()
+    : Component(type), stateVersion(0), colliderType(colliderType), flags(static_cast<ColliderFlags>(0)),
+      offset(Eigen::Vector2f::Zero()), collisionGroup(1), collisionMask(1), physicsManagerIndex(SIZE_MAX),
+      gridCellRange(), gridCellRangeCache()
 {
 }
 

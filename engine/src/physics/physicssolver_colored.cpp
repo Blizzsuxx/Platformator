@@ -75,6 +75,7 @@ bool PhysicsManager::solveColoredIsland(PersistentIsland &island, const SoftStep
     {
         using namespace platformator_solver_simd;
         auto *wideBuckets = colorWideBlocks.data();
+        auto *coldBuckets = colorWideColdBlocks.data();
         auto *tailBuckets = colorTailConstraints.data();
 
         std::array<uint8_t, IslandColorGraph::MAX_PARALLEL_COLORS> activeColors{};
@@ -102,11 +103,13 @@ bool PhysicsManager::solveColoredIsland(PersistentIsland &island, const SoftStep
 
         std::atomic<bool> allMapped{true};
         std::atomic<bool> anyRestitution{false};
-        const auto packColorDirect = [&, wideBuckets, tailBuckets](uint8_t c) {
+        const auto packColorDirect = [&, wideBuckets, coldBuckets, tailBuckets](uint8_t c) {
             const auto &pairs = graph.buckets[c];
             auto &wideOut = wideBuckets[c];
+            auto &coldOut = coldBuckets[c];
             auto &tailOut = tailBuckets[c];
             wideOut.clear();
+            coldOut.clear();
             tailOut.clear();
             bool localRestitution = false;
 
@@ -124,7 +127,9 @@ bool PhysicsManager::solveColoredIsland(PersistentIsland &island, const SoftStep
                     return;
                 }
                 wideOut.emplace_back();
+                coldOut.emplace_back();
                 WideConstraint8 &wide = wideOut.back();
+                WideConstraint8Cold &cold = coldOut.back();
                 wide.resetMasks();
                 for (size_t lane = 0; lane < 8; ++lane)
                 {
@@ -133,12 +138,12 @@ bool PhysicsManager::solveColoredIsland(PersistentIsland &island, const SoftStep
                         const SolverConstraint &sc = batch[lane];
                         const SolverBodyState &bA = solverBodyStates[sc.bodyIndexA];
                         const SolverBodyState &bB = solverBodyStates[sc.bodyIndexB];
-                        packWideLane(wide, lane, &sc, bA.inverseMass, bA.inverseMomentOfInertia, bB.inverseMass,
+                        packWideLane(wide, cold, lane, &sc, bA.inverseMass, bA.inverseMomentOfInertia, bB.inverseMass,
                                      bB.inverseMomentOfInertia, params.restitutionThreshold);
                     }
                     else
                     {
-                        packWideLane<SolverConstraint>(wide, lane, nullptr);
+                        packWideLane<SolverConstraint>(wide, cold, lane, nullptr);
                     }
                 }
             };
@@ -146,6 +151,7 @@ bool PhysicsManager::solveColoredIsland(PersistentIsland &island, const SoftStep
             if (pairs.size() >= 4 && wideOut.capacity() < (pairs.size() + 7) / 8 + 1)
             {
                 wideOut.reserve((pairs.size() + 7) / 8 + 1);
+                coldOut.reserve((pairs.size() + 7) / 8 + 1);
             }
             SolverConstraint twoPointBatch[8];
             SolverConstraint onePointBatch[8];
@@ -272,12 +278,13 @@ bool PhysicsManager::solveColoredIsland(PersistentIsland &island, const SoftStep
             {
                 const uint8_t c = activeColors[ac];
                 WideConstraint8 *wideData = wideBuckets[c].data();
+                const WideConstraint8Cold *coldData = coldBuckets[c].data();
                 const size_t wideCount = wideBuckets[c].size();
                 if (!allowParallel || wideCount < parallelWideThreshold)
                 {
                     for (size_t w = 0; w < wideCount; ++w)
                     {
-                        wideFn(wideData[w]);
+                        wideFn(wideData[w], coldData[w]);
                     }
                 }
                 else
@@ -288,7 +295,7 @@ bool PhysicsManager::solveColoredIsland(PersistentIsland &island, const SoftStep
                         [&](const auto &range) {
                             for (size_t w = range.begin(); w != range.end(); ++w)
                             {
-                                wideFn(wideData[w]);
+                                wideFn(wideData[w], coldData[w]);
                             }
                         },
                         tbb::static_partitioner(), context);
@@ -313,12 +320,14 @@ bool PhysicsManager::solveColoredIsland(PersistentIsland &island, const SoftStep
             },
             [&] {
                 runWideColorPass(
-                    [=](WideConstraint8 &wide) { applyWarmStartWide8AVX2(wide, bodyData); },
+                    [=](WideConstraint8 &wide, const WideConstraint8Cold &) { applyWarmStartWide8AVX2(wide, bodyData); },
                     [=](SolverConstraint &sc) { applyWarmStart(sc, bodyData[sc.bodyIndexA], bodyData[sc.bodyIndexB]); });
             },
             [&](auto useBias) {
                 runWideColorPass(
-                    [&](WideConstraint8 &wide) { solveWide8SoftAVX2<decltype(useBias)::value>(wide, bodyData, params); },
+                    [&](WideConstraint8 &wide, const WideConstraint8Cold &) {
+                        solveWide8SoftAVX2<decltype(useBias)::value>(wide, bodyData, params);
+                    },
                     [&](SolverConstraint &sc) {
                         solveConstraintSoft<decltype(useBias)::value>(sc, bodyData[sc.bodyIndexA],
                                                                       bodyData[sc.bodyIndexB], params);
@@ -329,16 +338,20 @@ bool PhysicsManager::solveColoredIsland(PersistentIsland &island, const SoftStep
             },
             [&] {
                 runWideColorPass(
-                    [&](WideConstraint8 &wide) { applyRestitutionWide8AVX2(wide, bodyData, params); },
+                    [&](WideConstraint8 &wide, const WideConstraint8Cold &cold) {
+                        applyRestitutionWide8AVX2(wide, cold, bodyData, params);
+                    },
                     [&](SolverConstraint &sc) {
                         applyRestitutionSoft(sc, bodyData[sc.bodyIndexA], bodyData[sc.bodyIndexB], params);
                     });
             });
 
-        const auto storeColor = [wideBuckets, tailBuckets](uint8_t c) {
-            for (const WideConstraint8 &wide : wideBuckets[c])
+        const auto storeColor = [wideBuckets, coldBuckets, tailBuckets](uint8_t c) {
+            const auto &wides = wideBuckets[c];
+            const auto &colds = coldBuckets[c];
+            for (size_t w = 0; w < wides.size(); ++w)
             {
-                storeWideImpulses(wide);
+                storeWideImpulses(wides[w], colds[w]);
             }
             for (const SolverConstraint &sc : tailBuckets[c])
             {

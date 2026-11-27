@@ -376,6 +376,10 @@ void PhysicsManager::clearAll()
     {
         blocks.clear();
     }
+    for (auto &coldBlocks : colorWideColdBlocks)
+    {
+        coldBlocks.clear();
+    }
     for (auto &tails : colorTailConstraints)
     {
         tails.clear();
@@ -394,10 +398,12 @@ void PhysicsManager::clearAll()
         scratch.constraints.clear();
         scratch.bodies.clear();
         scratch.bodyForces.clear();
+        scratch.bodyPrep.clear();
         scratch.writableBodies.clear();
         scratch.bodyLocalIndices.clear();
         scratch.kinematicBodies.clear();
         scratch.wideSteps.clear();
+        scratch.wideCold.clear();
     };
     clearScratch(serialSolverScratch);
     for (auto &scratch : solverIslandScratch)
@@ -451,11 +457,11 @@ void PhysicsManager::narrowPhase()
             return true;
         }
         if (!hasContact && !pair->isInSolver() && !pair->contributedSupportBodyA &&
-            !pair->contributedSupportBodyB && pair->contactIndex == SIZE_MAX)
+            !pair->contributedSupportBodyB && pair->contactIndex == ColliderPair::INVALID_INDEX)
         {
             return false;
         }
-        if (hasContact && pair->contactIndex != SIZE_MAX)
+        if (hasContact && pair->contactIndex != ColliderPair::INVALID_INDEX)
         {
             if (!pair->isInSolver() && !pair->contributedSupportBodyA && !pair->contributedSupportBodyB &&
                 (pair->getObjectA()->getIsTrigger() || pair->getObjectB()->getIsTrigger()))
@@ -489,8 +495,14 @@ void PhysicsManager::narrowPhase()
 
     if (pendingPairs.size() < NARROW_PHASE_PARALLEL_THRESHOLD)
     {
-        for (auto *pair : pendingPairs)
+        const size_t pairCount = pendingPairs.size();
+        for (size_t i = 0; i < pairCount; ++i)
         {
+            if (i + 4 < pairCount)
+            {
+                __builtin_prefetch(pendingPairs[i + 4], 0, 1);
+            }
+            ColliderPair *pair = pendingPairs[i];
             processNarrowPhasePair(pair);
             PLATFORMATOR_WORK_ADD(geometryPairs, pair->resultTestedGeometry ? 1 : 0);
             PLATFORMATOR_WORK_ADD(contactTransitionChecks, 1);
@@ -524,6 +536,10 @@ void PhysicsManager::narrowPhase()
 #endif
             for (size_t i = start; i < end; ++i)
             {
+                if (i + 4 < end)
+                {
+                    __builtin_prefetch(pendingPairs[i + 4], 0, 1);
+                }
                 ColliderPair *pair = pendingPairs[i];
                 processNarrowPhasePair(pair);
 #if PLATFORMATOR_ENABLE_WORK_PROBES
@@ -605,9 +621,9 @@ void PhysicsManager::processNarrowPhasePair(ColliderPair *pair)
 #if PLATFORMATOR_ENABLE_WORK_PROBES
     pair->resultTestedGeometry = false;
 #endif
-    if (!pair->getObjectA()->getGameObject()->getActive() ||
-        !pair->getObjectB()->getGameObject()->getActive() || pair->getObjectA()->isRetired() ||
-        pair->getObjectB()->isRetired())
+    const Collider *colA = pair->getObjectA();
+    const Collider *colB = pair->getObjectB();
+    if (colA->isRetired() || colB->isRetired() || !colA->getIsOwnerActive() || !colB->getIsOwnerActive())
     {
         pair->clearCollisionNoEvent();
         return;

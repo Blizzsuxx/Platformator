@@ -25,13 +25,16 @@ enum ColliderFlags : uint8_t
 {
     IS_TRIGGER = 1 << 0,
     IS_REGISTERED_IN_GRID = 1 << 1,
-    IS_REGISTERED_IN_PHYSICS_MANAGER = 1 << 2
+    IS_REGISTERED_IN_PHYSICS_MANAGER = 1 << 2,
+    IS_OWNER_ACTIVE = 1 << 3,
+    HAS_NONSTATIC_RIGIDBODY = 1 << 4
 };
 
 class Collider : public Component
 {
     friend class GameObject;
     friend class PhysicsManager;
+    friend class Rigidbody;
     friend class Grid;
     friend class GridCell;
 
@@ -160,32 +163,40 @@ class Collider : public Component
     {
         return (flags & IS_REGISTERED_IN_PHYSICS_MANAGER) != 0;
     }
+    bool getIsOwnerActive() const noexcept
+    {
+        return (flags & IS_OWNER_ACTIVE) != 0;
+    }
+    bool hasNonStaticRigidbody() const noexcept
+    {
+        return (flags & HAS_NONSTATIC_RIGIDBODY) != 0;
+    }
     size_t getPhysicsManagerIndex() const
     {
         return physicsManagerIndex;
     }
 
   protected:
-    uint64_t collisionGroup;
-    uint64_t collisionMask;
-
-    ColliderType colliderType;
-    uint64_t stateVersion;
-    Eigen::Vector2f offset;
+    // Hot narrow-phase & broad-phase bounds/state packed contiguously.
     Eigen::Vector2f cachedWorldPosition = Eigen::Vector2f::Zero();
-
-    float fatMinX = 0.0f;
-    float fatMaxX = 0.0f;
-    float fatMinY = 0.0f;
-    float fatMaxY = 0.0f;
     float tightMinX = 0.0f;
     float tightMaxX = 0.0f;
     float tightMinY = 0.0f;
     float tightMaxY = 0.0f;
-    size_t physicsManagerIndex;
-
-    GridCellRange gridCellRange;
+    float fatMinX = 0.0f;
+    float fatMaxX = 0.0f;
+    float fatMinY = 0.0f;
+    float fatMaxY = 0.0f;
+    uint64_t stateVersion;
+    ColliderType colliderType;
     ColliderFlags flags;
+
+    // Cold filter/grid/offset metadata.
+    Eigen::Vector2f offset;
+    uint64_t collisionGroup;
+    uint64_t collisionMask;
+    size_t physicsManagerIndex;
+    GridCellRange gridCellRange;
     GridCellRange gridCellRangeCache;
 
     void setTightBounds(float minX, float maxX, float minY, float maxY) noexcept
@@ -228,6 +239,15 @@ class Collider : public Component
     {
         flags = static_cast<ColliderFlags>(isRegisteredInPhysicsManager ? (flags | IS_REGISTERED_IN_PHYSICS_MANAGER)
                                                                         : (flags & ~IS_REGISTERED_IN_PHYSICS_MANAGER));
+    }
+    void setOwnerActive(bool ownerActive) noexcept
+    {
+        flags = static_cast<ColliderFlags>(ownerActive ? (flags | IS_OWNER_ACTIVE) : (flags & ~IS_OWNER_ACTIVE));
+    }
+    void setHasNonStaticRigidbody(bool hasNonStatic) noexcept
+    {
+        flags = static_cast<ColliderFlags>(hasNonStatic ? (flags | HAS_NONSTATIC_RIGIDBODY)
+                                                        : (flags & ~HAS_NONSTATIC_RIGIDBODY));
     }
     void setPhysicsManagerIndex(size_t index) noexcept
     {

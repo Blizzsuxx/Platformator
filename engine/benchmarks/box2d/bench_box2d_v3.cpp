@@ -1,84 +1,215 @@
 #include "bench_common.h"
 
 #include <box2d/box2d.h>
-#include <tbb/blocked_range.h>
-#include <tbb/parallel_for.h>
-#include <tbb/task_arena.h>
-#include <tbb/task_group.h>
 
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <iostream>
 #include <memory>
+#include <mutex>
+#include <thread>
+
+#if defined(__x86_64__) || defined(_M_X64)
+#include <immintrin.h>
+#define BOX2D_BENCH_CPU_PAUSE() _mm_pause()
+#else
+#define BOX2D_BENCH_CPU_PAUSE() std::this_thread::yield()
+#endif
 
 namespace
 {
 
 using namespace box2d_bench;
 
-struct TaskSlot
+struct alignas(64) TaskSlot
 {
-    tbb::task_group group;
+    b2TaskCallback *task = nullptr;
+    void *taskContext = nullptr;
+    int itemCount = 0;
+    int chunkSize = 1;
+    uint32_t slotIndex = 0;
+    alignas(64) std::atomic<int> nextItem{0};
+    alignas(64) std::atomic<int> inFlight{0};
 };
 
-struct TbbScheduler
+// Lightweight lock-free work-claiming pool with permanent 0..workerCount-1 thread IDs.
+// Avoids nested TBB task_group + parallel_for overhead and guarantees unique workerIndex per thread.
+struct WorkerPool
 {
-    static constexpr size_t MAX_SLOTS = 128;
+    static constexpr size_t MAX_SLOTS = 64;
     int workerCount = 1;
-    tbb::task_arena arena;
-    std::array<TaskSlot, MAX_SLOTS> slots;
-    std::atomic<size_t> nextSlot{0};
+    uint64_t mainInUseMask = 0;
+    alignas(64) std::atomic<uint64_t> activeMask{0};
+    alignas(64) std::atomic<uint32_t> sleepingWorkers{0};
+    alignas(64) std::atomic<bool> stop{false};
+    alignas(64) std::array<TaskSlot, MAX_SLOTS> slots{};
+    std::mutex sleepMutex;
+    std::condition_variable sleepCv;
+    std::vector<std::thread> threads;
 
-    explicit TbbScheduler(int workers) : workerCount(std::max(1, workers)), arena(std::max(1, workers))
+    explicit WorkerPool(int workers) : workerCount(std::max(1, workers))
     {
+        for (size_t i = 0; i < MAX_SLOTS; ++i)
+        {
+            slots[i].slotIndex = static_cast<uint32_t>(i);
+        }
+        threads.reserve(static_cast<size_t>(workerCount - 1));
+        for (int w = 1; w < workerCount; ++w)
+        {
+            threads.emplace_back([this, wid = static_cast<uint32_t>(w)] { workerLoop(wid); });
+        }
     }
 
-    void resetStep()
+    ~WorkerPool()
     {
-        nextSlot.store(0, std::memory_order_relaxed);
+        stop.store(true, std::memory_order_release);
+        {
+            std::lock_guard<std::mutex> lock(sleepMutex);
+        }
+        sleepCv.notify_all();
+        for (auto &t : threads)
+        {
+            if (t.joinable())
+            {
+                t.join();
+            }
+        }
+    }
+
+    static void drainSlot(TaskSlot &slot, uint32_t wid, std::atomic<uint64_t> &activeMask) noexcept
+    {
+        const int count = slot.itemCount;
+        const int chunk = slot.chunkSize;
+        const uint64_t clearMask = ~(uint64_t{1} << slot.slotIndex);
+        while (true)
+        {
+            const int start = slot.nextItem.fetch_add(chunk, std::memory_order_relaxed);
+            if (start >= count)
+            {
+                activeMask.fetch_and(clearMask, std::memory_order_release);
+                break;
+            }
+            const int end = std::min(start + chunk, count);
+            if (end >= count)
+            {
+                activeMask.fetch_and(clearMask, std::memory_order_release);
+            }
+            slot.task(start, end, wid, slot.taskContext);
+            if (end >= count)
+            {
+                break;
+            }
+        }
+    }
+
+    bool helpAnyActive(uint32_t wid) noexcept
+    {
+        const uint64_t mask = activeMask.load(std::memory_order_acquire);
+        if (mask == 0)
+        {
+            return false;
+        }
+        const uint32_t idx = static_cast<uint32_t>(__builtin_ctzll(mask));
+        TaskSlot &slot = slots[idx];
+        slot.inFlight.fetch_add(1, std::memory_order_acq_rel);
+        if ((activeMask.load(std::memory_order_acquire) & (uint64_t{1} << idx)) != 0)
+        {
+            drainSlot(slot, wid, activeMask);
+        }
+        slot.inFlight.fetch_sub(1, std::memory_order_release);
+        return true;
+    }
+
+    void workerLoop(uint32_t wid)
+    {
+        int idleSpins = 0;
+        while (!stop.load(std::memory_order_acquire))
+        {
+            if (helpAnyActive(wid))
+            {
+                idleSpins = 0;
+                continue;
+            }
+
+            if (idleSpins < 50000)
+            {
+                ++idleSpins;
+                BOX2D_BENCH_CPU_PAUSE();
+                continue;
+            }
+
+            std::unique_lock<std::mutex> lock(sleepMutex);
+            sleepingWorkers.fetch_add(1, std::memory_order_acq_rel);
+            sleepCv.wait(lock, [this] {
+                return stop.load(std::memory_order_acquire) || activeMask.load(std::memory_order_acquire) != 0;
+            });
+            sleepingWorkers.fetch_sub(1, std::memory_order_release);
+            idleSpins = 0;
+        }
     }
 
     static void *enqueue(b2TaskCallback *task, int itemCount, int minRange, void *taskContext, void *userContext)
     {
-        auto *self = static_cast<TbbScheduler *>(userContext);
-        const size_t idx = self->nextSlot.fetch_add(1, std::memory_order_relaxed);
-        if (idx >= MAX_SLOTS)
+        auto *self = static_cast<WorkerPool *>(userContext);
+        if (self->workerCount <= 1 || itemCount <= 0)
+        {
+            if (itemCount > 0)
+            {
+                task(0, itemCount, 0, taskContext);
+            }
+            return nullptr;
+        }
+
+        const uint64_t freeMask = ~self->mainInUseMask;
+        if (freeMask == 0)
         {
             task(0, itemCount, 0, taskContext);
             return nullptr;
         }
-        TaskSlot *slot = &self->slots[idx];
-        const uint32_t maxWorkers = static_cast<uint32_t>(self->workerCount);
 
-        if (itemCount <= 1 || itemCount <= minRange)
+        const uint32_t idx = static_cast<uint32_t>(__builtin_ctzll(freeMask));
+        self->mainInUseMask |= (uint64_t{1} << idx);
+
+        TaskSlot &slot = self->slots[idx];
+        slot.task = task;
+        slot.taskContext = taskContext;
+        slot.itemCount = itemCount;
+        const int targetChunks = self->workerCount * 4;
+        const int guidedChunk = (itemCount + targetChunks - 1) / targetChunks;
+        slot.chunkSize = std::max(std::max(1, minRange), guidedChunk);
+        slot.nextItem.store(0, std::memory_order_relaxed);
+        slot.inFlight.store(0, std::memory_order_relaxed);
+
+        self->activeMask.fetch_or(uint64_t{1} << idx, std::memory_order_release);
+        if (self->sleepingWorkers.load(std::memory_order_acquire) > 0)
         {
-            slot->group.run([task, itemCount, taskContext, maxWorkers]() {
-                const int tid = tbb::this_task_arena::current_thread_index();
-                const uint32_t wid = static_cast<uint32_t>(tid >= 0 ? tid : 0) % maxWorkers;
-                task(0, itemCount, wid, taskContext);
-            });
+            std::lock_guard<std::mutex> lock(self->sleepMutex);
+            self->sleepCv.notify_all();
         }
-        else
-        {
-            const int grain = std::max(1, minRange);
-            slot->group.run([task, itemCount, grain, taskContext, maxWorkers]() {
-                tbb::parallel_for(tbb::blocked_range<int>(0, itemCount, static_cast<size_t>(grain)),
-                                  [task, taskContext, maxWorkers](const tbb::blocked_range<int> &r) {
-                                      const int tid = tbb::this_task_arena::current_thread_index();
-                                      const uint32_t wid = static_cast<uint32_t>(tid >= 0 ? tid : 0) % maxWorkers;
-                                      task(r.begin(), r.end(), wid, taskContext);
-                                  });
-            });
-        }
-        return slot;
+        return &slot;
     }
 
-    static void finish(void *userTask, void * /*userContext*/)
+    static void finish(void *userTask, void *userContext)
     {
-        if (userTask != nullptr)
+        if (userTask == nullptr)
         {
-            static_cast<TaskSlot *>(userTask)->group.wait();
+            return;
         }
+        auto *self = static_cast<WorkerPool *>(userContext);
+        auto *slot = static_cast<TaskSlot *>(userTask);
+
+        drainSlot(*slot, 0, self->activeMask);
+        self->activeMask.fetch_and(~(uint64_t{1} << slot->slotIndex), std::memory_order_release);
+        while (slot->inFlight.load(std::memory_order_acquire) != 0)
+        {
+            // Help execute other queued tasks (e.g. sibling b2SolverTask instances that share a barrier).
+            if (!self->helpAnyActive(0))
+            {
+                BOX2D_BENCH_CPU_PAUSE();
+            }
+        }
+        self->mainInUseMask &= ~(uint64_t{1} << slot->slotIndex);
     }
 };
 
@@ -288,7 +419,7 @@ int main(int argc, char **argv)
     {
         const Options opts = parseOptions(argc, argv);
 
-        std::unique_ptr<TbbScheduler> scheduler;
+        std::unique_ptr<WorkerPool> scheduler;
         b2WorldDef worldDef = b2DefaultWorldDef();
         worldDef.gravity = {0.0f, opts.scenario == "broad_phase" ? 0.0f : GRAVITY_Y};
         worldDef.enableSleep = opts.enableSleep;
@@ -296,10 +427,10 @@ int main(int argc, char **argv)
 
         if (opts.workers > 1)
         {
-            scheduler = std::make_unique<TbbScheduler>(opts.workers);
+            scheduler = std::make_unique<WorkerPool>(opts.workers);
             worldDef.workerCount = opts.workers;
-            worldDef.enqueueTask = &TbbScheduler::enqueue;
-            worldDef.finishTask = &TbbScheduler::finish;
+            worldDef.enqueueTask = &WorkerPool::enqueue;
+            worldDef.finishTask = &WorkerPool::finish;
             worldDef.userTaskContext = scheduler.get();
         }
 
@@ -321,23 +452,11 @@ int main(int argc, char **argv)
         double awakeSum = 0.0;
         double contactSum = 0.0;
 
-        auto runStep = [&]() {
-            if (scheduler)
-            {
-                scheduler->resetStep();
-                scheduler->arena.execute([&]() { b2World_Step(worldId, dt, opts.subSteps); });
-            }
-            else
-            {
-                b2World_Step(worldId, dt, opts.subSteps);
-            }
-        };
-
         const int totalSteps = opts.warmupFrames + opts.measureFrames;
         for (int step = 0; step < totalSteps; ++step)
         {
             const auto t0 = std::chrono::steady_clock::now();
-            runStep();
+            b2World_Step(worldId, dt, opts.subSteps);
             const auto t1 = std::chrono::steady_clock::now();
 
             if (step >= opts.warmupFrames)
@@ -353,7 +472,11 @@ int main(int argc, char **argv)
 
         b2DestroyWorld(worldId);
 
-        printSummaryJson("box2d_3.1.1", opts, samplesMs, stats.dynamicBodies, stats.staticBodies,
+#ifndef BOX2D_BENCH_AVX2
+#define BOX2D_BENCH_AVX2 0
+#endif
+        printSummaryJson(BOX2D_BENCH_AVX2 ? "box2d_3.1.1_avx2" : "box2d_3.1.1_sse2", opts, samplesMs,
+                         stats.dynamicBodies, stats.staticBodies,
                          awakeSum / static_cast<double>(opts.measureFrames),
                          contactSum / static_cast<double>(opts.measureFrames));
         return 0;

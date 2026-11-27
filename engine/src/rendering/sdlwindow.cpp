@@ -399,21 +399,7 @@ void SDLWindow::render()
 
     const bool useCachedSelection = renderCullingState && prepareVisibleSelection(mainCamera, renderView);
     prepareDrawOrder(useCachedSelection);
-    if (useCachedSelection)
-    {
-        for (const auto &entry : spriteDrawOrder->entries)
-            mainCamera->renderWithView(spriteComponents[entry.rank], renderer, renderView, false);
-    }
-    else
-    {
-        for (const auto &entry : spriteDrawOrder->entries)
-        {
-            Sprite *spriteComponent = spriteComponents[entry.rank];
-            if (!spriteComponent->getGameObject()->getActive())
-                continue;
-            mainCamera->renderWithView(spriteComponent, renderer, renderView);
-        }
-    }
+    renderSpritesBatched(mainCamera, renderView, useCachedSelection);
 
 #if PLATFORMATOR_ENABLE_DEBUG_TOOLS
     debugDraw.render(renderer, mainCamera, renderWidth, renderHeight);

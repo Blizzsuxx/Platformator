@@ -166,7 +166,7 @@ def main():
             "box2d_v2_iterations": {"velocity": args.v2_velocity_iterations, "position": args.v2_position_iterations},
             "box2d_v3_version": "3.1.1",
             "box2d_v3_substeps": args.v3_substeps,
-            "box2d_v3_simd": "SSE2 (default x86-64)",
+            "box2d_v3_simd": "AVX2 (worker_pool)",
             "box2d_v3_workers": args.v3_workers,
             "platformator_raw": str(args.platformator_raw),
             "godot_json": str(args.godot_json) if godot_data else None,

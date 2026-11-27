@@ -184,6 +184,8 @@ class SDLWindow
 #endif
 
     std::vector<Sprite *> spriteComponents;
+    std::vector<SDL_Vertex> spriteBatchVertices;
+    std::vector<int> spriteBatchIndices;
     std::vector<std::function<void(SDL_Event, double)>> listeners;
 
     bool init();
@@ -192,5 +194,7 @@ class SDLWindow
     void updateRenderSize();
     bool prepareVisibleSelection(Camera *camera, const platformator_detail::SpriteRenderView &view);
     void prepareDrawOrder(bool useCachedSelection);
+    void renderSpritesBatched(Camera *camera, const platformator_detail::SpriteRenderView &view,
+                              bool useCachedSelection);
     void publishOrderCapacityObservation() const noexcept;
 };

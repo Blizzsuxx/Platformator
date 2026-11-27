@@ -1,5 +1,6 @@
 #include "physics/broadphase/aabb.h"
 #include "physics/broadphase/grid.h"
+#include "physics/physicsmanager.h"
 
 #include <algorithm>
 #include <oneapi/tbb/parallel_invoke.h>
@@ -106,9 +107,15 @@ void AABB::addBatch(const std::vector<Collider *> &colliders)
             intervalListY.addBulkEmpty(yProxies);
         };
 
-        if (added.size() >= 64)
+        if (added.size() >= 64 && PhysicsManager::hasParallelPhysicsWorkers())
         {
+            const bool hadSink = activeDeltaSink != nullptr;
+            activeDeltaSink = nullptr;
             tbb::parallel_invoke(buildX, buildY);
+            if (hadSink)
+            {
+                beginDeltaBatch();
+            }
         }
         else
         {
@@ -131,14 +138,37 @@ void AABB::addBatch(const std::vector<Collider *> &colliders)
         }
     };
 
-    if (added.size() >= 64)
+    if (added.size() >= 64 && PhysicsManager::hasParallelPhysicsWorkers())
     {
+        const bool hadSink = activeDeltaSink != nullptr;
+        activeDeltaSink = nullptr;
         tbb::parallel_invoke(insertX, insertY);
+        if (hadSink)
+        {
+            beginDeltaBatch();
+        }
     }
     else
     {
         insertX();
         insertY();
+    }
+}
+
+void AABB::beginDeltaBatch()
+{
+    activeDeltaSink = owner ? &owner->getLocalPairDeltaSink() : nullptr;
+}
+
+void AABB::recordDelta(Collider *colliderA, Collider *colliderB, int delta)
+{
+    if (activeDeltaSink != nullptr)
+    {
+        PairDeltaCollector::recordTo(*activeDeltaSink, colliderA, colliderB, delta);
+    }
+    else
+    {
+        owner->recordPairDelta(colliderA, colliderB, delta);
     }
 }
 
@@ -166,42 +196,37 @@ void AABB::remove(ColliderBinding *binding)
     bindingPool.destroy(binding);
 }
 
-bool AABB::tryClearAllRemoved(const std::vector<Collider *> &colliders)
+bool AABB::tryClearAllRemoved(const std::vector<Collider *> &colliders, std::vector<ColliderBinding *> &outMatched)
 {
     if (bindingMap.size() < 16 || colliders.size() < bindingMap.size())
     {
         return false;
     }
 
-    std::vector<ColliderBinding *> matched;
-    matched.reserve(bindingMap.size());
+    outMatched.reserve(bindingMap.size());
     for (Collider *collider : colliders)
     {
         if (ColliderBinding *binding = bindingMap.find(collider); binding != nullptr && !binding->pendingRemoval)
         {
             binding->pendingRemoval = true;
-            matched.push_back(binding);
+            outMatched.push_back(binding);
         }
     }
 
-    if (matched.size() != bindingMap.size())
+    if (outMatched.size() != bindingMap.size())
     {
-        for (ColliderBinding *binding : matched)
-        {
-            binding->pendingRemoval = false;
-        }
         return false;
     }
 
     for (const PairKey &pair : pairsWithBothAxisOverlapping)
     {
-        owner->recordPairDelta(pair.a, pair.b, -1);
+        recordDelta(pair.a, pair.b, -1);
     }
     pairsWithBothAxisOverlapping.clear();
     intervalListX.resetToEmpty();
     intervalListY.resetToEmpty();
     bindingMap.clear();
-    for (ColliderBinding *binding : matched)
+    for (ColliderBinding *binding : outMatched)
     {
         bindingPool.destroy(binding);
     }
@@ -214,12 +239,21 @@ void AABB::removeBatch(const std::vector<Collider *> &colliders)
     {
         return;
     }
-    if (tryClearAllRemoved(colliders))
+    std::vector<ColliderBinding *> toRemove;
+    if (tryClearAllRemoved(colliders, toRemove))
     {
         return;
     }
     if (colliders.size() < 64)
     {
+        if (!toRemove.empty())
+        {
+            for (ColliderBinding *binding : toRemove)
+            {
+                remove(binding);
+            }
+            return;
+        }
         for (Collider *collider : colliders)
         {
             remove(collider);
@@ -227,14 +261,16 @@ void AABB::removeBatch(const std::vector<Collider *> &colliders)
         return;
     }
 
-    std::vector<ColliderBinding *> toRemove;
-    toRemove.reserve(colliders.size());
-    for (Collider *collider : colliders)
+    if (toRemove.empty())
     {
-        if (ColliderBinding *binding = bindingMap.find(collider); binding != nullptr && !binding->pendingRemoval)
+        toRemove.reserve(colliders.size());
+        for (Collider *collider : colliders)
         {
-            binding->pendingRemoval = true;
-            toRemove.push_back(binding);
+            if (ColliderBinding *binding = bindingMap.find(collider); binding != nullptr && !binding->pendingRemoval)
+            {
+                binding->pendingRemoval = true;
+                toRemove.push_back(binding);
+            }
         }
     }
     if (toRemove.empty())
@@ -242,19 +278,33 @@ void AABB::removeBatch(const std::vector<Collider *> &colliders)
         return;
     }
 
-    tbb::parallel_invoke(
-        [&]() {
-            for (ColliderBinding *binding : toRemove)
-            {
-                intervalListX.remove(&binding->xBinding);
-            }
-        },
-        [&]() {
-            for (ColliderBinding *binding : toRemove)
-            {
-                intervalListY.remove(&binding->yBinding);
-            }
-        });
+    auto removeX = [&]() {
+        for (ColliderBinding *binding : toRemove)
+        {
+            intervalListX.remove(&binding->xBinding);
+        }
+    };
+    auto removeY = [&]() {
+        for (ColliderBinding *binding : toRemove)
+        {
+            intervalListY.remove(&binding->yBinding);
+        }
+    };
+    if (PhysicsManager::hasParallelPhysicsWorkers())
+    {
+        const bool hadSink = activeDeltaSink != nullptr;
+        activeDeltaSink = nullptr;
+        tbb::parallel_invoke(removeX, removeY);
+        if (hadSink)
+        {
+            beginDeltaBatch();
+        }
+    }
+    else
+    {
+        removeX();
+        removeY();
+    }
 
     for (ColliderBinding *binding : toRemove)
     {
@@ -334,7 +384,11 @@ SegmentedIntervalList *AABB::getIntervalListX()
 
 void AABB::axisOverlapBegin(Collider *colliderA, Collider *colliderB)
 {
-    if (!colliderA->getGameObject()->getActive() || !colliderB->getGameObject()->getActive())
+    if (!colliderA->getIsOwnerActive() || !colliderB->getIsOwnerActive())
+    {
+        return;
+    }
+    if (!colliderA->overlapsFatBounds(*colliderB))
     {
         return;
     }
@@ -344,14 +398,9 @@ void AABB::axisOverlapBegin(Collider *colliderA, Collider *colliderB)
         return;
     }
 
-    if (!colliderA->overlapsFatBounds(*colliderB))
-    {
-        return;
-    }
-
     if (pairsWithBothAxisOverlapping.insert(PairKey(colliderA, colliderB)))
     {
-        owner->recordPairDelta(colliderA, colliderB, 1);
+        recordDelta(colliderA, colliderB, 1);
     }
 }
 
@@ -362,7 +411,7 @@ void AABB::axisOverlapEnd(Collider *colliderA, Collider *colliderB)
         return;
     }
 
-    owner->recordPairDelta(colliderA, colliderB, -1);
+    recordDelta(colliderA, colliderB, -1);
 }
 
 bool AABB::getIsEmpty() const

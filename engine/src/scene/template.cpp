@@ -16,15 +16,15 @@
 
 namespace
 {
-class TemplateBuildResolver final : public platformator_detail::RuntimeReferenceResolver
+class TemplateBuildResolver final : public platformator_detail::RetainingReferenceResolver
 {
   public:
     TemplateBuildResolver(GameManager &manager,
                           const std::unordered_map<int, platformator_detail::ObjectKind> &protoKinds,
                           std::optional<std::string> &invalidInternalReferenceError,
                           platformator_detail::AssetRetentionLedger &retainedAssets)
-        : RuntimeReferenceResolver(manager), protoKinds(protoKinds),
-          invalidInternalReferenceError(invalidInternalReferenceError), retainedAssets(retainedAssets)
+        : RetainingReferenceResolver(manager, retainedAssets), protoKinds(protoKinds),
+          invalidInternalReferenceError(invalidInternalReferenceError)
     {
     }
 
@@ -54,21 +54,6 @@ class TemplateBuildResolver final : public platformator_detail::RuntimeReference
         return nullptr;
     }
 
-    TextureWrapper *loadTexture(const std::string &path) override
-    {
-        return retainedAssets.retain(RuntimeReferenceResolver::loadTexture(path));
-    }
-
-    AudioWrapper *loadAudio(const std::string &path) override
-    {
-        return retainedAssets.retain(RuntimeReferenceResolver::loadAudio(path));
-    }
-
-    AnimationClip *loadAnimationClip(const std::string &path) override
-    {
-        return retainedAssets.retain(RuntimeReferenceResolver::loadAnimationClip(path));
-    }
-
     Template *loadTemplate(const std::string &path) override
     {
         bool deferred = false;
@@ -89,29 +74,28 @@ class TemplateBuildResolver final : public platformator_detail::RuntimeReference
   private:
     const std::unordered_map<int, platformator_detail::ObjectKind> &protoKinds;
     std::optional<std::string> &invalidInternalReferenceError;
-    platformator_detail::AssetRetentionLedger &retainedAssets;
     std::unordered_set<std::string> deferredCyclicPaths;
 };
 
 class CloneReferenceResolver final : public platformator_detail::RuntimeReferenceResolver
 {
   public:
-    CloneReferenceResolver(GameManager &manager, const std::unordered_map<int, BaseObject *> &protoIdToClone)
+    CloneReferenceResolver(GameManager &manager, const platformator_detail::FlatIdMap &protoIdToClone)
         : RuntimeReferenceResolver(manager), protoIdToClone(protoIdToClone)
     {
     }
 
     bool isExternalObjectId(int id) const override
     {
-        return !protoIdToClone.contains(id);
+        return protoIdToClone.find(id) == nullptr;
     }
 
     BaseObject *findObject(int id, platformator_detail::ObjectKind kind) override
     {
-        const auto it = protoIdToClone.find(id);
-        if (it == protoIdToClone.end())
+        BaseObject *found = protoIdToClone.find(id);
+        if (found == nullptr)
             return nullptr;
-        return manager.resolveHandle(it->second->getHandle(), kind);
+        return manager.resolveHandle(found->getHandle(), kind);
     }
 
     BaseObject *findHandle(platformator::ObjectHandle handle, platformator_detail::ObjectKind kind) override
@@ -120,23 +104,31 @@ class CloneReferenceResolver final : public platformator_detail::RuntimeReferenc
     }
 
   private:
-    const std::unordered_map<int, BaseObject *> &protoIdToClone;
+    const platformator_detail::FlatIdMap &protoIdToClone;
 };
 } // namespace
 
+struct Template::CloneContext
+{
+    std::vector<std::unique_ptr<GameObject, ObjectDeleter>> clonedObjects;
+    std::vector<GameObject *> rawClones;
+    platformator_detail::FlatIdMap protoIdToClone;
+    std::vector<ScriptComponent *> clonedScripts;
+    bool trackIds = false;
+};
+
 GameObject *Template::cloneSubtree(const GameObject &proto, GameObject *clonedParent,
-                                   const Eigen::Vector2f &localPosition, float rotation,
-                                   std::vector<std::unique_ptr<GameObject, ObjectDeleter>> &clonedObjects,
-                                   std::unordered_map<int, BaseObject *> &protoIdToClone,
-                                   std::vector<ScriptComponent *> &clonedScripts)
+                                   const Eigen::Vector2f &localPosition, float rotation, CloneContext &context)
 {
     std::unique_ptr<GameObject, Template::ObjectDeleter> cloneObj(new GameObject());
     GameObject *rawClone = cloneObj.get();
-    clonedObjects.push_back(std::move(cloneObj));
+    context.clonedObjects.push_back(std::move(cloneObj));
+    context.rawClones.push_back(rawClone);
 
     rawClone->setName(proto.getName());
     rawClone->setTag(proto.getTag());
-    protoIdToClone.emplace(proto.getId(), rawClone);
+    if (context.trackIds)
+        context.protoIdToClone.insertOrAssign(proto.getId(), rawClone);
 
     if (clonedParent != nullptr)
         clonedParent->addChild(rawClone);
@@ -155,16 +147,16 @@ GameObject *Template::cloneSubtree(const GameObject &proto, GameObject *clonedPa
             Component *rawComp = compClone.get();
             rawClone->addComponent(rawComp);
             compClone.release();
-            protoIdToClone.emplace(comp->getId(), rawComp);
+            if (context.trackIds)
+                context.protoIdToClone.insertOrAssign(comp->getId(), rawComp);
         }
     }
 
     if (auto *script = rawClone->getComponent<ScriptComponent>())
-        clonedScripts.push_back(script);
+        context.clonedScripts.push_back(script);
 
     for (const GameObject *child : proto.getChildren())
-        cloneSubtree(*child, rawClone, child->getLocalPosition(), child->getRotation(), clonedObjects, protoIdToClone,
-                     clonedScripts);
+        cloneSubtree(*child, rawClone, child->getLocalPosition(), child->getRotation(), context);
 
     return rawClone;
 }
@@ -227,10 +219,12 @@ void Template::loadFromJsonDocument(const nlohmann::json &document, GameManager 
     TemplateBuildResolver buildResolver(manager, buildState.protoKinds, invalidInternalReferenceError, *retainedAssets);
     platformator_detail::buildObjectSubtree(rootRecord, buildResolver, sink, nullptr);
 
+    hasScripts = false;
     for (const auto &object : objects)
     {
         if (auto *script = object->getComponent<ScriptComponent>())
         {
+            hasScripts = true;
             for (Behavior *behavior : script->getPendingBehaviors())
                 behavior->resolveReferences(buildResolver);
         }
@@ -284,28 +278,28 @@ GameObject *Template::instantiateImpl(std::optional<Eigen::Vector2f> worldPositi
                                  : protoRoot.getLocalPosition());
     const float initialRootRot = worldRotation.value_or(protoRoot.getRotation());
 
-    std::vector<std::unique_ptr<GameObject, ObjectDeleter>> clonedObjects;
-    clonedObjects.reserve(objects.size());
-    std::unordered_map<int, BaseObject *> protoIdToClone;
-    protoIdToClone.reserve(objects.size() * 2);
-    std::vector<ScriptComponent *> clonedScripts;
+    CloneContext context;
+    context.clonedObjects.reserve(objects.size());
+    context.rawClones.reserve(objects.size());
+    context.trackIds = hasScripts;
+    if (hasScripts)
+        context.protoIdToClone.reserve(objects.size() * 2);
 
-    GameObject *clonedRoot = cloneSubtree(protoRoot, nullptr, initialRootPos, initialRootRot, clonedObjects,
-                                          protoIdToClone, clonedScripts);
+    GameObject *clonedRoot = cloneSubtree(protoRoot, nullptr, initialRootPos, initialRootRot, context);
 
-    CloneReferenceResolver cloneResolver(manager, protoIdToClone);
-    if (!clonedScripts.empty())
+    CloneReferenceResolver cloneResolver(manager, context.protoIdToClone);
+    if (!context.clonedScripts.empty())
     {
         // Resolve deferred cyclic TemplateAssetRef paths while clones remain Staged so failures roll back via RAII.
-        for (ScriptComponent *script : clonedScripts)
+        for (ScriptComponent *script : context.clonedScripts)
         {
             for (Behavior *behavior : script->getPendingBehaviors())
                 behavior->resolveTemplateAssets(cloneResolver);
         }
     }
 
-    manager.registerGameObjectSubtree(clonedRoot);
-    for (auto &obj : clonedObjects)
+    manager.registerGameObjectSubtree(std::span<GameObject *const>(context.rawClones));
+    for (auto &obj : context.clonedObjects)
         obj.release();
 
     bool committed = false;
@@ -333,7 +327,7 @@ GameObject *Template::instantiateImpl(std::optional<Eigen::Vector2f> worldPositi
                 }
             }
         }
-    } rollbackGuard{manager, clonedRoot, clonedScripts, committed};
+    } rollbackGuard{manager, clonedRoot, context.clonedScripts, committed};
 
     if (parent != nullptr)
     {
@@ -342,9 +336,9 @@ GameObject *Template::instantiateImpl(std::optional<Eigen::Vector2f> worldPositi
             clonedRoot->setLocalPosition(protoRoot.getLocalPosition());
     }
 
-    if (!clonedScripts.empty())
+    if (!context.clonedScripts.empty())
     {
-        for (ScriptComponent *script : clonedScripts)
+        for (ScriptComponent *script : context.clonedScripts)
         {
             for (Behavior *behavior : script->getPendingBehaviors())
                 behavior->resolveReferences(cloneResolver);

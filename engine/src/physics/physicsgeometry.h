@@ -8,11 +8,6 @@ class ColliderPair;
 
 namespace physics_geometry
 {
-inline Eigen::Vector2f crossSV(float s, const Eigen::Vector2f &v) noexcept
-{
-    return Eigen::Vector2f(-s * v.y(), s * v.x());
-}
-
 inline int clipSegmentToLine(ClipVertex output[2], const ClipVertex input[2], const Eigen::Vector2f &normal,
                              float offset, EdgeNumber clipEdge) noexcept
 {

@@ -114,6 +114,14 @@ void GameManager::clearAllSceneObjects(std::exception_ptr &error)
             }
             registry.retire(*component);
             silenceComponent(component);
+            if (component->getType() == ComponentType::SCRIPT)
+            {
+                auto *script = static_cast<ScriptComponent *>(component);
+                script->setGameManagerIndex(SIZE_MAX);
+                script->fixedUpdateListIndex = SIZE_MAX;
+                script->updateListIndex = SIZE_MAX;
+                script->lateUpdateListIndex = SIZE_MAX;
+            }
         }
         gameObjectsToDelete.push_back(object);
     }
@@ -122,14 +130,6 @@ void GameManager::clearAllSceneObjects(std::exception_ptr &error)
     dirtyTransforms.clear();
     reconciliations.clear();
     reconciliationDrain.clear();
-    for (ScriptComponent *script : scriptComponents)
-    {
-        script->setGameManagerIndex(SIZE_MAX);
-        script->fixedUpdateListIndex = SIZE_MAX;
-        script->updateListIndex = SIZE_MAX;
-        script->lateUpdateListIndex = SIZE_MAX;
-    }
-    scriptComponents.clear();
     fixedUpdateScripts.clear();
     updateScripts.clear();
     lateUpdateScripts.clear();
@@ -168,7 +168,6 @@ void GameManager::commitSceneTransition(SceneRequest selected)
             candidate->prepare(*selected.path);
             reconciliations.reserve(std::max(reconciliations.size(), candidate->componentCount));
             gameObjectsToDelete.reserve(gameObjectsToDelete.size() + gameObjects.size());
-            scriptComponents.reserve(std::max(scriptComponents.size(), candidate->scriptCount));
             animatorComponents.reserve(std::max(animatorComponents.size(), candidate->animatorCount));
             prepared = std::move(candidate);
         }

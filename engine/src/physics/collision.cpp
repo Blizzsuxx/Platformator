@@ -6,50 +6,28 @@
 #include "platformator/rigidbody.h"
 
 Collision::Collision()
-    : normal(), contactPoints(), referenceObject(nullptr), incidentObject(nullptr),
+    : referenceObject(nullptr), incidentObject(nullptr), normal(), contactPoints(),
       supportState(SupportState::NONE_SUPPORT)
 {
 }
 
 Collision::Collision(Collider *colliderA, Collider *colliderB)
-    : normal(), contactPoints(), referenceObject(colliderA), incidentObject(colliderB),
+    : referenceObject(colliderA), incidentObject(colliderB), normal(), contactPoints(),
       supportState(SupportState::NONE_SUPPORT)
 {
 }
 
 void Collision::setContactPoints(const ClipPoints &newContactPoints)
 {
-    const size_t oldCount = contactPoints.count;
-    const uint32_t oldKey0 = oldCount > 0 ? contactPoints.points[0].point.feature.key : 0;
-    const float oldN0 = oldCount > 0 ? contactPoints.points[0].accumulatedNormalImpulse : 0.0f;
-    const float oldT0 = oldCount > 0 ? contactPoints.points[0].accumulatedTangentImpulse : 0.0f;
-    const uint32_t oldKey1 = oldCount > 1 ? contactPoints.points[1].point.feature.key : 0;
-    const float oldN1 = oldCount > 1 ? contactPoints.points[1].accumulatedNormalImpulse : 0.0f;
-    const float oldT1 = oldCount > 1 ? contactPoints.points[1].accumulatedTangentImpulse : 0.0f;
-
+    const auto warm = contactPoints.snapshotWarmStart();
     for (size_t i = 0; i < newContactPoints.count; ++i)
     {
         ClipPointWithData &dst = contactPoints.points[i];
         dst.point = newContactPoints.points[i];
         dst.separation = 0.0f;
-        const uint32_t key = dst.point.feature.key;
-        if (oldCount > 0 && key == oldKey0)
-        {
-            dst.accumulatedNormalImpulse = oldN0;
-            dst.accumulatedTangentImpulse = oldT0;
-        }
-        else if (oldCount > 1 && key == oldKey1)
-        {
-            dst.accumulatedNormalImpulse = oldN1;
-            dst.accumulatedTangentImpulse = oldT1;
-        }
-        else
-        {
-            dst.accumulatedNormalImpulse = 0.0f;
-            dst.accumulatedTangentImpulse = 0.0f;
-        }
+        warm.restore(dst, dst.point.feature.key);
     }
-    contactPoints.count = newContactPoints.count;
+    contactPoints.count = static_cast<uint32_t>(newContactPoints.count);
 }
 
 Collision::CollisionType Collision::getResolutionType() const

@@ -12,7 +12,8 @@ namespace physics_geometry
 namespace
 {
 // Circle dispatch builds its own manifold; clipping below is exclusively box/box.
-void calculateBoxContactPoints(Collision *collision, const BoxCollider *referenceBox, const BoxCollider *incidentBox);
+void calculateBoxContactPoints(Collision *collision, const BoxCollider *referenceBox, const BoxCollider *incidentBox,
+                               int refAxis, bool refPositive, int incAxis, bool incPositive);
 
 void generateFallbackContactPoint(Collision *collision)
 {
@@ -20,10 +21,7 @@ void generateFallbackContactPoint(Collision *collision)
     const auto *incidentObject = collision->getIncidentObject();
     const Eigen::Vector2f midpoint =
         (referenceObject->getCachedWorldPosition() + incidentObject->getCachedWorldPosition()) * 0.5f;
-
-    ClipPoints fallbackClipPoints;
-    fallbackClipPoints.add(midpoint, ContactFeature());
-    collision->setContactPoints(fallbackClipPoints);
+    collision->getContactPoints().setSinglePoint(midpoint, ContactFeature(), 0.0f);
 }
 
 void circleCircleCollision(ColliderPair &pair, const Eigen::Vector2f &gravityDirection)
@@ -46,11 +44,9 @@ void circleCircleCollision(ColliderPair &pair, const Eigen::Vector2f &gravityDir
     collision->setReferenceObject(a);
     collision->setIncidentObject(b);
     collision->setNormal(normal);
-    ClipPoints points;
-    points.add((a->getCachedWorldPosition() + normal * radiusA + b->getCachedWorldPosition() - normal * radiusB) * 0.5f,
-               ContactFeature(0x100));
-    collision->setContactPoints(points);
-    collision->getContactPoints().points[0].separation = distance - radius;
+    collision->getContactPoints().setSinglePoint(
+        (a->getCachedWorldPosition() + normal * radiusA + b->getCachedWorldPosition() - normal * radiusB) * 0.5f,
+        ContactFeature(0x100), distance - radius);
     collision->updateSupportState(gravityDirection);
 }
 
@@ -99,10 +95,8 @@ void circleBoxCollision(ColliderPair &pair, const Eigen::Vector2f &gravityDirect
     collision->setReferenceObject(box);
     collision->setIncidentObject(circle);
     collision->setNormal(normal);
-    ClipPoints points;
-    points.add(circle->getCachedWorldPosition() - normal * radius, ContactFeature(feature));
-    collision->setContactPoints(points);
-    collision->getContactPoints().points[0].separation = separation;
+    collision->getContactPoints().setSinglePoint(circle->getCachedWorldPosition() - normal * radius,
+                                                 ContactFeature(feature), separation);
     collision->updateSupportState(gravityDirection);
 }
 } // namespace
@@ -146,73 +140,168 @@ void updateContactGeometry(ColliderPair &pair, const Eigen::Vector2f &gravityDir
 
     const Eigen::Vector2f delta = boxB->getCachedWorldPosition() - boxA->getCachedWorldPosition();
 
-    const float absR00 = std::abs(axesA[0].dot(axesB[0]));
-    const float absR01 = std::abs(axesA[0].dot(axesB[1]));
-    const float distA0 = delta.dot(axesA[0]);
-    const float overlapA0 = (hAx + hBx * absR00 + hBy * absR01) - std::abs(distA0);
-    if (overlapA0 < 0.0f)
+    const BoxCollider *referenceBox;
+    const BoxCollider *incidentBox;
+    Eigen::Vector2f minNormal;
+    int refAxis;
+    bool refPositive;
+    int incAxis;
+    bool incPositive;
+
+    if (axesA[0].y() == 0.0f && axesB[0].y() == 0.0f && axesA[0].x() > 0.0f && axesB[0].x() > 0.0f)
     {
-        pair.clearCollisionNoEvent();
-        return;
-    }
+        // Fast path for unrotated axis-aligned boxes: exact match with general SAT.
+        const float overlapX = (hAx + hBx) - std::abs(delta.x());
+        if (overlapX < 0.0f)
+        {
+            pair.clearCollisionNoEvent();
+            return;
+        }
+        const float overlapY = (hAy + hBy) - std::abs(delta.y());
+        if (overlapY < 0.0f)
+        {
+            pair.clearCollisionNoEvent();
+            return;
+        }
 
-    // Both box frames are 2D orthonormal: |A1·B0| == |A0·B1| and |A1·B1| == |A0·B0|.
-    const float distA1 = delta.dot(axesA[1]);
-    const float overlapA1 = (hAy + hBx * absR01 + hBy * absR00) - std::abs(distA1);
-    if (overlapA1 < 0.0f)
+        referenceBox = boxA;
+        incidentBox = boxB;
+        if (overlapY < overlapX)
+        {
+            refAxis = 1;
+            refPositive = delta.y() >= 0.0f;
+            minNormal = Eigen::Vector2f(0.0f, refPositive ? 1.0f : -1.0f);
+        }
+        else
+        {
+            refAxis = 0;
+            refPositive = delta.x() >= 0.0f;
+            minNormal = Eigen::Vector2f(refPositive ? 1.0f : -1.0f, 0.0f);
+        }
+        incAxis = refAxis;
+        incPositive = !refPositive;
+    }
+    else
     {
-        pair.clearCollisionNoEvent();
-        return;
+        const float r00 = axesA[0].dot(axesB[0]);
+        const float r01 = axesA[0].dot(axesB[1]);
+        const float absR00 = std::abs(r00);
+        const float absR01 = std::abs(r01);
+        const float distA0 = delta.dot(axesA[0]);
+        const float overlapA0 = (hAx + hBx * absR00 + hBy * absR01) - std::abs(distA0);
+        if (overlapA0 < 0.0f)
+        {
+            pair.clearCollisionNoEvent();
+            return;
+        }
+
+        // Both box frames are 2D orthonormal: A1·B0 == -A0·B1 and A1·B1 == A0·B0.
+        const float distA1 = delta.dot(axesA[1]);
+        const float overlapA1 = (hAy + hBx * absR01 + hBy * absR00) - std::abs(distA1);
+        if (overlapA1 < 0.0f)
+        {
+            pair.clearCollisionNoEvent();
+            return;
+        }
+
+        const float distB0 = delta.dot(axesB[0]);
+        const float overlapB0 = (hBx + hAx * absR00 + hAy * absR01) - std::abs(distB0);
+        if (overlapB0 < 0.0f)
+        {
+            pair.clearCollisionNoEvent();
+            return;
+        }
+
+        const float distB1 = delta.dot(axesB[1]);
+        const float overlapB1 = (hBy + hAx * absR01 + hAy * absR00) - std::abs(distB1);
+        if (overlapB1 < 0.0f)
+        {
+            pair.clearCollisionNoEvent();
+            return;
+        }
+
+        float minOverlap = overlapA0;
+        minNormal = distA0 < 0.0f ? (-axesA[0]).eval() : axesA[0];
+        bool swapped = false;
+        refAxis = 0;
+        refPositive = distA0 >= 0.0f;
+
+        if (overlapA1 < minOverlap)
+        {
+            minOverlap = overlapA1;
+            minNormal = distA1 < 0.0f ? (-axesA[1]).eval() : axesA[1];
+            refAxis = 1;
+            refPositive = distA1 >= 0.0f;
+        }
+
+        if (overlapB0 < minOverlap * 0.98f - 0.001f)
+        {
+            minOverlap = overlapB0;
+            minNormal = distB0 > 0.0f ? (-axesB[0]).eval() : axesB[0];
+            swapped = true;
+            refAxis = 0;
+            refPositive = distB0 <= 0.0f;
+        }
+
+        if (overlapB1 < minOverlap && (swapped || overlapB1 < minOverlap * 0.98f - 0.001f))
+        {
+            minNormal = distB1 > 0.0f ? (-axesB[1]).eval() : axesB[1];
+            swapped = true;
+            refAxis = 1;
+            refPositive = distB1 <= 0.0f;
+        }
+
+        referenceBox = swapped ? boxB : boxA;
+        incidentBox = swapped ? boxA : boxB;
+
+        // Derive (-minNormal)·incidentAxes directly from the already-computed orthonormal dots (r00, r01).
+        const float sign = refPositive ? -1.0f : 1.0f;
+        float incProjX;
+        float incProjY;
+        if (!swapped)
+        {
+            if (refAxis == 0)
+            {
+                incProjX = sign * r00;
+                incProjY = sign * r01;
+            }
+            else
+            {
+                incProjX = sign * (-r01);
+                incProjY = sign * r00;
+            }
+        }
+        else
+        {
+            if (refAxis == 0)
+            {
+                incProjX = sign * r00;
+                incProjY = sign * (-r01);
+            }
+            else
+            {
+                incProjX = sign * r01;
+                incProjY = sign * r00;
+            }
+        }
+        if (std::abs(incProjX) > std::abs(incProjY))
+        {
+            incAxis = 0;
+            incPositive = incProjX > 0.0f;
+        }
+        else
+        {
+            incAxis = 1;
+            incPositive = incProjY > 0.0f;
+        }
     }
-
-    const float distB0 = delta.dot(axesB[0]);
-    const float overlapB0 = (hBx + hAx * absR00 + hAy * absR01) - std::abs(distB0);
-    if (overlapB0 < 0.0f)
-    {
-        pair.clearCollisionNoEvent();
-        return;
-    }
-
-    const float distB1 = delta.dot(axesB[1]);
-    const float overlapB1 = (hBy + hAx * absR01 + hAy * absR00) - std::abs(distB1);
-    if (overlapB1 < 0.0f)
-    {
-        pair.clearCollisionNoEvent();
-        return;
-    }
-
-    float minOverlap = overlapA0;
-    Eigen::Vector2f minNormal = distA0 < 0.0f ? (-axesA[0]).eval() : axesA[0];
-    bool swapped = false;
-
-    if (overlapA1 < minOverlap)
-    {
-        minOverlap = overlapA1;
-        minNormal = distA1 < 0.0f ? (-axesA[1]).eval() : axesA[1];
-    }
-
-    if (overlapB0 < minOverlap * 0.98f - 0.001f)
-    {
-        minOverlap = overlapB0;
-        minNormal = distB0 > 0.0f ? (-axesB[0]).eval() : axesB[0];
-        swapped = true;
-    }
-
-    if (overlapB1 < minOverlap && (swapped || overlapB1 < minOverlap * 0.98f - 0.001f))
-    {
-        minNormal = distB1 > 0.0f ? (-axesB[1]).eval() : axesB[1];
-        swapped = true;
-    }
-
-    const BoxCollider *referenceBox = swapped ? boxB : boxA;
-    const BoxCollider *incidentBox = swapped ? boxA : boxB;
 
     Collision *collision = pair.getOrCreateCollisionNoEvent();
     collision->setIncidentObject(incidentBox);
     collision->setReferenceObject(referenceBox);
     collision->setNormal(minNormal);
 
-    calculateBoxContactPoints(collision, referenceBox, incidentBox);
+    calculateBoxContactPoints(collision, referenceBox, incidentBox, refAxis, refPositive, incAxis, incPositive);
     // Float SAT can round a sub-ulp separating gap to overlap. Clipping must
     // produce an actual manifold before this pair contributes events or support.
     if (!collision->getContactPoints().count)
@@ -225,13 +314,14 @@ void updateContactGeometry(ColliderPair &pair, const Eigen::Vector2f &gravityDir
 
 namespace
 {
-void calculateBoxContactPoints(Collision *collision, const BoxCollider *referenceBox, const BoxCollider *incidentBox)
+void calculateBoxContactPoints(Collision *collision, const BoxCollider *referenceBox, const BoxCollider *incidentBox,
+                               int refAxis, bool refPositive, int incAxis, bool incPositive)
 {
     const Eigen::Vector2f &normal = collision->getNormal();
 
     Eigen::Vector2f referenceEdgeVector;
-    const Edge referenceEdge = referenceBox->getSupportEdge(normal, &referenceEdgeVector);
-    const Edge incidentEdge = incidentBox->getSupportEdge(-normal);
+    const Edge referenceEdge = referenceBox->getFaceEdge(refAxis, refPositive, &referenceEdgeVector);
+    const Edge incidentEdge = incidentBox->getFaceEdge(incAxis, incPositive);
 
     ClipVertex incidentVertices[2];
     incidentVertices[0] = ClipVertex(
@@ -268,15 +358,9 @@ void calculateBoxContactPoints(Collision *collision, const BoxCollider *referenc
     const float max = normal.dot(referenceEdge.v1);
 
     ClipPointsWithData &dst = collision->getContactPoints();
-    const size_t oldCount = dst.count;
-    const uint32_t oldKey0 = oldCount > 0 ? dst.points[0].point.feature.key : 0;
-    const float oldN0 = oldCount > 0 ? dst.points[0].accumulatedNormalImpulse : 0.0f;
-    const float oldT0 = oldCount > 0 ? dst.points[0].accumulatedTangentImpulse : 0.0f;
-    const uint32_t oldKey1 = oldCount > 1 ? dst.points[1].point.feature.key : 0;
-    const float oldN1 = oldCount > 1 ? dst.points[1].accumulatedNormalImpulse : 0.0f;
-    const float oldT1 = oldCount > 1 ? dst.points[1].accumulatedTangentImpulse : 0.0f;
+    const auto warm = dst.snapshotWarmStart();
 
-    size_t outCount = 0;
+    uint32_t outCount = 0;
     for (int i = 0; i < clippedCount; ++i)
     {
         const float separation = normal.dot(clippedVertices2[i].point) - max;
@@ -285,22 +369,7 @@ void calculateBoxContactPoints(Collision *collision, const BoxCollider *referenc
             ClipPointWithData &out = dst.points[outCount++];
             out.point = clippedVertices2[i];
             out.separation = separation;
-            const uint32_t key = clippedVertices2[i].feature.key;
-            if (oldCount > 0 && key == oldKey0)
-            {
-                out.accumulatedNormalImpulse = oldN0;
-                out.accumulatedTangentImpulse = oldT0;
-            }
-            else if (oldCount > 1 && key == oldKey1)
-            {
-                out.accumulatedNormalImpulse = oldN1;
-                out.accumulatedTangentImpulse = oldT1;
-            }
-            else
-            {
-                out.accumulatedNormalImpulse = 0.0f;
-                out.accumulatedTangentImpulse = 0.0f;
-            }
+            warm.restore(out, clippedVertices2[i].feature.key);
         }
     }
     dst.count = outCount;

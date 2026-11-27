@@ -6,16 +6,11 @@
 #include <vector>
 #include <json.hpp>
 #include "core/flatidmap.h"
-#include "platformator/animationclip.h"
-#include "platformator/audiowrapper.h"
-#include "platformator/template.h"
-#include "platformator/texturewrapper.h"
 #include "scene/referenceresolver.h"
 
 class GameManager;
-class Scene;
 class GameObject;
-class Template;
+class Scene;
 
 namespace platformator_detail
 {
@@ -32,7 +27,7 @@ GameObject *buildObjectSubtree(const nlohmann::json &record, platformator::Refer
                                const SubtreeBuildSink &sink, GameObject *parent = nullptr);
 } // namespace platformator_detail
 
-class SceneBuildContext : public platformator_detail::RuntimeReferenceResolver
+class SceneBuildContext : public platformator_detail::RetainingReferenceResolver
 {
     friend class GameManager;
 
@@ -43,10 +38,6 @@ class SceneBuildContext : public platformator_detail::RuntimeReferenceResolver
     void prepare(const std::string &sceneFilePath);
     BaseObject *findObject(int id, platformator_detail::ObjectKind kind) override;
     BaseObject *findHandle(platformator::ObjectHandle handle, platformator_detail::ObjectKind kind) override;
-    TextureWrapper *loadTexture(const std::string &path) override;
-    AudioWrapper *loadAudio(const std::string &path) override;
-    AnimationClip *loadAnimationClip(const std::string &path) override;
-    Template *loadTemplate(const std::string &path) override;
 
   private:
     GameObject *buildObject(const nlohmann::json &record, GameObject *parent = nullptr);
@@ -56,7 +47,6 @@ class SceneBuildContext : public platformator_detail::RuntimeReferenceResolver
     platformator_detail::FlatIdMap ids;
     int64_t nextFileId = 0;
     size_t componentCount = 0;
-    size_t scriptCount = 0;
     size_t animatorCount = 0;
     platformator_detail::AssetRetentionLedger retainedAssets;
 };

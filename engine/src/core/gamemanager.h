@@ -15,6 +15,7 @@
 #include <functional>
 #include <memory>
 #include <optional>
+#include <span>
 #include <string>
 #include <thread>
 #include <vector>
@@ -172,7 +173,6 @@ class GameManager
 
     std::vector<GameObject *> gameObjects;
     std::vector<Animator *> animatorComponents;
-    std::vector<ScriptComponent *> scriptComponents;
     std::vector<ScriptComponent *> fixedUpdateScripts;
     std::vector<ScriptComponent *> updateScripts;
     std::vector<ScriptComponent *> lateUpdateScripts;
@@ -197,6 +197,7 @@ class GameManager
     void createMainCameraIfNoMainCameraExists();
     [[noreturn]] void throwCannotMutate() const;
     void registerGameObjectSubtree(GameObject *gameObject);
+    void registerGameObjectSubtree(std::span<GameObject *const> subtree);
     void removeGameObject(GameObject *gameObject);
     void startDeletingGameObject(GameObject *gameObject);
     void clearAllSceneObjects(std::exception_ptr &error);

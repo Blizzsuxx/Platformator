@@ -43,14 +43,11 @@ class BoxCollider : public Collider
     {
         return normals[0];
     }
-    Edge getSupportEdge(const Eigen::Vector2f &normal, Eigen::Vector2f *outUnitTangent = nullptr) const noexcept
+    Edge getFaceEdge(int axis, bool positive, Eigen::Vector2f *outUnitTangent = nullptr) const noexcept
     {
-        const float projX = normal.dot(normals[0]);
-        const float projY = normal.dot(normals[1]);
-
-        if (std::abs(projX) > std::abs(projY))
+        if (axis == 0)
         {
-            if (projX > 0.0f)
+            if (positive)
             {
                 if (outUnitTangent != nullptr)
                     *outUnitTangent = normals[1];
@@ -61,7 +58,7 @@ class BoxCollider : public Collider
             return Edge(vertices[3], vertices[0], EDGE2);
         }
 
-        if (projY > 0.0f)
+        if (positive)
         {
             if (outUnitTangent != nullptr)
                 *outUnitTangent = -normals[0];
@@ -70,6 +67,16 @@ class BoxCollider : public Collider
         if (outUnitTangent != nullptr)
             *outUnitTangent = normals[0];
         return Edge(vertices[0], vertices[1], EDGE1);
+    }
+    Edge getSupportEdge(const Eigen::Vector2f &normal, Eigen::Vector2f *outUnitTangent = nullptr) const noexcept
+    {
+        const float projX = normal.dot(normals[0]);
+        const float projY = normal.dot(normals[1]);
+        if (std::abs(projX) > std::abs(projY))
+        {
+            return getFaceEdge(0, projX > 0.0f, outUnitTangent);
+        }
+        return getFaceEdge(1, projY > 0.0f, outUnitTangent);
     }
 
   private:

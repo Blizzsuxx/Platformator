@@ -195,13 +195,14 @@ private:
         size_t subSteps = 4;
     };
 
-    struct SolverBodyForce
+    struct alignas(16) SolverBodyForce
     {
         float accelX = 0.0f;
         float accelY = 0.0f;
         float angAccel = 0.0f;
-        uint8_t isDynamic = 0;
+        float pad = 0.0f;
     };
+    static_assert(sizeof(SolverBodyForce) == 16 && alignof(SolverBodyForce) >= 16);
 
     struct SolverBodyDelta
     {
@@ -248,26 +249,8 @@ private:
 
     struct WritableSolverBody
     {
-        size_t regIndex = SIZE_MAX;
         uint32_t localIndex = 0;
         Rigidbody *body = nullptr;
-    };
-
-    struct ScopedSolverBodyMapGuard
-    {
-        std::vector<uint32_t> &localIndices;
-        const std::vector<WritableSolverBody> &writable;
-
-        ~ScopedSolverBodyMapGuard() noexcept
-        {
-            for (const WritableSolverBody &entry : writable)
-            {
-                if (entry.regIndex != SIZE_MAX)
-                {
-                    localIndices[entry.regIndex] = UNMAPPED_SOLVER_BODY;
-                }
-            }
-        }
     };
 
     struct IslandWorkUnit
@@ -448,7 +431,7 @@ private:
     template <bool UseBias>
     static void solveConstraintSoft(SolverConstraint &constraint, SolverBodyState &bodyA, SolverBodyState &bodyB,
                                     const SoftStepParams &params) noexcept;
-    static void applyRestitutionSoft(SolverConstraint &constraint, SolverBodyState &bodyA, SolverBodyState &bodyB,
+    static void applyRestitutionSoft(const SolverConstraint &constraint, SolverBodyState &bodyA, SolverBodyState &bodyB,
                                      const SoftStepParams &params) noexcept;
     static void storeConstraintImpulses(const SolverConstraint &constraint) noexcept;
     void solvePersistentIsland(const PersistentIsland &island, const SoftStepParams &params,
@@ -476,11 +459,9 @@ private:
     std::vector<int32_t> activeIslandIds;
     std::vector<int32_t> dirtySplitIslandIds;
     std::vector<ColliderPair *> kinematicSolverPairs;
-    std::vector<int32_t> splitAdjHead;
-    std::vector<int32_t> splitAdjNext;
-    std::vector<uint32_t> splitAdjTo;
+    std::vector<uint32_t> splitDsuParent;
+    std::vector<uint8_t> splitDsuRank;
     std::vector<int32_t> splitComponentOfBody;
-    std::vector<uint32_t> splitQueue;
     std::vector<ColliderPair *> splitRemainingContacts;
     std::vector<Rigidbody *> splitOldBodies;
     std::vector<size_t> splitComponentContactCounts;

@@ -18,9 +18,9 @@ void PhysicsManager::queueSupportDelta(Rigidbody *body, int delta)
 {
     if (!delta)
         return;
-    if (body->supportDeltaIndex == SIZE_MAX)
+    if (body->supportDeltaIndex == Rigidbody::INVALID_INDEX)
     {
-        body->supportDeltaIndex = supportDeltaBodies.size();
+        body->supportDeltaIndex = static_cast<uint32_t>(supportDeltaBodies.size());
         supportDeltaBodies.push_back(body);
     }
     body->supportDelta += delta;
@@ -57,13 +57,14 @@ void PhysicsManager::flushSupportDeltas()
         assert(next >= 0);
         const bool lostLast = body->supportContactCount && next == 0;
         const bool changedSupport = (body->supportContactCount == 0) != (next == 0);
-        body->supportContactCount = static_cast<size_t>(next);
+        body->supportContactCount = static_cast<uint32_t>(next);
         body->supportDelta = 0;
-        body->supportDeltaIndex = SIZE_MAX;
+        body->supportDeltaIndex = Rigidbody::INVALID_INDEX;
         if (lostLast && !body->isRetired())
             body->wakeUp();
-        if (changedSupport)
-            queueBodyParticipationChange(body);
+        if (changedSupport && body->awakeDynamicIndex != Rigidbody::INVALID_INDEX)
+            membership(sleepCandidates, body, &Rigidbody::sleepCandidateIndex,
+                       body->hasSupportContact() || !body->getGravity());
     }
     supportDeltaBodies.clear();
     reconcileChangedBodies();

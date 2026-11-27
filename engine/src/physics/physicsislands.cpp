@@ -183,7 +183,7 @@ void PhysicsManager::recyclePersistentIsland(int32_t islandId)
     for (Rigidbody *body : island.bodies)
     {
         body->solverIslandId = -1;
-        body->solverIslandBodyIndex = SIZE_MAX;
+        body->solverIslandBodyIndex = Rigidbody::INVALID_INDEX;
         body->solverColorMask = 0;
     }
     for (ColliderPair *pair : island.contacts)
@@ -218,7 +218,7 @@ void PhysicsManager::addBodyToPersistentIsland(PersistentIsland &island, Rigidbo
 {
     assert(body->solverIslandId == -1);
     body->solverIslandId = island.id;
-    body->solverIslandBodyIndex = island.bodies.size();
+    body->solverIslandBodyIndex = static_cast<uint32_t>(island.bodies.size());
     island.bodies.push_back(body);
 }
 
@@ -230,7 +230,10 @@ void PhysicsManager::detachBodyFromPersistentIsland(Rigidbody *body)
         return;
     }
     PersistentIsland &island = persistentIslands[static_cast<size_t>(islandId)];
-    clearIslandColorGraph(island);
+    if (body->solverColorMask != 0)
+    {
+        clearIslandColorGraph(island);
+    }
     membership(island.bodies, body, &Rigidbody::solverIslandBodyIndex, false);
     body->solverIslandId = -1;
     body->solverColorMask = 0;
@@ -269,13 +272,15 @@ int32_t PhysicsManager::mergePersistentIslands(int32_t islandIdA, int32_t island
     PersistentIsland &drop = persistentIslands[static_cast<size_t>(dropId)];
     clearIslandColorGraph(drop);
 
+    keep.bodies.reserve(keep.bodies.size() + drop.bodies.size());
     for (Rigidbody *body : drop.bodies)
     {
         body->solverIslandId = keepId;
-        body->solverIslandBodyIndex = keep.bodies.size();
+        body->solverIslandBodyIndex = static_cast<uint32_t>(keep.bodies.size());
         body->solverColorMask = 0;
         keep.bodies.push_back(body);
     }
+    keep.contacts.reserve(keep.contacts.size() + drop.contacts.size());
     for (ColliderPair *pair : drop.contacts)
     {
         pair->solverIslandId = keepId;
@@ -455,69 +460,74 @@ void PhysicsManager::splitPersistentIsland(int32_t islandId)
         return;
     }
 
-    splitAdjHead.assign(bodyCount, -1);
-    splitAdjNext.clear();
-    splitAdjTo.clear();
-    splitAdjNext.reserve(island.contacts.size() * 2);
-    splitAdjTo.reserve(island.contacts.size() * 2);
+    splitDsuParent.resize(bodyCount);
+    splitDsuRank.assign(bodyCount, 0);
+    for (size_t i = 0; i < bodyCount; ++i)
+    {
+        splitDsuParent[i] = static_cast<uint32_t>(i);
+    }
 
-    const auto addEdge = [&](uint32_t u, uint32_t v) {
-        splitAdjTo.push_back(v);
-        splitAdjNext.push_back(splitAdjHead[u]);
-        splitAdjHead[u] = static_cast<int32_t>(splitAdjTo.size() - 1);
+    const auto findRoot = [&](uint32_t x) -> uint32_t {
+        uint32_t root = x;
+        while (splitDsuParent[root] != root)
+        {
+            root = splitDsuParent[root];
+        }
+        while (splitDsuParent[x] != x)
+        {
+            const uint32_t next = splitDsuParent[x];
+            splitDsuParent[x] = root;
+            x = next;
+        }
+        return root;
     };
 
+    size_t remainingComponents = bodyCount;
     for (const ColliderPair *pair : island.contacts)
     {
         const auto [rbA, rbB] = pairRigidbodies(pair);
         if (rbA != nullptr && rbB != nullptr && rbA->solverIslandId == islandId && rbB->solverIslandId == islandId)
         {
-            const uint32_t u = static_cast<uint32_t>(rbA->solverIslandBodyIndex);
-            const uint32_t v = static_cast<uint32_t>(rbB->solverIslandBodyIndex);
-            if (u != v)
+            uint32_t rootA = findRoot(rbA->solverIslandBodyIndex);
+            uint32_t rootB = findRoot(rbB->solverIslandBodyIndex);
+            if (rootA != rootB)
             {
-                addEdge(u, v);
-                addEdge(v, u);
-            }
-        }
-    }
-
-    splitComponentOfBody.assign(bodyCount, -1);
-    splitQueue.clear();
-    int32_t componentCount = 0;
-
-    for (size_t start = 0; start < bodyCount; ++start)
-    {
-        if (splitComponentOfBody[start] != -1)
-        {
-            continue;
-        }
-        const int32_t comp = componentCount++;
-        splitComponentOfBody[start] = comp;
-        splitQueue.clear();
-        splitQueue.push_back(static_cast<uint32_t>(start));
-        for (size_t head = 0; head < splitQueue.size(); ++head)
-        {
-            const uint32_t u = splitQueue[head];
-            for (int32_t edge = splitAdjHead[u]; edge != -1; edge = splitAdjNext[static_cast<size_t>(edge)])
-            {
-                const uint32_t v = splitAdjTo[static_cast<size_t>(edge)];
-                if (splitComponentOfBody[v] == -1)
+                if (splitDsuRank[rootA] < splitDsuRank[rootB])
                 {
-                    splitComponentOfBody[v] = comp;
-                    splitQueue.push_back(v);
+                    std::swap(rootA, rootB);
+                }
+                splitDsuParent[rootB] = rootA;
+                if (splitDsuRank[rootA] == splitDsuRank[rootB])
+                {
+                    ++splitDsuRank[rootA];
+                }
+                if (--remainingComponents == 1)
+                {
+                    break;
                 }
             }
         }
     }
 
-    if (componentCount <= 1)
+    if (remainingComponents <= 1)
     {
         if (bodyCount >= 32)
         {
             island.splitCooldown = static_cast<uint16_t>(std::min<size_t>(24, std::max<size_t>(12, bodyCount / 8)));
         }
         return;
+    }
+
+    splitComponentOfBody.assign(bodyCount, -1);
+    int32_t componentCount = 0;
+    for (size_t i = 0; i < bodyCount; ++i)
+    {
+        const uint32_t root = findRoot(static_cast<uint32_t>(i));
+        if (splitComponentOfBody[root] == -1)
+        {
+            splitComponentOfBody[root] = componentCount++;
+        }
+        splitComponentOfBody[i] = splitComponentOfBody[root];
     }
 
     island.splitCooldown = 0;
@@ -609,7 +619,7 @@ void PhysicsManager::splitPersistentIsland(int32_t islandId)
         const int32_t comp = splitComponentOfBody[i];
         const int32_t targetId = splitComponentIslandIds[static_cast<size_t>(comp)];
         body->solverIslandId = -1;
-        body->solverIslandBodyIndex = SIZE_MAX;
+        body->solverIslandBodyIndex = Rigidbody::INVALID_INDEX;
         if (comp != primaryComp)
         {
             body->solverColorMask = 0;
@@ -696,7 +706,7 @@ void PhysicsManager::wakePersistentIslandEndpoints()
 {
     for (Rigidbody *body : pendingBodyChanges)
     {
-        if (body->solverIslandId != -1)
+        if (body->solverIslandId != -1 && body->getIsSleeping())
         {
             persistentIslands[static_cast<size_t>(body->solverIslandId)].hasSleepingEndpoint = true;
         }
@@ -711,10 +721,12 @@ void PhysicsManager::wakePersistentIslandEndpoints()
         bool stillHasSleeping = false;
         for (ColliderPair *pair : island.contacts)
         {
-            Collision *collision = nullptr;
-            Rigidbody *rbA = nullptr;
-            Rigidbody *rbB = nullptr;
-            if (!extractSolverPair(pair, collision, rbA, rbB))
+            if (pair->getCollision() == nullptr)
+            {
+                continue;
+            }
+            const auto [rbA, rbB] = pairRigidbodies(pair);
+            if (rbA == nullptr || rbB == nullptr)
             {
                 continue;
             }

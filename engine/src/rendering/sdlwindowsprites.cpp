@@ -496,6 +496,8 @@ void SDLWindow::renderSpritesBatched(Camera *camera, const platformator_detail::
     bool batchPromoteAlphaBlend = false;
     float batchTexW = 0.0f;
     float batchTexH = 0.0f;
+    float invBatchTexW = 0.0f;
+    float invBatchTexH = 0.0f;
     bool batchTexSizeValid = false;
 
     const auto flushBatch = [&]() {
@@ -556,24 +558,40 @@ void SDLWindow::renderSpritesBatched(Camera *camera, const platformator_detail::
         assert(object->getActive());
 
         SDL_Texture *texture = sprite->getTexture();
+        if (texture == nullptr)
+        {
+            PLATFORMATOR_RENDER_SUBMISSION(sprite);
+            continue;
+        }
+
         SDL_FRect dst{};
         float angleDegrees = 0.0f;
-        camera->prepareSpriteGeometry(sprite, view, dst, angleDegrees);
-
-        if (!useCachedSelection && view.cullingEligible && texture != nullptr)
+        if (useCachedSelection)
         {
-            PLATFORMATOR_RENDER_VISIBILITY_CHECK();
-            if (platformator_detail::classifySpriteForRender(dst, angleDegrees, view) ==
-                platformator_detail::SpriteRenderClassification::Reject)
-                continue;
+            const auto &spritePos = camera->getPublishedSpritePosition(sprite);
+            dst = platformator_detail::makeSpriteRenderDestination(spritePos.x(), spritePos.y(), sprite->getWidth(),
+                                                                   sprite->getHeight(), view);
+        }
+        else
+        {
+            camera->prepareSpriteGeometry(sprite, view, dst, angleDegrees);
+            if (view.cullingEligible)
+            {
+                PLATFORMATOR_RENDER_VISIBILITY_CHECK();
+                if (platformator_detail::classifySpriteForRender(dst, angleDegrees, view) ==
+                    platformator_detail::SpriteRenderClassification::Reject)
+                    continue;
+            }
         }
 
         PLATFORMATOR_RENDER_SUBMISSION(sprite);
-        if (texture == nullptr)
-            continue;
 
         if (!std::isfinite(dst.x) || !std::isfinite(dst.y) || !std::isfinite(dst.w) || !std::isfinite(dst.h))
         {
+            if (useCachedSelection)
+            {
+                angleDegrees = object->getRotationInDegrees();
+            }
             flushBatch();
             platformator_detail::submitSpriteRender(renderer, texture, sprite->getSourceRect(), dst, angleDegrees,
                                                     sprite->getFlip(), sprite->getColor());
@@ -619,6 +637,11 @@ void SDLWindow::renderSpritesBatched(Camera *camera, const platformator_detail::
             {
                 batchTexSizeValid =
                     SDL_GetTextureSize(batchTexture, &batchTexW, &batchTexH) && batchTexW > 0.0f && batchTexH > 0.0f;
+                if (batchTexSizeValid)
+                {
+                    invBatchTexW = 1.0f / batchTexW;
+                    invBatchTexH = 1.0f / batchTexH;
+                }
             }
             if (batchTexSizeValid)
             {
@@ -626,10 +649,10 @@ void SDLWindow::renderSpritesBatched(Camera *camera, const platformator_detail::
                 SDL_FRect clipped{};
                 if (!SDL_GetRectIntersectionFloat(src, &bounds, &clipped))
                     continue;
-                u0 = clipped.x / batchTexW;
-                v0 = clipped.y / batchTexH;
-                u1 = (clipped.x + clipped.w) / batchTexW;
-                v1 = (clipped.y + clipped.h) / batchTexH;
+                u0 = clipped.x * invBatchTexW;
+                v0 = clipped.y * invBatchTexH;
+                u1 = (clipped.x + clipped.w) * invBatchTexW;
+                v1 = (clipped.y + clipped.h) * invBatchTexH;
             }
         }
 

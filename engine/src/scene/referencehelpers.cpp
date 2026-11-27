@@ -1,4 +1,3 @@
-#include "platformator/assetreference.h"
 #include "platformator/objectreference.h"
 #include "scene/referenceserialization.h"
 #include "platformator/gameobject.h"

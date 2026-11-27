@@ -130,9 +130,10 @@ void to_json(nlohmann::json &j, const AnimationFrame &frame)
                        {"textureWrapperFilePath", wrapper ? wrapper->getFilePath() : ""}};
 }
 
-void deserialize(const nlohmann::json &j, AnimationFrame &frame, platformator::ReferenceResolver &resolver)
+namespace
 {
-    validate_frame_duration_json(j, 0);
+void deserializeValidatedFrame(const nlohmann::json &j, AnimationFrame &frame, platformator::ReferenceResolver &resolver)
+{
     const float validatedDuration = static_cast<float>(j.at("duration").get<double>());
     j.at("hasSourceRect").get_to(frame.region.hasSourceRect);
     j.at("sourceRect").get_to(frame.region.sourceRect);
@@ -147,6 +148,13 @@ void deserialize(const nlohmann::json &j, AnimationFrame &frame, platformator::R
     {
         frame.setTextureWrapper(nullptr);
     }
+}
+} // namespace
+
+void deserialize(const nlohmann::json &j, AnimationFrame &frame, platformator::ReferenceResolver &resolver)
+{
+    validate_frame_duration_json(j, 0);
+    deserializeValidatedFrame(j, frame, resolver);
 }
 
 void to_json(nlohmann::json &j, const AnimationClip &clip)
@@ -163,7 +171,7 @@ void deserialize(const nlohmann::json &j, AnimationClip &clip, platformator::Ref
     for (const auto &frameJson : j.at("frames"))
     {
         clip.frames.emplace_back();
-        deserialize(frameJson, clip.frames.back(), resolver);
+        deserializeValidatedFrame(frameJson, clip.frames.back(), resolver);
     }
     j.at("loop").get_to(clip.loop);
 

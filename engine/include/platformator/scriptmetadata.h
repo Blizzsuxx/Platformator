@@ -124,25 +124,28 @@ namespace metadata_detail
 {
 template <typename T, typename Enable = void> struct ScriptFieldTraits
 {
+    static constexpr ScriptFieldKind kind = ScriptFieldKind::OpaqueJson;
     static ScriptFieldDescriptor describe(std::string_view name)
     {
-        return {std::string(name), ScriptFieldKind::OpaqueJson};
+        return {std::string(name), kind};
     }
 };
 
 template <> struct ScriptFieldTraits<bool>
 {
+    static constexpr ScriptFieldKind kind = ScriptFieldKind::Boolean;
     static ScriptFieldDescriptor describe(std::string_view name)
     {
-        return {std::string(name), ScriptFieldKind::Boolean};
+        return {std::string(name), kind};
     }
 };
 
 template <typename T> struct ScriptFieldTraits<T, std::enable_if_t<std::is_integral_v<T> && std::is_signed_v<T>>>
 {
+    static constexpr ScriptFieldKind kind = ScriptFieldKind::SignedInteger;
     static ScriptFieldDescriptor describe(std::string_view name)
     {
-        ScriptFieldDescriptor descriptor{std::string(name), ScriptFieldKind::SignedInteger};
+        ScriptFieldDescriptor descriptor{std::string(name), kind};
         descriptor.minimum = std::to_string(static_cast<std::int64_t>(std::numeric_limits<T>::lowest()));
         descriptor.maximum = std::to_string(static_cast<std::int64_t>(std::numeric_limits<T>::max()));
         return descriptor;
@@ -153,9 +156,10 @@ template <typename T>
 struct ScriptFieldTraits<T, std::enable_if_t<std::is_integral_v<T> && std::is_unsigned_v<T> &&
                                               !std::is_same_v<T, bool>>>
 {
+    static constexpr ScriptFieldKind kind = ScriptFieldKind::UnsignedInteger;
     static ScriptFieldDescriptor describe(std::string_view name)
     {
-        ScriptFieldDescriptor descriptor{std::string(name), ScriptFieldKind::UnsignedInteger};
+        ScriptFieldDescriptor descriptor{std::string(name), kind};
         descriptor.minimum = "0";
         descriptor.maximum = std::to_string(static_cast<std::uint64_t>(std::numeric_limits<T>::max()));
         return descriptor;
@@ -164,17 +168,19 @@ struct ScriptFieldTraits<T, std::enable_if_t<std::is_integral_v<T> && std::is_un
 
 template <typename T> struct ScriptFieldTraits<T, std::enable_if_t<std::is_floating_point_v<T>>>
 {
+    static constexpr ScriptFieldKind kind = ScriptFieldKind::Number;
     static ScriptFieldDescriptor describe(std::string_view name)
     {
-        return {std::string(name), ScriptFieldKind::Number};
+        return {std::string(name), kind};
     }
 };
 
 template <> struct ScriptFieldTraits<std::string>
 {
+    static constexpr ScriptFieldKind kind = ScriptFieldKind::String;
     static ScriptFieldDescriptor describe(std::string_view name)
     {
-        return {std::string(name), ScriptFieldKind::String};
+        return {std::string(name), kind};
     }
 };
 
@@ -196,9 +202,10 @@ template <> inline std::vector<ScriptEnumValue> known_enum_values<SDL_FlipMode>(
 
 template <typename T> struct ScriptFieldTraits<T, std::enable_if_t<std::is_enum_v<T>>>
 {
+    static constexpr ScriptFieldKind kind = ScriptFieldKind::Enum;
     static ScriptFieldDescriptor describe(std::string_view name)
     {
-        ScriptFieldDescriptor descriptor{std::string(name), ScriptFieldKind::Enum};
+        ScriptFieldDescriptor descriptor{std::string(name), kind};
         descriptor.enumValues = known_enum_values<T>();
         return descriptor;
     }
@@ -206,17 +213,19 @@ template <typename T> struct ScriptFieldTraits<T, std::enable_if_t<std::is_enum_
 
 template <> struct ScriptFieldTraits<Eigen::Vector2f>
 {
+    static constexpr ScriptFieldKind kind = ScriptFieldKind::Vector2;
     static ScriptFieldDescriptor describe(std::string_view name)
     {
-        return {std::string(name), ScriptFieldKind::Vector2};
+        return {std::string(name), kind};
     }
 };
 
 template <> struct ScriptFieldTraits<SDL_FRect>
 {
+    static constexpr ScriptFieldKind kind = ScriptFieldKind::Rectangle;
     static ScriptFieldDescriptor describe(std::string_view name)
     {
-        return {std::string(name), ScriptFieldKind::Rectangle};
+        return {std::string(name), kind};
     }
 };
 
@@ -242,9 +251,10 @@ struct IsBoundedSequence<std::array<T, Size>> : std::true_type
 
 template <typename T> struct ScriptFieldTraits<T, std::enable_if_t<IsBoundedSequence<T>::value>>
 {
+    static constexpr ScriptFieldKind kind = ScriptFieldKind::Array;
     static ScriptFieldDescriptor describe(std::string_view name)
     {
-        ScriptFieldDescriptor descriptor{std::string(name), ScriptFieldKind::Array};
+        ScriptFieldDescriptor descriptor{std::string(name), kind};
         descriptor.element =
             std::make_shared<ScriptFieldDescriptor>(ScriptFieldTraits<typename T::value_type>::describe("element"));
         return descriptor;
@@ -253,9 +263,10 @@ template <typename T> struct ScriptFieldTraits<T, std::enable_if_t<IsBoundedSequ
 
 template <typename T> struct ScriptFieldTraits<std::optional<T>>
 {
+    static constexpr ScriptFieldKind kind = ScriptFieldKind::Optional;
     static ScriptFieldDescriptor describe(std::string_view name)
     {
-        ScriptFieldDescriptor descriptor{std::string(name), ScriptFieldKind::Optional};
+        ScriptFieldDescriptor descriptor{std::string(name), kind};
         descriptor.nullable = true;
         descriptor.element = std::make_shared<ScriptFieldDescriptor>(ScriptFieldTraits<T>::describe("value"));
         return descriptor;
@@ -336,9 +347,10 @@ template <> struct AssetTargetName<Template>
 
 template <typename T> struct ScriptFieldTraits<ObjectReference<T>>
 {
+    static constexpr ScriptFieldKind kind = ScriptFieldKind::ObjectReference;
     static ScriptFieldDescriptor describe(std::string_view name)
     {
-        ScriptFieldDescriptor descriptor{std::string(name), ScriptFieldKind::ObjectReference};
+        ScriptFieldDescriptor descriptor{std::string(name), kind};
         descriptor.targetType = ObjectTargetName<T>::value;
         descriptor.nullable = true;
         return descriptor;
@@ -347,9 +359,10 @@ template <typename T> struct ScriptFieldTraits<ObjectReference<T>>
 
 template <typename T> struct ScriptFieldTraits<AssetReference<T>>
 {
+    static constexpr ScriptFieldKind kind = ScriptFieldKind::AssetReference;
     static ScriptFieldDescriptor describe(std::string_view name)
     {
-        ScriptFieldDescriptor descriptor{std::string(name), ScriptFieldKind::AssetReference};
+        ScriptFieldDescriptor descriptor{std::string(name), kind};
         descriptor.targetType = AssetTargetName<T>::value;
         descriptor.nullable = true;
         return descriptor;
@@ -582,7 +595,6 @@ void append_script_field(ScriptInspectionResult &result, std::string_view name, 
     }
 
     using Value = std::remove_cvref_t<T>;
-    const auto descriptor = ScriptFieldTraits<Value>::describe(name);
     bool available = true;
     bool truncated = false;
     std::size_t remainingArrayItems = limits.maxArrayItems;
@@ -591,7 +603,7 @@ void append_script_field(ScriptInspectionResult &result, std::string_view name, 
                                           remainingArrayItems, remainingStringBytes);
     const auto reason = available ? std::string{} :
         std::string("field type is not allowlisted for read-only inspection");
-    const std::string_view kindName(script_field_kind_name(descriptor.kind));
+    const std::string_view kindName(script_field_kind_name(ScriptFieldTraits<Value>::kind));
     const std::size_t projectedBytes = name.size() + kindName.size() +
         reason.size() + jsonValue.dump().size() + 64;
     if (projectedBytes > limits.maxOutputBytes - result.retainedOutputBytes)

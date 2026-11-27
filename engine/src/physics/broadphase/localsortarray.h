@@ -108,10 +108,6 @@ class LocalSortArray
     {
         this->rightChunk = rightChunk;
     }
-    void setOwner(SegmentedIntervalList *owner)
-    {
-        this->owner = owner;
-    }
 
     void initFromSplit(LocalSortArray *other);
     LocalSortArray *tryMergeWithLeftChunk();

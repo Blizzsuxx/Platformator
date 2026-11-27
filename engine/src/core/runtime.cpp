@@ -6,6 +6,7 @@
 #include "core/constants.h"
 #include "core/gamemanager.h"
 #include "core/pathmanager.h"
+#include "editor/editorprotocol.h"
 #include "platformator/scene.h"
 #include "rendering/sdlwindow.h"
 
@@ -22,8 +23,8 @@ Runtime::Runtime(const RuntimeOptions &runtimeOptions)
     WindowSettings windowSettings = runtimeOptions.windowSettings;
     if (runtimeOptions.editorSession)
     {
-        windowSettings.width = 640;
-        windowSettings.height = 360;
+        windowSettings.width = editor_session::EmbeddedFrameWidth;
+        windowSettings.height = editor_session::EmbeddedFrameHeight;
         windowSettings.fullscreen = false;
         windowSettings.maximizeOnStartup = false;
         windowSettings.keepAspectRatio = false;

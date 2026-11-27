@@ -222,7 +222,6 @@ LocalSortArray *SegmentedIntervalList::allocateEmptyChunk()
     {
         LocalSortArray *chunk = freeChunks.back();
         freeChunks.pop_back();
-        chunk->setOwner(this);
         chunk->clear();
         chunk->setLeftChunk(nullptr);
         chunk->setRightChunk(nullptr);
@@ -359,6 +358,7 @@ void SegmentedIntervalList::repairProjectionFromIndexInternal(ProjectionProxy *p
 {
     const float pos = projection->getCachedProjectedPosition();
     const bool maxFlag = projection->getIsMaxima();
+    bool movedLeft = false;
 
     while (true)
     {
@@ -374,10 +374,16 @@ void SegmentedIntervalList::repairProjectionFromIndexInternal(ProjectionProxy *p
             swap(previousChunk->get(previousIndex), previousIndex, projection, arrayIndex);
             chunk = previousChunk;
             arrayIndex = previousIndex;
+            movedLeft = true;
             continue;
         }
 
         break;
+    }
+
+    if (movedLeft)
+    {
+        return;
     }
 
     while (true)

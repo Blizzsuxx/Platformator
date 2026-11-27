@@ -1,7 +1,6 @@
 #include "editor/editorsession.h"
 
 #include <algorithm>
-#include <array>
 #include <atomic>
 #include <limits>
 #include <memory>
@@ -25,11 +24,11 @@ namespace platformator
 {
 namespace
 {
-constexpr std::size_t FrameMappingBytes = 1'843'200;
-constexpr std::size_t FrameSlotBytes = 921'600;
-constexpr std::size_t FrameWidth = 640;
-constexpr std::size_t FrameHeight = 360;
-constexpr std::size_t FrameStride = FrameWidth * 4;
+constexpr std::size_t FrameMappingBytes = editor_session::EmbeddedFrameMappingBytes;
+constexpr std::size_t FrameSlotBytes = editor_session::EmbeddedFrameSlotBytes;
+constexpr std::size_t FrameWidth = static_cast<std::size_t>(editor_session::EmbeddedFrameWidth);
+constexpr std::size_t FrameHeight = static_cast<std::size_t>(editor_session::EmbeddedFrameHeight);
+constexpr std::size_t FrameStride = editor_session::EmbeddedFrameStride;
 constexpr std::size_t ReadChunkBytes = 16U * 1024U;
 constexpr auto MinimumCaptureInterval = std::chrono::microseconds(16'667);
 constexpr std::size_t ReservedFrameMessages = 8;
@@ -231,14 +230,14 @@ bool EditorSessionService::pump_impl(std::uint64_t runtimeSerial, ::SDLWindow *w
         {
             const auto transferred = static_cast<std::size_t>(count);
             remaining -= transferred;
-            const auto decoded = incoming_.feed(
+            auto decoded = incoming_.feed(
                 std::span<const std::uint8_t>(reinterpret_cast<const std::uint8_t *>(buffer.data()), transferred));
             if (!decoded.succeeded())
             {
                 fail(decoded.error, runtimeSerial);
                 break;
             }
-            for (const auto &request : decoded.messages)
+            for (auto &request : decoded.messages)
             {
                 const std::size_t frameBytes = request.frameBytes;
                 if (frameBytes == 0 ||
@@ -249,7 +248,7 @@ bool EditorSessionService::pump_impl(std::uint64_t runtimeSerial, ::SDLWindow *w
                     break;
                 }
                 pendingRequestBytes_ += frameBytes;
-                pendingRequests_.push_back({request, frameBytes});
+                pendingRequests_.push_back({std::move(request), frameBytes});
             }
             if (failed_)
                 break;
@@ -315,15 +314,8 @@ void EditorSessionService::finish(std::uint64_t runtimeSerial) noexcept
         stoppedEventQueued_ = enqueue_event("stopped", nlohmann::json::object(), runtimeSerial);
         flush_events();
     }
-    catch (const std::exception &error)
-    {
-        if (lastError_.empty())
-            lastError_ = error.what();
-    }
     catch (...)
     {
-        if (lastError_.empty())
-            lastError_ = "unknown failure while closing editor session";
     }
 }
 
@@ -717,15 +709,12 @@ bool EditorSessionService::flush_events()
             if (result.bytes > bytes.size() || !outgoing_.consume(result.bytes))
             {
                 failed_ = true;
-                lastError_ = "session event channel reported an invalid partial-write length";
                 return false;
             }
             remaining -= result.bytes;
             continue;
         }
         failed_ = true;
-        lastError_ = result.error.empty() ? "session event channel closed before queued events were delivered"
-                                          : result.error;
         return false;
     }
     if (outgoing_.size() == 0)
@@ -740,12 +729,11 @@ void EditorSessionService::fail(std::string error, std::uint64_t runtimeSerial) 
         return;
     failed_ = true;
     stopRequested_ = true;
-    lastError_ = std::move(error);
     if (helloAccepted_ && runtimeSerial != 0)
     {
         try
         {
-            enqueue_event("error", {{"message", lastError_}}, runtimeSerial);
+            enqueue_event("error", {{"message", std::move(error)}}, runtimeSerial);
             flush_events();
         }
         catch (...)

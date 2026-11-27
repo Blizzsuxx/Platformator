@@ -74,4 +74,24 @@ Template *AssetRetentionLedger::retain(Template *asset)
     templates.push_back(Asset::retain(asset));
     return asset;
 }
+
+TextureWrapper *RetainingReferenceResolver::loadTexture(const std::string &path)
+{
+    return retainedAssets.retain(RuntimeReferenceResolver::loadTexture(path));
+}
+
+AudioWrapper *RetainingReferenceResolver::loadAudio(const std::string &path)
+{
+    return retainedAssets.retain(RuntimeReferenceResolver::loadAudio(path));
+}
+
+AnimationClip *RetainingReferenceResolver::loadAnimationClip(const std::string &path)
+{
+    return retainedAssets.retain(RuntimeReferenceResolver::loadAnimationClip(path));
+}
+
+Template *RetainingReferenceResolver::loadTemplate(const std::string &path)
+{
+    return retainedAssets.retain(RuntimeReferenceResolver::loadTemplate(path));
+}
 } // namespace platformator_detail

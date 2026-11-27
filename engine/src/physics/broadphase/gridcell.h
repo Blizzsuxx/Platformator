@@ -26,13 +26,13 @@ class GridCell
     bool markQueuedForEmpty();
     void clearQueuedForEmpty();
     bool markQueuedForOperations();
-    void clearQueuedForOperations();
     void queueRemoveCollider(Collider *collider);
     void queueAddCollider(Collider *collider);
     void queueSyncCollider(Collider *collider);
     void flushPendingOperations();
 
   private:
+    void clearQueuedForOperations();
     AABB aabb;
     GridCellKey key;
     bool queuedForEmpty;

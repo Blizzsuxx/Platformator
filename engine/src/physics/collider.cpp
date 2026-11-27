@@ -14,11 +14,26 @@
 #include "platformator/rigidbody.h"
 #include "platformator/scriptcomponent.h"
 
+namespace
+{
+Eigen::Vector2f computeOffsetWorldPosition(const GameObject *object, const Eigen::Vector2f &basePosition,
+                                           const Eigen::Vector2f &offset) noexcept
+{
+    if (offset.x() == 0.0f && offset.y() == 0.0f)
+    {
+        return basePosition;
+    }
+    const float c = object->getCosRotation();
+    const float s = object->getSinRotation();
+    return basePosition + Eigen::Vector2f(offset.x() * c - offset.y() * s, offset.x() * s + offset.y() * c);
+}
+} // namespace
+
 Collider::Collider(GameObject *gameObject, ComponentType type, ColliderType colliderType)
-    : Component(gameObject, type), stateVersion(0), colliderType(colliderType), flags(static_cast<ColliderFlags>(0)),
-      offset(Eigen::Vector2f::Zero()), collisionGroup(1), collisionMask(1), physicsManagerIndex(SIZE_MAX),
-      gridCellRange(), gridCellRangeCache(),
-      attachedRigidbody(gameObject ? gameObject->getComponent<Rigidbody>() : nullptr)
+    : Component(gameObject, type), stateVersion(0),
+      attachedRigidbody(gameObject ? gameObject->getComponent<Rigidbody>() : nullptr), colliderType(colliderType),
+      flags(static_cast<ColliderFlags>(0)), collisionGroup(1), collisionMask(1), offset(Eigen::Vector2f::Zero()),
+      physicsManagerIndex(INVALID_INDEX), gridCellRange(), gridCellRangeCache()
 {
     setOwnerActive(gameObject != nullptr && gameObject->getActive());
     setHasNonStaticRigidbody(attachedRigidbody != nullptr && attachedRigidbody->getBodyType() != BodyType::STATIC);
@@ -26,7 +41,7 @@ Collider::Collider(GameObject *gameObject, ComponentType type, ColliderType coll
 
 Collider::Collider(ComponentType type, ColliderType colliderType)
     : Component(type), stateVersion(0), colliderType(colliderType), flags(static_cast<ColliderFlags>(0)),
-      offset(Eigen::Vector2f::Zero()), collisionGroup(1), collisionMask(1), physicsManagerIndex(SIZE_MAX),
+      collisionGroup(1), collisionMask(1), offset(Eigen::Vector2f::Zero()), physicsManagerIndex(INVALID_INDEX),
       gridCellRange(), gridCellRangeCache()
 {
 }
@@ -70,11 +85,8 @@ void Collider::notifyShapeChanged()
 
 Eigen::Vector2f Collider::getWorldPosition() const
 {
-    GameObject *gameObject = getGameObject();
-    const float rotatedOffsetX = offset.x() * gameObject->getCosRotation() - offset.y() * gameObject->getSinRotation();
-    const float rotatedOffsetY = offset.x() * gameObject->getSinRotation() + offset.y() * gameObject->getCosRotation();
-
-    return gameObject->getPosition() + Eigen::Vector2f(rotatedOffsetX, rotatedOffsetY);
+    const GameObject *gameObject = getGameObject();
+    return computeOffsetWorldPosition(gameObject, gameObject->getPosition(), offset);
 }
 
 void Collider::setIsTrigger(const bool isTrigger)
@@ -111,17 +123,7 @@ void Collider::prepareSyncFromCache()
 void Collider::prepareSyncFromCache(float cellSize)
 {
     const auto *object = getGameObject();
-    if (offset.x() == 0.0f && offset.y() == 0.0f)
-    {
-        cachedWorldPosition = object->worldPosition;
-    }
-    else
-    {
-        const float c = object->getCosRotation();
-        const float s = object->getSinRotation();
-        cachedWorldPosition =
-            object->worldPosition + Eigen::Vector2f(offset.x() * c - offset.y() * s, offset.x() * s + offset.y() * c);
-    }
+    cachedWorldPosition = computeOffsetWorldPosition(object, object->worldPosition, offset);
     updateCollider();
     stateVersion++;
 

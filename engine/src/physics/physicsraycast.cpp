@@ -96,6 +96,25 @@ namespace
         if (collider->getIsTrigger() && !includeTriggers)
             return false;
 
+        const double aabbMinX = static_cast<double>(cMinX);
+        const double aabbMaxX = static_cast<double>(cMaxX);
+        const double aabbMinY = static_cast<double>(cMinY);
+        const double aabbMaxY = static_cast<double>(cMaxY);
+
+        PLATFORMATOR_WORK_ADD(raycastCandidateVisits, 1);
+
+        const double maxCoord =
+            std::max({1.0, std::abs(aabbMinX), std::abs(aabbMaxX), std::abs(aabbMinY), std::abs(aabbMaxY)});
+        const double aabbTol = std::max(1e-4, 1e-6 * maxCoord);
+        const double dLimit = std::min(static_cast<double>(maxDistance), limit);
+        double aabbTMin = 0.0;
+        double aabbTMax = 0.0;
+        if (!rayIntersectsAABBInterval(origin, dir, dLimit, aabbMinX, aabbMaxX, aabbMinY, aabbMaxY, aabbTol, aabbTMin,
+                                       aabbTMax))
+        {
+            return false;
+        }
+
         const ColliderType shape = collider->getColliderType();
         float halfW = 0.0f;
         float halfH = 0.0f;
@@ -128,25 +147,6 @@ namespace
         const Eigen::Vector2f &center = collider->getCachedWorldPosition();
         if (!center.allFinite())
             return false;
-
-        const double aabbMinX = static_cast<double>(cMinX);
-        const double aabbMaxX = static_cast<double>(cMaxX);
-        const double aabbMinY = static_cast<double>(cMinY);
-        const double aabbMaxY = static_cast<double>(cMaxY);
-
-        PLATFORMATOR_WORK_ADD(raycastCandidateVisits, 1);
-
-        const double maxCoord =
-            std::max({1.0, std::abs(aabbMinX), std::abs(aabbMaxX), std::abs(aabbMinY), std::abs(aabbMaxY)});
-        const double aabbTol = std::max(1e-4, 1e-6 * maxCoord);
-        const double dLimit = std::min(static_cast<double>(maxDistance), limit);
-        double aabbTMin = 0.0;
-        double aabbTMax = 0.0;
-        if (!rayIntersectsAABBInterval(origin, dir, dLimit, aabbMinX, aabbMaxX, aabbMinY, aabbMaxY, aabbTol, aabbTMin,
-                                       aabbTMax))
-        {
-            return false;
-        }
 
         const double dirX = dir.x();
         const double dirY = dir.y();

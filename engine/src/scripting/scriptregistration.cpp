@@ -1,5 +1,6 @@
 #include "platformator/scriptregistration.h"
 
+#include "editor/editorprotocol.h"
 #include "scripting/behaviorfactoryregistry.h"
 
 #include <utility>
@@ -44,8 +45,9 @@ namespace platformator
             {"session_protocol", "platformator-editor-session-v1"},
             {"play_control", true},
             {"runtime_inspection", true},
-            {"rgba_frame_stream", { {"version", 1}, {"width", 640},
-                                      {"height", 360}, {"max_hz", 60} }},
+            {"rgba_frame_stream", { {"version", 1}, {"width", editor_session::EmbeddedFrameWidth},
+                                      {"height", editor_session::EmbeddedFrameHeight},
+                                      {"max_hz", editor_session::EmbeddedFrameMaxHz} }},
             {"live_asset_reload", false},
             {"input_forwarding", true}};
         return catalog;

@@ -3,8 +3,8 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
-#include <unordered_set>
 
+#include "core/flatset.h"
 #include "platformator/animator.h"
 #include "platformator/audio.h"
 #include "platformator/boxcollider.h"
@@ -97,32 +97,32 @@ bool build_hierarchy_snapshot(platformator::Runtime &runtime,
         return false;
     }
 
-    std::unordered_set<GameObject *> liveObjects;
-    liveObjects.reserve(allObjects.size());
+    FlatPointerSet<GameObject> liveObjects;
+    std::vector<GameObject *> roots;
+    roots.reserve(allObjects.size());
     for (GameObject *object : allObjects)
+    {
         if (object != nullptr && object->getLifecycle() == ObjectLifecycle::Live)
-            liveObjects.insert(object);
+        {
+            if (liveObjects.insert(object) && object->getParent() == nullptr)
+                roots.push_back(object);
+        }
+    }
 
     std::vector<PendingHierarchyObject> pending;
     pending.reserve(liveObjects.size());
-    std::vector<GameObject *> roots;
-    roots.reserve(liveObjects.size());
-    for (GameObject *object : allObjects)
-        if (object != nullptr && liveObjects.contains(object) && object->getParent() == nullptr)
-            roots.push_back(object);
     for (std::size_t index = roots.size(); index > 0; --index)
         pending.push_back({roots[index - 1], {}, false, 0, index - 1});
 
     snapshot.clear();
     snapshot.reserve(liveObjects.size());
-    std::unordered_set<GameObject *> visited;
-    visited.reserve(liveObjects.size());
+    FlatPointerSet<GameObject> visited;
     while (!pending.empty())
     {
         const auto current = pending.back();
         pending.pop_back();
         GameObject *object = current.object;
-        if (object == nullptr || !liveObjects.contains(object) || !visited.insert(object).second)
+        if (object == nullptr || !liveObjects.contains(object) || !visited.insert(object))
         {
             error = "runtime hierarchy contains a stale or repeated child";
             return false;

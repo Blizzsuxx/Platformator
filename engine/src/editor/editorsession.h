@@ -115,7 +115,6 @@ class EditorSessionService
     std::uint64_t nextFrameSequence_ = 1;
     std::chrono::steady_clock::time_point lastFrameCapture_{};
     bool captureVisible_ = false;
-    std::string lastError_;
     bool helloAccepted_ = false;
     bool stopRequested_ = false;
     bool failed_ = false;

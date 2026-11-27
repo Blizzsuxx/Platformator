@@ -19,7 +19,7 @@ struct PairDeltaCollector
 {
     tbb::enumerable_thread_specific<std::vector<PairDelta>> localPairDeltas;
 
-    void record(Collider *colliderA, Collider *colliderB, int delta)
+    static void recordTo(std::vector<PairDelta> &sink, Collider *colliderA, Collider *colliderB, int delta)
     {
         uint32_t slotA = colliderA->getHandle().slot;
         uint32_t slotB = colliderB->getHandle().slot;
@@ -29,7 +29,12 @@ struct PairDeltaCollector
             std::swap(slotA, slotB);
         }
         const uint64_t sortKey = (static_cast<uint64_t>(slotA) << 32) | static_cast<uint64_t>(slotB);
-        localPairDeltas.local().push_back(PairDelta{sortKey, colliderA, colliderB, delta});
+        sink.push_back(PairDelta{sortKey, colliderA, colliderB, delta});
+    }
+
+    void record(Collider *colliderA, Collider *colliderB, int delta)
+    {
+        recordTo(localPairDeltas.local(), colliderA, colliderB, delta);
     }
 };
 
@@ -107,10 +112,15 @@ class Grid
     std::vector<GridCell *> cellsWithOperations;
     std::vector<Collider *> pendingColliderOperations;
     std::vector<Collider *> responseDirtyColliders;
+    std::vector<std::vector<Collider *>> structuralWorkChunkScratch;
     std::vector<std::vector<ColliderPair *>> pairQueueChunkScratch;
     std::vector<std::pair<size_t, size_t>> pairQueueChunkRanges;
     std::vector<size_t> pairQueueChunkOffsets;
     PairDeltaCollector activePairDeltaCollector;
+    std::vector<PairDelta> &getLocalPairDeltaSink()
+    {
+        return activePairDeltaCollector.localPairDeltas.local();
+    }
     float cellSize;
     uint32_t resizeCooldown = 0;
     mutable GridCellRange activeCellBounds{};

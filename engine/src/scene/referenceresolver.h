@@ -54,4 +54,20 @@ struct AssetRetentionLedger
     AnimationClip *retain(AnimationClip *asset);
     Template *retain(Template *asset);
 };
+
+class RetainingReferenceResolver : public RuntimeReferenceResolver
+{
+  public:
+    RetainingReferenceResolver(GameManager &manager, AssetRetentionLedger &retainedAssets) noexcept
+        : RuntimeReferenceResolver(manager), retainedAssets(retainedAssets)
+    {
+    }
+    TextureWrapper *loadTexture(const std::string &path) override;
+    AudioWrapper *loadAudio(const std::string &path) override;
+    AnimationClip *loadAnimationClip(const std::string &path) override;
+    Template *loadTemplate(const std::string &path) override;
+
+  protected:
+    AssetRetentionLedger &retainedAssets;
+};
 } // namespace platformator_detail

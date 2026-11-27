@@ -35,42 +35,33 @@ bool PhysicsManager::solveColoredIsland(PersistentIsland &island, const SoftStep
     solverBodyForces.push_back(SolverBodyForce{});
     solverBodyPrep.push_back(BodyPrepCache{});
 
-    ScopedSolverBodyMapGuard mapGuard{solverBodyLocalIndices, solverTouchedWritableBodies};
+    const size_t islandBodyCount = island.bodies.size();
+    solverBodyLocalIndices.assign(islandBodyCount, UNMAPPED_SOLVER_BODY);
 
-    for (Rigidbody *rb : island.bodies)
+    for (size_t bi = 0; bi < islandBodyCount; ++bi)
     {
+        Rigidbody *rb = island.bodies[bi];
         if (!rb->isAwakeDynamic())
         {
             continue;
         }
-        const size_t regIdx = rb->getPhysicsManagerIndex();
-        if (regIdx >= registeredBodies.size() || registeredBodies[regIdx] != rb)
-        {
-            return false;
-        }
-        uint32_t &mapped = solverBodyLocalIndices[regIdx];
-        if (mapped == UNMAPPED_SOLVER_BODY)
-        {
-            mapped = static_cast<uint32_t>(solverBodyStates.size());
-            solverBodyStates.push_back(makeDynamicBodyState(rb));
-            solverBodyForces.push_back(makeBodyForce(rb));
-            solverBodyPrep.push_back(makeBodyPrepCache(rb));
-            solverTouchedWritableBodies.push_back(WritableSolverBody{regIdx, mapped, rb});
-        }
+        const uint32_t mapped = static_cast<uint32_t>(solverBodyStates.size());
+        solverBodyLocalIndices[bi] = mapped;
+        solverBodyStates.push_back(makeDynamicBodyState(rb));
+        solverBodyForces.push_back(makeBodyForce(rb));
+        solverBodyPrep.push_back(makeBodyPrepCache(rb));
+        solverTouchedWritableBodies.push_back(WritableSolverBody{mapped, rb});
     }
 
     const bool hasMovingKinematic = !movingKinematicBodies.empty();
     tbb::task_group_context context(tbb::task_group_context::isolated);
 
 #if PLATFORMATOR_HAS_RUNTIME_AVX2
-    const auto movingKinematic = [](const Collider *collider) {
-        const auto *body = collider->getAttachedRigidbody();
-        return body && body->isMovingKinematic();
-    };
     if (platformator_solver_simd::cpuSupportsAVX2() &&
         (!hasMovingKinematic || std::ranges::none_of(island.contacts, [&](const ColliderPair *pair) {
              PLATFORMATOR_WORK_ADD(solverColoredEligibilityContactVisits, 1);
-             return movingKinematic(pair->getObjectA()) || movingKinematic(pair->getObjectB());
+             const auto [rbA, rbB] = pairRigidbodies(pair);
+             return (rbA && rbA->isMovingKinematic()) || (rbB && rbB->isMovingKinematic());
          })))
     {
         using namespace platformator_solver_simd;
@@ -91,10 +82,9 @@ bool PhysicsManager::solveColoredIsland(PersistentIsland &island, const SoftStep
         const auto resolveBodySlotReadOnly = [&](Rigidbody *rb) noexcept -> uint32_t {
             if (rb->isAwakeDynamic())
             {
-                const size_t regIdx = rb->getPhysicsManagerIndex();
-                if (regIdx < registeredBodies.size() && registeredBodies[regIdx] == rb)
+                if (rb->solverIslandId == island.id && rb->solverIslandBodyIndex < islandBodyCount)
                 {
-                    return solverBodyLocalIndices[regIdx];
+                    return solverBodyLocalIndices[rb->solverIslandBodyIndex];
                 }
                 return UNMAPPED_SOLVER_BODY;
             }
@@ -102,7 +92,7 @@ bool PhysicsManager::solveColoredIsland(PersistentIsland &island, const SoftStep
         };
 
         std::atomic<bool> allMapped{true};
-        std::atomic<bool> anyRestitution{false};
+        std::atomic<uint32_t> restitutionColorMask{0};
         const auto packColorDirect = [&, wideBuckets, coldBuckets, tailBuckets](uint8_t c) {
             const auto &pairs = graph.buckets[c];
             auto &wideOut = wideBuckets[c];
@@ -166,7 +156,9 @@ bool PhysicsManager::solveColoredIsland(PersistentIsland &island, const SoftStep
             {
                 if (i + 4 < pairCount)
                 {
-                    __builtin_prefetch(pairs[i + 4], 0, 1);
+                    const ColliderPair *pf = pairs[i + 4];
+                    __builtin_prefetch(pf, 0, 1);
+                    __builtin_prefetch(reinterpret_cast<const char *>(pf) + 64, 0, 1);
                 }
                 Collision *collision = nullptr;
                 Rigidbody *rbA = nullptr;
@@ -211,7 +203,7 @@ bool PhysicsManager::solveColoredIsland(PersistentIsland &island, const SoftStep
             emitBatch(onePointBatch, onePointCount);
             if (localRestitution)
             {
-                anyRestitution.store(true, std::memory_order_relaxed);
+                restitutionColorMask.fetch_or(uint32_t{1} << c, std::memory_order_relaxed);
             }
         };
 
@@ -254,7 +246,8 @@ bool PhysicsManager::solveColoredIsland(PersistentIsland &island, const SoftStep
                 prepareSolverConstraint(SolverPreStepJob{collision, rbA, rbB, idxA, idxB}, params, sc);
                 if (constraintHasActiveRestitution(sc, params.restitutionThreshold))
                 {
-                    anyRestitution.store(true, std::memory_order_relaxed);
+                    restitutionColorMask.fetch_or(uint32_t{1} << IslandColorGraph::OVERFLOW_COLOR,
+                                                  std::memory_order_relaxed);
                 }
             }
         }
@@ -268,7 +261,8 @@ bool PhysicsManager::solveColoredIsland(PersistentIsland &island, const SoftStep
         const SolverBodyForce *forceData = solverBodyForces.data();
         const size_t bodyCount = solverBodyStates.size();
         const float h = params.h;
-        const bool hasRestitution = anyRestitution.load(std::memory_order_relaxed);
+        const uint32_t restMask = restitutionColorMask.load(std::memory_order_relaxed);
+        const bool hasRestitution = restMask != 0;
         constexpr size_t parallelWideThreshold = 32;
 
         const auto runBodyRange = [&](auto &&fn) {
@@ -284,10 +278,14 @@ bool PhysicsManager::solveColoredIsland(PersistentIsland &island, const SoftStep
             }
         };
 
-        const auto runWideColorPass = [&](auto &&wideFn, auto &&scalarFn) {
+        const auto runWideColorPass = [&](uint32_t colorFilterMask, auto &&wideFn, auto &&scalarFn) {
             for (size_t ac = 0; ac < activeColorCount; ++ac)
             {
                 const uint8_t c = activeColors[ac];
+                if ((colorFilterMask & (uint32_t{1} << c)) == 0)
+                {
+                    continue;
+                }
                 WideConstraint8 *wideData = wideBuckets[c].data();
                 const WideConstraint8Cold *coldData = coldBuckets[c].data();
                 const size_t wideCount = wideBuckets[c].size();
@@ -316,12 +314,16 @@ bool PhysicsManager::solveColoredIsland(PersistentIsland &island, const SoftStep
                     scalarFn(sc);
                 }
             }
-            for (SolverConstraint &sc : overflowConstraints)
+            if ((colorFilterMask & (uint32_t{1} << IslandColorGraph::OVERFLOW_COLOR)) != 0)
             {
-                scalarFn(sc);
+                for (SolverConstraint &sc : overflowConstraints)
+                {
+                    scalarFn(sc);
+                }
             }
         };
 
+        constexpr uint32_t allColorsMask = ~uint32_t{0};
         runSoftSteps(
             params, hasRestitution,
             [&] {
@@ -331,11 +333,13 @@ bool PhysicsManager::solveColoredIsland(PersistentIsland &island, const SoftStep
             },
             [&] {
                 runWideColorPass(
+                    allColorsMask,
                     [=](WideConstraint8 &wide, const WideConstraint8Cold &) { applyWarmStartWide8AVX2(wide, bodyData); },
                     [=](SolverConstraint &sc) { applyWarmStart(sc, bodyData[sc.bodyIndexA], bodyData[sc.bodyIndexB]); });
             },
             [&](auto useBias) {
                 runWideColorPass(
+                    allColorsMask,
                     [&](WideConstraint8 &wide, const WideConstraint8Cold &) {
                         solveWide8SoftAVX2<decltype(useBias)::value>(wide, bodyData, params);
                     },
@@ -349,6 +353,7 @@ bool PhysicsManager::solveColoredIsland(PersistentIsland &island, const SoftStep
             },
             [&] {
                 runWideColorPass(
+                    restMask,
                     [&](WideConstraint8 &wide, const WideConstraint8Cold &cold) {
                         applyRestitutionWide8AVX2(wide, cold, bodyData, params);
                     },
@@ -402,10 +407,9 @@ bool PhysicsManager::solveColoredIsland(PersistentIsland &island, const SoftStep
     const auto resolveBodySlot = [&](Rigidbody *rb) -> uint32_t {
         if (rb->isAwakeDynamic())
         {
-            const size_t regIdx = rb->getPhysicsManagerIndex();
-            if (regIdx < registeredBodies.size() && registeredBodies[regIdx] == rb)
+            if (rb->solverIslandId == island.id && rb->solverIslandBodyIndex < islandBodyCount)
             {
-                return solverBodyLocalIndices[regIdx];
+                return solverBodyLocalIndices[rb->solverIslandBodyIndex];
             }
             return UNMAPPED_SOLVER_BODY;
         }

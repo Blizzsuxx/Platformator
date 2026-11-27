@@ -32,7 +32,8 @@ int run(const RuntimeOptions &runtimeOptions)
         if (runtimeOptions.editorSession)
         {
             editorSession = std::make_unique<EditorSessionService>(*runtimeOptions.editorSession);
-            if (runtimeOptions.windowSettings.width != 640 || runtimeOptions.windowSettings.height != 360)
+            if (runtimeOptions.windowSettings.width != editor_session::EmbeddedFrameWidth ||
+                runtimeOptions.windowSettings.height != editor_session::EmbeddedFrameHeight)
                 throw std::runtime_error("embedded editor-session rendering requires a 640x360 output.");
         }
         Runtime runtime(runtimeOptions);

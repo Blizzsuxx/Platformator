@@ -5,12 +5,11 @@
 #include <fstream>
 #include <limits>
 #include <stdexcept>
-#include <unordered_set>
 
 #include <SDL3_image/SDL_image.h>
 #include <SDL3_mixer/SDL_mixer.h>
 
-#include "core/constants.h"
+#include "buildconfig.h"
 #include "core/gamemanager.h"
 #include "core/pathmanager.h"
 #include "platformator/runtime.h"
@@ -265,9 +264,9 @@ std::uint64_t AssetStore::textureCacheBytes() const noexcept
 
 TextureWrapper *AssetStore::reloadTexture(const std::string &filePath, SDL_Surface *preparedSurface)
 {
-    requireIdleReloadBoundary();
     if (filePath.empty() || preparedSurface == nullptr)
     {
+        requireIdleReloadBoundary();
         throw std::invalid_argument("Prepared texture reload requires a path and decoded surface");
     }
     return reloadCached(textures, filePath, [&](const auto &resolved) {
@@ -356,9 +355,9 @@ AnimationClip *AssetStore::findAnimationClip(const std::string &filePath)
 
 AnimationClip *AssetStore::reloadAnimationClip(const std::string &filePath, const nlohmann::json &preparedDocument)
 {
-    requireIdleReloadBoundary();
     if (filePath.empty())
     {
+        requireIdleReloadBoundary();
         throw std::invalid_argument("Animation path is empty");
     }
     return reloadCached(animations, filePath, [&](const auto &resolved) {

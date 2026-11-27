@@ -256,9 +256,10 @@ SessionCapabilities read_session_capabilities(const nlohmann::json &catalog)
         const auto &frame = capabilities["rgba_frame_stream"];
         if (!frame.is_object() || !frame.contains("version") || !frame["version"].is_number_integer() ||
             frame["version"] != 1 || !frame.contains("width") || !frame["width"].is_number_integer() ||
-            frame["width"] != 640 || !frame.contains("height") || !frame["height"].is_number_integer() ||
-            frame["height"] != 360 || !frame.contains("max_hz") || !frame["max_hz"].is_number_integer() ||
-            frame["max_hz"] <= 0 || frame["max_hz"] > 60)
+            frame["width"] != EmbeddedFrameWidth || !frame.contains("height") ||
+            !frame["height"].is_number_integer() || frame["height"] != EmbeddedFrameHeight ||
+            !frame.contains("max_hz") || !frame["max_hz"].is_number_integer() || frame["max_hz"] <= 0 ||
+            frame["max_hz"] > EmbeddedFrameMaxHz)
         {
             result.error = "RGBA frame capability must be v1, 640x360, and at most 60 Hz";
             return result;

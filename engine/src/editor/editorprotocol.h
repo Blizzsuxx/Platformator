@@ -13,6 +13,13 @@
 namespace platformator::editor_session
 {
 inline constexpr std::uint32_t ProtocolVersion = 1;
+inline constexpr int EmbeddedFrameWidth = 640;
+inline constexpr int EmbeddedFrameHeight = 360;
+inline constexpr int EmbeddedFrameMaxHz = 60;
+inline constexpr std::size_t EmbeddedFrameStride = static_cast<std::size_t>(EmbeddedFrameWidth) * 4U;
+inline constexpr std::size_t EmbeddedFrameSlotBytes =
+    EmbeddedFrameStride * static_cast<std::size_t>(EmbeddedFrameHeight);
+inline constexpr std::size_t EmbeddedFrameMappingBytes = EmbeddedFrameSlotBytes * 2U;
 inline constexpr std::size_t MaximumRequestBytes = 64U * 1024U;
 inline constexpr std::size_t MaximumEventBytes = 256U * 1024U;
 inline constexpr std::size_t MaximumQueuedMessages = 64;

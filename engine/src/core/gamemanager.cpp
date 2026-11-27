@@ -143,24 +143,33 @@ void GameManager::registerGameObjectSubtree(GameObject *gameObject)
         return;
     }
 
+    std::vector<GameObject *> subtree;
+    subtree.push_back(gameObject);
+    for (size_t i = 0; i < subtree.size(); ++i)
+    {
+        for (GameObject *child : subtree[i]->getChildren())
+        {
+            if (child != nullptr && !child->getIsRegisteredInGameManager())
+            {
+                subtree.push_back(child);
+            }
+        }
+    }
+    registerGameObjectSubtree(std::span<GameObject *const>(subtree));
+}
+
+void GameManager::registerGameObjectSubtree(std::span<GameObject *const> subtree)
+{
+    if (subtree.empty())
+    {
+        return;
+    }
+
     const size_t initialGameObjectCount = gameObjects.size();
     const size_t initialReconciliationCount = reconciliations.size();
     const int64_t initialNextFileId = nextFileId;
     try
     {
-        std::vector<GameObject *> subtree;
-        subtree.push_back(gameObject);
-        for (size_t i = 0; i < subtree.size(); ++i)
-        {
-            for (GameObject *child : subtree[i]->getChildren())
-            {
-                if (child != nullptr && !child->getIsRegisteredInGameManager())
-                {
-                    subtree.push_back(child);
-                }
-            }
-        }
-
         size_t totalComponents = 0;
         for (GameObject *obj : subtree)
         {
@@ -202,6 +211,17 @@ void GameManager::registerGameObjectSubtree(GameObject *gameObject)
     }
     catch (...)
     {
+        const auto rollbackIdentity = [&](BaseObject &entity) {
+            if (entity.getHandle())
+            {
+                if (idToObjectMap.find(entity.getId()) == &entity)
+                {
+                    idToObjectMap.erase(entity.getId());
+                }
+                registry.erase(entity);
+                entity.lifecycle = ObjectLifecycle::Staged;
+            }
+        };
         while (reconciliations.size() > initialReconciliationCount)
         {
             reconciliations.back()->reconcileQueued = false;
@@ -214,25 +234,12 @@ void GameManager::registerGameObjectSubtree(GameObject *gameObject)
             obj->setGameManagerIteratorIndex(SIZE_MAX);
             for (Component *component : obj->components)
             {
-                if (component != nullptr && component->getHandle())
+                if (component != nullptr)
                 {
-                    if (idToObjectMap.find(component->getId()) == component)
-                    {
-                        idToObjectMap.erase(component->getId());
-                    }
-                    registry.erase(*component);
-                    component->lifecycle = ObjectLifecycle::Staged;
+                    rollbackIdentity(*component);
                 }
             }
-            if (obj->getHandle())
-            {
-                if (idToObjectMap.find(obj->getId()) == obj)
-                {
-                    idToObjectMap.erase(obj->getId());
-                }
-                registry.erase(*obj);
-                obj->lifecycle = ObjectLifecycle::Staged;
-            }
+            rollbackIdentity(*obj);
         }
         nextFileId = initialNextFileId;
         throw;
@@ -594,8 +601,7 @@ void GameManager::registerComponentInSystems(Component *component)
     }
     case ComponentType::SCRIPT: {
         auto *script = static_cast<ScriptComponent *>(component);
-        scriptComponents.push_back(script);
-        script->setGameManagerIndex(scriptComponents.size() - 1);
+        script->setGameManagerIndex(0);
         syncScriptUpdateLists(script);
         queueScriptStart(script);
         break;
@@ -636,7 +642,7 @@ void GameManager::unregisterComponentFromSystems(Component *component)
     case ComponentType::SCRIPT: {
         auto *script = static_cast<ScriptComponent *>(component);
         removeScriptFromUpdateLists(script);
-        swapRemoveIndexed(scriptComponents, script);
+        script->setGameManagerIndex(SIZE_MAX);
         break;
     }
     case ComponentType::AUDIO:

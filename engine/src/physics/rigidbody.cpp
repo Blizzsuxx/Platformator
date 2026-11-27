@@ -21,9 +21,10 @@ Rigidbody::Rigidbody(GameObject *gameObject) : Rigidbody(gameObject, BodyType::D
 
 Rigidbody::Rigidbody(GameObject *gameObject, BodyType bodyType, bool gravity)
     : Component(gameObject, ComponentType::RIGID_BODY), velocity(0.0f, 0.0f), angularVelocity(0.0f),
-      inverseMass(1.0f), inverseMomentOfInertia(1.0f), friction(1.0f), restitution(0.0f), bodyType(bodyType),
-      gravity(gravity), sleeping(false), isRegisteredInPhysicsManager(false), force(0.0f, 0.0f), torque(0.0f),
-      mass(1.0f), momentOfInertia(1.0f), supportContactCount(0), sleepTimer(0.0), physicsManagerIndex(SIZE_MAX)
+      inverseMass(1.0f), inverseMomentOfInertia(1.0f), friction(1.0f), restitution(0.0f),
+      physicsManagerIndex(INVALID_INDEX), bodyType(bodyType), gravity(gravity), sleeping(false),
+      isRegisteredInPhysicsManager(false), sleepTimer(0.0), force(0.0f, 0.0f), torque(0.0f), mass(1.0f),
+      momentOfInertia(1.0f), supportContactCount(0)
 {
     initialize();
 }
@@ -53,6 +54,7 @@ void Rigidbody::initialize()
     {
         throw std::invalid_argument("Unknown body type");
     }
+    inverseMass = (bodyType == BodyType::DYNAMIC && mass > 0.0f) ? 1.0f / mass : 0.0f;
     refreshMomentOfInertiaCache();
 
     if (bodyType != BodyType::DYNAMIC)
@@ -109,7 +111,7 @@ float Rigidbody::calculateAutomaticMomentOfInertia() const
 Rigidbody *Rigidbody::refreshMomentOfInertiaCache()
 {
     momentOfInertia = calculateAutomaticMomentOfInertia();
-    inverseMomentOfInertia = momentOfInertia > 0.0f ? 1.0f / momentOfInertia : 0.0f;
+    inverseMomentOfInertia = (bodyType == BodyType::DYNAMIC && momentOfInertia > 0.0f) ? 1.0f / momentOfInertia : 0.0f;
 
     return this;
 }
@@ -173,7 +175,7 @@ Rigidbody *Rigidbody::setMass(const float mass)
         return this;
     this->mass = mass > 0.0f ? mass : 0.0f;
     wakeUp();
-    this->inverseMass = this->mass > 0.0f ? 1.0f / this->mass : 0.0f;
+    this->inverseMass = (bodyType == BodyType::DYNAMIC && this->mass > 0.0f) ? 1.0f / this->mass : 0.0f;
     return refreshMomentOfInertiaCache();
 }
 
@@ -288,8 +290,14 @@ uint8_t Rigidbody::integrateLocal(double timeDelta)
 
 uint8_t Rigidbody::integrateDelta(float dx, float dy, float dAngle)
 {
-    this->force = Eigen::Vector2f(0.0f, 0.0f);
-    this->torque = 0.0f;
+    if (this->force.x() != 0.0f || this->force.y() != 0.0f)
+    {
+        this->force = Eigen::Vector2f(0.0f, 0.0f);
+    }
+    if (this->torque != 0.0f)
+    {
+        this->torque = 0.0f;
+    }
 
     const bool translated = dx != 0.0f || dy != 0.0f;
     const bool rotated = dAngle != 0.0f;

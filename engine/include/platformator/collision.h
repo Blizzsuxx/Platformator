@@ -56,7 +56,7 @@ class Collision
     void setReferenceObject(const Collider *colliderA) noexcept
     {
         if (referenceObject != colliderA)
-            contactPoints = ClipPointsWithData();
+            contactPoints.count = 0;
         this->referenceObject = colliderA;
     }
     void setIncidentObject(const Collider *colliderB) noexcept
@@ -75,9 +75,9 @@ class Collision
     };
 
   private:
-    Eigen::Vector2f normal;
-    ClipPointsWithData contactPoints;
     const Collider *referenceObject;
     const Collider *incidentObject;
+    Eigen::Vector2f normal;
+    ClipPointsWithData contactPoints;
     uint8_t supportState;
 };

@@ -8,14 +8,13 @@
 #include "platformator/gameobject.h"
 #include "platformator/gridtypes.h"
 
-class Collider;
 class Rigidbody;
 class GridCell;
 class Collision;
 class ColliderPair;
 class Grid;
 
-enum class ColliderType
+enum class ColliderType : uint8_t
 {
     CircleCollider,
     BoxCollider
@@ -36,7 +35,6 @@ class Collider : public Component
     friend class PhysicsManager;
     friend class Rigidbody;
     friend class Grid;
-    friend class GridCell;
 
   public:
     Collider(GameObject *gameObject, ComponentType type, ColliderType colliderType);
@@ -129,14 +127,14 @@ class Collider : public Component
 
     bool getIsQueuedForSync() const
     {
-        return gridQueueIndex != SIZE_MAX && desiredInGrid && dirty;
+        return gridQueueIndex != INVALID_INDEX && desiredInGrid && dirty;
     }
     void scheduleSync();
     void invalidateResponse();
 
     bool getIsQueuedForRemove() const
     {
-        return gridQueueIndex != SIZE_MAX && !desiredInGrid;
+        return gridQueueIndex != INVALID_INDEX && !desiredInGrid;
     }
 
     void prepareSync();
@@ -173,11 +171,16 @@ class Collider : public Component
     }
     size_t getPhysicsManagerIndex() const
     {
-        return physicsManagerIndex;
+        return physicsManagerIndex == INVALID_INDEX ? SIZE_MAX : static_cast<size_t>(physicsManagerIndex);
     }
 
   protected:
-    // Hot narrow-phase & broad-phase bounds/state packed contiguously.
+    static constexpr uint32_t INVALID_INDEX = UINT32_MAX;
+
+    // Fills bytes 60..63 after Component so CL 1 starts aligned on cachedWorldPosition.
+    uint32_t stateVersion;
+
+    // Cache Line 1 (bytes 64..127): all hot broadphase & narrow-phase bounds/state.
     Eigen::Vector2f cachedWorldPosition = Eigen::Vector2f::Zero();
     float tightMinX = 0.0f;
     float tightMaxX = 0.0f;
@@ -187,15 +190,24 @@ class Collider : public Component
     float fatMaxX = 0.0f;
     float fatMinY = 0.0f;
     float fatMaxY = 0.0f;
-    uint64_t stateVersion;
+    Rigidbody *attachedRigidbody = nullptr;
+    uint32_t gridQueueIndex = INVALID_INDEX;
     ColliderType colliderType;
     ColliderFlags flags;
+    uint8_t dirty = Geometry;
+    bool desiredInGrid = false;
+    bool fatBoundsValid = false;
+    bool broadPhaseSyncNeeded = true;
+    uint8_t cachedCellCount = 0;
 
-    // Cold filter/grid/offset metadata.
-    Eigen::Vector2f offset;
+    // Cache Line 2+ (bytes 128+): adjacency, cell cache, and cold filter/grid/offset metadata.
+    std::vector<ColliderPair *> adjacentPairs;
+    static constexpr uint8_t MAX_CACHED_GRID_CELLS = 4;
+    GridCell *cachedCells[MAX_CACHED_GRID_CELLS] = {};
     uint64_t collisionGroup;
     uint64_t collisionMask;
-    size_t physicsManagerIndex;
+    Eigen::Vector2f offset;
+    uint32_t physicsManagerIndex;
     GridCellRange gridCellRange;
     GridCellRange gridCellRangeCache;
 
@@ -251,19 +263,9 @@ class Collider : public Component
     }
     void setPhysicsManagerIndex(size_t index) noexcept
     {
-        physicsManagerIndex = index;
+        physicsManagerIndex = index == SIZE_MAX ? INVALID_INDEX : static_cast<uint32_t>(index);
     }
 
-    uint8_t dirty = Geometry;
-    bool desiredInGrid = false;
-    bool fatBoundsValid = false;
-    bool broadPhaseSyncNeeded = true;
-    size_t gridQueueIndex = SIZE_MAX;
-    static constexpr uint8_t MAX_CACHED_GRID_CELLS = 4;
-    GridCell *cachedCells[MAX_CACHED_GRID_CELLS] = {};
-    uint8_t cachedCellCount = 0;
-    Rigidbody *attachedRigidbody = nullptr;
-    std::vector<ColliderPair *> adjacentPairs;
     void prepareSyncFromCache();
     void prepareSyncFromCache(float cellSize);
 };

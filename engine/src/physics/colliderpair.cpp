@@ -1,9 +1,9 @@
 #include "physics/colliderpair.h"
 
 ColliderPair::ColliderPair(Collider *a, Collider *b)
-    : objectA(nullptr), objectB(nullptr), collisionStorage(), objectAStateVersion(UINT32_MAX),
-      objectBStateVersion(UINT32_MAX), narrowPhaseQueueIndex(INVALID_INDEX), adjacencyIndexA(INVALID_INDEX),
-      adjacencyIndexB(INVALID_INDEX), witnessCount(0), hasCollision(false)
+    : objectA(nullptr), objectB(nullptr), objectAStateVersion(UINT32_MAX), objectBStateVersion(UINT32_MAX),
+      narrowPhaseQueueIndex(INVALID_INDEX), hasCollision(false), collisionStorage(), adjacencyIndexA(INVALID_INDEX),
+      adjacencyIndexB(INVALID_INDEX), witnessCount(0)
 {
     if (a->getHandle() < b->getHandle())
     {

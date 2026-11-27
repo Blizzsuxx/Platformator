@@ -73,74 +73,50 @@ GameObject *buildObjectSubtree(const Json &record, platformator::ReferenceResolv
     object->setRotation(rotation);
     object->setScale(scale);
     object->setActive(record.at("active").get<bool>());
+    const auto makeFromJson = [&]<typename T>(Kind k, const nlohmann::json &entry) -> std::pair<std::unique_ptr<Component>, Kind> {
+        auto value = std::make_unique<T>();
+        from_json(entry, *value);
+        return {std::move(value), k};
+    };
+    const auto makeDeserialized = [&]<typename T>(Kind k, const nlohmann::json &entry) -> std::pair<std::unique_ptr<Component>, Kind> {
+        auto value = std::make_unique<T>();
+        deserialize(entry, *value, resolver);
+        return {std::move(value), k};
+    };
     for (const auto &entry : record.at("components"))
     {
         std::unique_ptr<Component> component;
         Kind kind;
         switch (entry.at("type").get<int>())
         {
-        case ANIMATOR: {
-            auto value = std::make_unique<Animator>();
-            deserialize(entry, *value, resolver);
-            kind = Kind::Animator;
-            component = std::move(value);
+        case ANIMATOR:
+            std::tie(component, kind) = makeDeserialized.template operator()<Animator>(Kind::Animator, entry);
             break;
-        }
-        case AUDIO: {
-            auto value = std::make_unique<Audio>();
-            deserialize(entry, *value, resolver);
-            kind = Kind::Audio;
-            component = std::move(value);
+        case AUDIO:
+            std::tie(component, kind) = makeDeserialized.template operator()<Audio>(Kind::Audio, entry);
             break;
-        }
-        case CAMERA: {
+        case CAMERA:
             positive(entry.at("width").get<float>(), "camera.width");
             positive(entry.at("height").get<float>(), "camera.height");
-            auto value = std::make_unique<Camera>();
-            from_json(entry, *value);
-            kind = Kind::Camera;
-            component = std::move(value);
+            std::tie(component, kind) = makeFromJson.template operator()<Camera>(Kind::Camera, entry);
             break;
-        }
         case COLLIDER:
             if (entry.at("colliderType").get<int>() == static_cast<int>(ColliderType::BoxCollider))
-            {
-                auto value = std::make_unique<BoxCollider>();
-                from_json(entry, *value);
-                kind = Kind::BoxCollider;
-                component = std::move(value);
-            }
+                std::tie(component, kind) = makeFromJson.template operator()<BoxCollider>(Kind::BoxCollider, entry);
             else if (entry.at("colliderType").get<int>() == static_cast<int>(ColliderType::CircleCollider))
-            {
-                auto value = std::make_unique<CircleCollider>();
-                from_json(entry, *value);
-                kind = Kind::CircleCollider;
-                component = std::move(value);
-            }
+                std::tie(component, kind) = makeFromJson.template operator()<CircleCollider>(Kind::CircleCollider, entry);
             else
                 throw std::invalid_argument("Unknown collider shape");
             break;
-        case RIGID_BODY: {
-            auto value = std::make_unique<Rigidbody>();
-            from_json(entry, *value);
-            kind = Kind::Rigidbody;
-            component = std::move(value);
+        case RIGID_BODY:
+            std::tie(component, kind) = makeFromJson.template operator()<Rigidbody>(Kind::Rigidbody, entry);
             break;
-        }
-        case SCRIPT: {
-            auto value = std::make_unique<ScriptComponent>();
-            from_json(entry, *value);
-            kind = Kind::ScriptComponent;
-            component = std::move(value);
+        case SCRIPT:
+            std::tie(component, kind) = makeFromJson.template operator()<ScriptComponent>(Kind::ScriptComponent, entry);
             break;
-        }
-        case SPRITE: {
-            auto value = std::make_unique<Sprite>();
-            deserialize(entry, *value, resolver);
-            kind = Kind::Sprite;
-            component = std::move(value);
+        case SPRITE:
+            std::tie(component, kind) = makeDeserialized.template operator()<Sprite>(Kind::Sprite, entry);
             break;
-        }
         default:
             throw std::invalid_argument("Unknown component type");
         }
@@ -156,7 +132,7 @@ GameObject *buildObjectSubtree(const Json &record, platformator::ReferenceResolv
 }
 } // namespace platformator_detail
 
-SceneBuildContext::SceneBuildContext(GameManager &manager) : RuntimeReferenceResolver(manager)
+SceneBuildContext::SceneBuildContext(GameManager &manager) : RetainingReferenceResolver(manager, retainedAssets)
 {
 }
 
@@ -180,9 +156,7 @@ void SceneBuildContext::addIdentity(BaseObject &object, Kind kind)
     if (kind != Kind::GameObject)
     {
         ++componentCount;
-        if (kind == Kind::ScriptComponent)
-            ++scriptCount;
-        else if (kind == Kind::Animator)
+        if (kind == Kind::Animator)
             ++animatorCount;
     }
 }
@@ -282,20 +256,4 @@ BaseObject *SceneBuildContext::findObject(int id, Kind kind)
 {
     BaseObject *found = ids.find(id);
     return found == nullptr ? nullptr : findHandle(found->getHandle(), kind);
-}
-TextureWrapper *SceneBuildContext::loadTexture(const std::string &path)
-{
-    return retainedAssets.retain(RuntimeReferenceResolver::loadTexture(path));
-}
-AudioWrapper *SceneBuildContext::loadAudio(const std::string &path)
-{
-    return retainedAssets.retain(RuntimeReferenceResolver::loadAudio(path));
-}
-AnimationClip *SceneBuildContext::loadAnimationClip(const std::string &path)
-{
-    return retainedAssets.retain(RuntimeReferenceResolver::loadAnimationClip(path));
-}
-Template *SceneBuildContext::loadTemplate(const std::string &path)
-{
-    return retainedAssets.retain(RuntimeReferenceResolver::loadTemplate(path));
 }

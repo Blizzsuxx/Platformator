@@ -7,20 +7,20 @@
 void PhysicsManager::reserveAttachmentWork(Rigidbody *old, Collider *collider)
 {
     using platformator_detail::reserveForAppend;
-    if (old && old->getIsRegisteredInPhysicsManager() && old->participationQueueIndex == SIZE_MAX)
+    if (old && old->getIsRegisteredInPhysicsManager() && old->participationQueueIndex == Rigidbody::INVALID_INDEX)
         reserveForAppend(pendingBodyChanges, 1);
-    if (collider && collider->getIsRegisteredInPhysicsManager() && collider->gridQueueIndex == SIZE_MAX)
+    if (collider && collider->getIsRegisteredInPhysicsManager() && collider->gridQueueIndex == Collider::INVALID_INDEX)
         reserveForAppend(grid.pendingColliderOperations, 1);
 }
 
 void PhysicsManager::queueBodyParticipationChange(Rigidbody *body)
 {
-    if (body->participationQueueIndex != SIZE_MAX)
+    if (body->participationQueueIndex != Rigidbody::INVALID_INDEX)
     {
         return;
     }
 
-    body->participationQueueIndex = pendingBodyChanges.size();
+    body->participationQueueIndex = static_cast<uint32_t>(pendingBodyChanges.size());
     pendingBodyChanges.push_back(body);
     PLATFORMATOR_WORK_ADD(bodyParticipationEnqueues, 1);
 }
@@ -58,7 +58,7 @@ void PhysicsManager::reconcileChangedBodies()
     // No integration or callback occurs here; participation and affected solver neighbors catch up.
     for (auto *body : pendingBodyChanges)
     {
-        body->participationQueueIndex = SIZE_MAX;
+        body->participationQueueIndex = Rigidbody::INVALID_INDEX;
         reconcileBodyParticipation(body);
     }
     pendingBodyChanges.clear();

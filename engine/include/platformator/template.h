@@ -11,16 +11,8 @@
 #include "platformator/baseobject.h"
 #include "platformator/gameobject.h"
 
-struct AnimationClip;
-class AudioWrapper;
 class GameManager;
-class ScriptComponent;
-class TextureWrapper;
 
-namespace platformator
-{
-class ReferenceResolver;
-}
 namespace platformator_detail
 {
 struct AssetRetentionLedger;
@@ -47,12 +39,10 @@ class Template : public Asset
     {
         void operator()(GameObject *object) const;
     };
+    struct CloneContext;
 
     static GameObject *cloneSubtree(const GameObject &proto, GameObject *clonedParent,
-                                    const Eigen::Vector2f &localPosition, float rotation,
-                                    std::vector<std::unique_ptr<GameObject, ObjectDeleter>> &clonedObjects,
-                                    std::unordered_map<int, BaseObject *> &protoIdToClone,
-                                    std::vector<ScriptComponent *> &clonedScripts);
+                                    const Eigen::Vector2f &localPosition, float rotation, CloneContext &context);
     void loadFromJsonDocument(const nlohmann::json &document, GameManager &manager);
     GameObject *instantiateImpl(std::optional<Eigen::Vector2f> worldPosition, std::optional<float> worldRotation,
                                 GameObject *parent) const;
@@ -61,4 +51,5 @@ class Template : public Asset
     std::unique_ptr<platformator_detail::AssetRetentionLedger> retainedAssets;
     // Destroy prototype GameObjects before the retained dependencies.
     std::vector<std::unique_ptr<GameObject, ObjectDeleter>> objects;
+    bool hasScripts = false;
 };

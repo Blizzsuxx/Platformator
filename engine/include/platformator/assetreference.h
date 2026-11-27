@@ -203,21 +203,12 @@ template <typename T> class AssetReference
         const auto path = getFilePath();
         if (!path)
             return nullptr;
-        T *asset;
-        if constexpr (std::is_same_v<T, TextureWrapper>)
-            asset = resolver.loadTexture(*path);
-        else if constexpr (std::is_same_v<T, AudioWrapper>)
-            asset = resolver.loadAudio(*path);
-        else if constexpr (std::is_same_v<T, AnimationClip>)
-            asset = resolver.loadAnimationClip(*path);
-        else if constexpr (std::is_same_v<T, Template>)
+        T *asset = loadFrom(resolver, *path);
+        if constexpr (std::is_same_v<T, Template>)
         {
-            asset = resolver.loadTemplate(*path);
             if (!asset && resolver.allowDeferredTemplate(*path))
                 return nullptr;
         }
-        else
-            static_assert(always_false_asset_reference_v<T>);
         if (!asset)
             throw std::runtime_error("Required asset failed to load: " + *path);
         set(asset);
@@ -261,19 +252,24 @@ template <typename T> class AssetReference
         }
     }
 
-    static T *loadAsset(platformator::Runtime &runtime, const std::string &assetPath)
+    template <typename Loader> static T *loadFrom(Loader &loader, const std::string &assetPath)
     {
         if constexpr (std::is_same_v<T, TextureWrapper>)
-            return runtime.loadTexture(assetPath);
+            return loader.loadTexture(assetPath);
         else if constexpr (std::is_same_v<T, AudioWrapper>)
-            return runtime.loadAudio(assetPath);
+            return loader.loadAudio(assetPath);
         else if constexpr (std::is_same_v<T, AnimationClip>)
-            return runtime.loadAnimationClip(assetPath);
+            return loader.loadAnimationClip(assetPath);
         else if constexpr (std::is_same_v<T, Template>)
-            return runtime.loadTemplate(assetPath);
+            return loader.loadTemplate(assetPath);
         else
             static_assert(always_false_asset_reference_v<T>,
                           "AssetReference does not know how to load this asset type.");
+    }
+
+    static T *loadAsset(platformator::Runtime &runtime, const std::string &assetPath)
+    {
+        return loadFrom(runtime, assetPath);
     }
 
     void assertLifetime() const

@@ -10,8 +10,6 @@ class AABB;
 
 class SegmentedIntervalList
 {
-    friend class LocalSortArray;
-
   public:
     SegmentedIntervalList(AABB *owner, bool isPrimary);
     ~SegmentedIntervalList();

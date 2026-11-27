@@ -29,14 +29,13 @@ class ColliderPair
 
     void updateCachedCollisionVersions() noexcept
     {
-        objectAStateVersion = objectA ? static_cast<uint32_t>(objectA->getStateVersion()) : UINT32_MAX;
-        objectBStateVersion = objectB ? static_cast<uint32_t>(objectB->getStateVersion()) : UINT32_MAX;
+        objectAStateVersion = static_cast<uint32_t>(objectA->getStateVersion());
+        objectBStateVersion = static_cast<uint32_t>(objectB->getStateVersion());
     }
     bool shouldUpdate() const noexcept
     {
-        const uint32_t currentObjectAVersion = objectA ? static_cast<uint32_t>(objectA->getStateVersion()) : UINT32_MAX;
-        const uint32_t currentObjectBVersion = objectB ? static_cast<uint32_t>(objectB->getStateVersion()) : UINT32_MAX;
-        return currentObjectAVersion != objectAStateVersion || currentObjectBVersion != objectBStateVersion;
+        return static_cast<uint32_t>(objectA->getStateVersion()) != objectAStateVersion ||
+               static_cast<uint32_t>(objectB->getStateVersion()) != objectBStateVersion;
     }
     void clearCollisionNoEvent() noexcept;
 
@@ -93,31 +92,33 @@ class ColliderPair
     }
 
   private:
+    // Cache Line 0 (64 B): hot pair-queue, narrow-phase filter/dispatch, and island/solver endpoints.
     Collider *objectA;
     Collider *objectB;
-
-    Collision collisionStorage;
+    // Cached endpoints for island contacts (eliminates BoxCollider dereferences during solver packing).
+    Rigidbody *cachedRbA = nullptr;
+    Rigidbody *cachedRbB = nullptr;
     uint32_t objectAStateVersion;
     uint32_t objectBStateVersion;
     uint32_t narrowPhaseQueueIndex;
-    uint32_t adjacencyIndexA;
-    uint32_t adjacencyIndexB;
-    int32_t witnessCount;
     uint32_t contactIndex = INVALID_INDEX;
     int32_t solverIslandId = -1;
-    uint32_t solverIslandContactIndex = INVALID_INDEX;
     uint32_t kinematicSolverIndex = INVALID_INDEX;
-    uint32_t solverColorSlot = UINT32_MAX;
+    uint32_t solverIslandContactIndex = INVALID_INDEX;
     uint8_t solverColor = 0xFFu;
     bool hasCollision = false;
     bool resultHadContact = false;
 #if PLATFORMATOR_ENABLE_WORK_PROBES
     bool resultTestedGeometry = false;
 #endif
+
+    // Cache Line 1+ (80 B collision + cold broadphase/support bookkeeping).
+    Collision collisionStorage;
     // Exact recipients of this pair's applied-or-queued support credit, not current component caches.
     Rigidbody *contributedSupportBodyA = nullptr;
     Rigidbody *contributedSupportBodyB = nullptr;
-    // Cached endpoints for island contacts (eliminates BoxCollider dereferences during solver packing).
-    Rigidbody *cachedRbA = nullptr;
-    Rigidbody *cachedRbB = nullptr;
+    uint32_t adjacencyIndexA;
+    uint32_t adjacencyIndexB;
+    int32_t witnessCount;
+    uint32_t solverColorSlot = UINT32_MAX;
 };

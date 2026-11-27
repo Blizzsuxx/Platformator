@@ -12,6 +12,7 @@
 #include "platformator/collider.h"
 
 class Grid;
+struct PairDelta;
 
 class AABB
 {
@@ -60,13 +61,19 @@ class AABB
             }
         });
     }
+    void beginDeltaBatch();
+    void endDeltaBatch() noexcept
+    {
+        activeDeltaSink = nullptr;
+    }
     bool getIsEmpty() const;
 
   private:
     using PairKey = platformator_detail::CanonicalColliderPairKey;
 
     void repairAxis(SegmentedIntervalList &list, platformator_detail::ProjectionAxisBinding &axisBinding);
-    bool tryClearAllRemoved(const std::vector<Collider *> &colliders);
+    bool tryClearAllRemoved(const std::vector<Collider *> &colliders, std::vector<ColliderBinding *> &outMatched);
+    void recordDelta(Collider *colliderA, Collider *colliderB, int delta);
     void axisOverlapBegin(Collider *colliderA, Collider *colliderB);
     void axisOverlapEnd(Collider *colliderA, Collider *colliderB);
 
@@ -77,6 +84,7 @@ class AABB
     SegmentedIntervalList intervalListY;
     FlatHashSet<PairKey, PairKey::Hash, std::equal_to<PairKey>, PairKey::IsEmpty> pairsWithBothAxisOverlapping;
     Grid *owner;
+    std::vector<PairDelta> *activeDeltaSink = nullptr;
 
     friend class Grid;
     friend class SegmentedIntervalList;

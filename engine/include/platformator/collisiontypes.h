@@ -108,33 +108,69 @@ struct ClipPointWithData
           accumulatedTangentImpulse(0.0f)
     {
     }
-
-    explicit ClipPointWithData(const ClipVertex &point)
-        : point(point), separation(0.0f), accumulatedNormalImpulse(0.0f), accumulatedTangentImpulse(0.0f)
-    {
-    }
 };
 
 struct ClipPointsWithData
 {
+    struct WarmStartSnapshot
+    {
+        uint32_t count;
+        uint32_t key0;
+        uint32_t key1;
+        float normal0;
+        float tangent0;
+        float normal1;
+        float tangent1;
+
+        void restore(ClipPointWithData &dst, uint32_t key) const noexcept
+        {
+            if (count > 0 && key == key0)
+            {
+                dst.accumulatedNormalImpulse = normal0;
+                dst.accumulatedTangentImpulse = tangent0;
+            }
+            else if (count > 1 && key == key1)
+            {
+                dst.accumulatedNormalImpulse = normal1;
+                dst.accumulatedTangentImpulse = tangent1;
+            }
+            else
+            {
+                dst.accumulatedNormalImpulse = 0.0f;
+                dst.accumulatedTangentImpulse = 0.0f;
+            }
+        }
+    };
+
     std::array<ClipPointWithData, 2> points;
-    size_t count;
+    uint32_t count;
 
     ClipPointsWithData() : points(), count(0)
     {
     }
 
-    size_t findIndex(const ContactFeature &feature) const
+    WarmStartSnapshot snapshotWarmStart() const noexcept
     {
-        for (size_t i = 0; i < count; ++i)
-        {
-            if (points[i].point.feature.key == feature.key)
-            {
-                return i;
-            }
-        }
+        return WarmStartSnapshot{
+            count,
+            count > 0 ? points[0].point.feature.key : 0u,
+            count > 1 ? points[1].point.feature.key : 0u,
+            count > 0 ? points[0].accumulatedNormalImpulse : 0.0f,
+            count > 0 ? points[0].accumulatedTangentImpulse : 0.0f,
+            count > 1 ? points[1].accumulatedNormalImpulse : 0.0f,
+            count > 1 ? points[1].accumulatedTangentImpulse : 0.0f,
+        };
+    }
 
-        return SIZE_MAX;
+    void setSinglePoint(const Eigen::Vector2f &point, ContactFeature feature, float separation) noexcept
+    {
+        const WarmStartSnapshot warm = snapshotWarmStart();
+        ClipPointWithData &dst = points[0];
+        dst.point.point = point;
+        dst.point.feature = feature;
+        dst.separation = separation;
+        warm.restore(dst, feature.key);
+        count = 1;
     }
 };
 

@@ -17,6 +17,7 @@
 #include <oneapi/tbb/task_group.h>
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <exception>
 #include <limits>
@@ -117,13 +118,15 @@ void PhysicsManager::commitMovedBodies(double timeDelta, bool useSolverDeltas)
         publishMoved(body->getGameObject(), (flags & FLAG_TRANSLATED) != 0, (flags & FLAG_ROTATED) != 0);
     };
 
+    const bool hasSolverDeltas = useSolverDeltas && !activeIslandIds.empty();
     const auto integrateAndClassify = [&](Rigidbody *body, bool isDynamic, Collider *&outFastCollider) -> uint8_t {
         outFastCollider = nullptr;
         uint8_t changes = 0;
         if (useSolverDeltas && isDynamic)
         {
-            const size_t awakeIndex = body->awakeDynamicIndex;
-            if (awakeIndex < solverBodyDeltas.size() && solverBodyDeltas[awakeIndex].step == solverStep)
+            const uint32_t awakeIndex = body->awakeDynamicIndex;
+            if (hasSolverDeltas && awakeIndex < solverBodyDeltas.size() &&
+                solverBodyDeltas[awakeIndex].step == solverStep)
             {
                 const SolverBodyDelta &delta = solverBodyDeltas[awakeIndex];
                 changes = body->integrateDelta(delta.dx, delta.dy, delta.dAngle);
@@ -176,7 +179,7 @@ void PhysicsManager::commitMovedBodies(double timeDelta, bool useSolverDeltas)
         return changes;
     };
 
-    if (totalMoving < BODY_INTEGRATION_PARALLEL_THRESHOLD)
+    if (totalMoving < BODY_INTEGRATION_PARALLEL_THRESHOLD || !hasParallelPhysicsWorkers())
     {
         const auto processOne = [&](Rigidbody *body, bool isDynamic) {
             Collider *fastCollider = nullptr;
@@ -197,11 +200,18 @@ void PhysicsManager::commitMovedBodies(double timeDelta, bool useSolverDeltas)
     movedBodyChanges.resize(totalMoving);
     movedFastColliders.resize(totalMoving);
     const size_t awakeCount = awakeDynamicBodies.size();
-    tbb::parallel_for(size_t(0), totalMoving, [&](size_t i) {
-        const bool isDynamic = i < awakeCount;
-        auto *body = isDynamic ? awakeDynamicBodies[i] : movingKinematicBodies[i - awakeCount];
-        movedBodyChanges[i] = integrateAndClassify(body, isDynamic, movedFastColliders[i]);
-    });
+    tbb::task_group_context context(tbb::task_group_context::isolated);
+    tbb::parallel_for(
+        tbb::blocked_range<size_t>(0, totalMoving, 64),
+        [&](const auto &range) {
+            for (size_t i = range.begin(); i != range.end(); ++i)
+            {
+                const bool isDynamic = i < awakeCount;
+                auto *body = isDynamic ? awakeDynamicBodies[i] : movingKinematicBodies[i - awakeCount];
+                movedBodyChanges[i] = integrateAndClassify(body, isDynamic, movedFastColliders[i]);
+            }
+        },
+        context);
 
     for (size_t i = 0; i < totalMoving; ++i)
     {
@@ -309,26 +319,26 @@ void PhysicsManager::clearAll()
     {
         body->setIsRegisteredInPhysicsManager(false);
         body->setPhysicsManagerIndex(SIZE_MAX);
-        body->awakeDynamicIndex = SIZE_MAX;
-        body->movingKinematicIndex = SIZE_MAX;
-        body->sleepCandidateIndex = SIZE_MAX;
-        body->participationQueueIndex = SIZE_MAX;
-        body->supportDeltaIndex = SIZE_MAX;
+        body->awakeDynamicIndex = Rigidbody::INVALID_INDEX;
+        body->movingKinematicIndex = Rigidbody::INVALID_INDEX;
+        body->sleepCandidateIndex = Rigidbody::INVALID_INDEX;
+        body->participationQueueIndex = Rigidbody::INVALID_INDEX;
+        body->supportDeltaIndex = Rigidbody::INVALID_INDEX;
         body->supportDelta = 0;
         body->solverIslandId = -1;
-        body->solverIslandBodyIndex = SIZE_MAX;
+        body->solverIslandBodyIndex = Rigidbody::INVALID_INDEX;
         body->solverColorMask = 0;
     }
     for (Rigidbody *body : pendingBodyChanges)
     {
-        body->participationQueueIndex = SIZE_MAX;
+        body->participationQueueIndex = Rigidbody::INVALID_INDEX;
     }
     for (Rigidbody *body : supportDeltaBodies)
     {
-        body->supportDeltaIndex = SIZE_MAX;
+        body->supportDeltaIndex = Rigidbody::INVALID_INDEX;
         body->supportDelta = 0;
         body->solverIslandId = -1;
-        body->solverIslandBodyIndex = SIZE_MAX;
+        body->solverIslandBodyIndex = Rigidbody::INVALID_INDEX;
         body->solverColorMask = 0;
     }
     for (Collider *collider : colliderComponents)
@@ -337,7 +347,7 @@ void PhysicsManager::clearAll()
         collider->setPhysicsManagerIndex(SIZE_MAX);
         collider->setIsRegisteredInGrid(false);
         collider->desiredInGrid = false;
-        collider->gridQueueIndex = SIZE_MAX;
+        collider->gridQueueIndex = Collider::INVALID_INDEX;
         collider->cachedCellCount = 0;
         collider->invalidateFatBounds();
         collider->adjacentPairs.clear();
@@ -354,11 +364,9 @@ void PhysicsManager::clearAll()
     activeIslandIds.clear();
     dirtySplitIslandIds.clear();
     kinematicSolverPairs.clear();
-    splitAdjHead.clear();
-    splitAdjNext.clear();
-    splitAdjTo.clear();
+    splitDsuParent.clear();
+    splitDsuRank.clear();
     splitComponentOfBody.clear();
-    splitQueue.clear();
     splitRemainingContacts.clear();
     splitOldBodies.clear();
     splitComponentContactCounts.clear();
@@ -465,10 +473,15 @@ void PhysicsManager::narrowPhase()
         }
         if (hasContact && pair->contactIndex != ColliderPair::INVALID_INDEX)
         {
-            if (!pair->isInSolver() && !pair->contributedSupportBodyA && !pair->contributedSupportBodyB &&
-                (pair->getObjectA()->getIsTrigger() || pair->getObjectB()->getIsTrigger()))
+            if (!pair->isInSolver() && !pair->contributedSupportBodyA && !pair->contributedSupportBodyB)
             {
-                return false;
+                const Collider *a = pair->getObjectA();
+                const Collider *b = pair->getObjectB();
+                if (a->getIsTrigger() || b->getIsTrigger() ||
+                    (noPendingBodyChanges && !a->hasNonStaticRigidbody() && !b->hasNonStaticRigidbody()))
+                {
+                    return false;
+                }
             }
             if (noPendingBodyChanges && pair->isInSolver())
             {
@@ -495,15 +508,17 @@ void PhysicsManager::narrowPhase()
         refreshContactParticipation(pair);
     };
 
-    if (pendingPairs.size() < NARROW_PHASE_PARALLEL_THRESHOLD)
+    if (pendingPairs.size() < NARROW_PHASE_PARALLEL_THRESHOLD || !hasParallelPhysicsWorkers())
     {
         const size_t pairCount = pendingPairs.size();
-        for (size_t i = 0; i < pairCount; ++i)
-        {
-            if (i + 4 < pairCount)
+            for (size_t i = 0; i < pairCount; ++i)
             {
-                __builtin_prefetch(pendingPairs[i + 4], 0, 1);
-            }
+                if (i + 4 < pairCount)
+                {
+                    const ColliderPair *pf = pendingPairs[i + 4];
+                    __builtin_prefetch(pf, 0, 1);
+                    __builtin_prefetch(reinterpret_cast<const char *>(pf) + 64, 0, 1);
+                }
             ColliderPair *pair = pendingPairs[i];
             processNarrowPhasePair(pair);
             PLATFORMATOR_WORK_ADD(geometryPairs, pair->resultTestedGeometry ? 1 : 0);
@@ -528,37 +543,43 @@ void PhysicsManager::narrowPhase()
         const size_t base = pairCount / chunkCount;
         const size_t rem = pairCount % chunkCount;
 
-        tbb::parallel_for(size_t(0), chunkCount, [&](size_t chunkIdx) {
-            auto &transitions = narrowTransitionChunks[chunkIdx];
-            transitions.clear();
-            const size_t start = chunkIdx * base + std::min(chunkIdx, rem);
-            const size_t end = start + base + (chunkIdx < rem ? 1 : 0);
+        tbb::task_group_context context(tbb::task_group_context::isolated);
+        tbb::parallel_for(
+            size_t(0), chunkCount,
+            [&](size_t chunkIdx) {
+                auto &transitions = narrowTransitionChunks[chunkIdx];
+                transitions.clear();
+                const size_t start = chunkIdx * base + std::min(chunkIdx, rem);
+                const size_t end = start + base + (chunkIdx < rem ? 1 : 0);
 #if PLATFORMATOR_ENABLE_WORK_PROBES
-            uint64_t tested = 0;
+                uint64_t tested = 0;
 #endif
-            for (size_t i = start; i < end; ++i)
-            {
-                if (i + 4 < end)
+                for (size_t i = start; i < end; ++i)
                 {
-                    __builtin_prefetch(pendingPairs[i + 4], 0, 1);
-                }
-                ColliderPair *pair = pendingPairs[i];
-                processNarrowPhasePair(pair);
+                    if (i + 4 < end)
+                    {
+                        const ColliderPair *pf = pendingPairs[i + 4];
+                        __builtin_prefetch(pf, 0, 1);
+                        __builtin_prefetch(reinterpret_cast<const char *>(pf) + 64, 0, 1);
+                    }
+                    ColliderPair *pair = pendingPairs[i];
+                    processNarrowPhasePair(pair);
 #if PLATFORMATOR_ENABLE_WORK_PROBES
-                if (pair->resultTestedGeometry)
-                {
-                    ++tested;
-                }
+                    if (pair->resultTestedGeometry)
+                    {
+                        ++tested;
+                    }
 #endif
-                if (needsSerialTransition(pair))
-                {
-                    transitions.push_back(pair);
+                    if (needsSerialTransition(pair))
+                    {
+                        transitions.push_back(pair);
+                    }
                 }
-            }
 #if PLATFORMATOR_ENABLE_WORK_PROBES
-            narrowGeometryCounts[chunkIdx] = tested;
+                narrowGeometryCounts[chunkIdx] = tested;
 #endif
-        });
+            },
+            context);
 
 #if PLATFORMATOR_ENABLE_WORK_PROBES
         uint64_t totalTested = 0;
@@ -660,34 +681,27 @@ void PhysicsManager::updateSleepingStates(double timeDelta)
     };
 
     const auto evaluateIsland = [&](const PersistentIsland &island, SleepScratch &scratch,
-                                    std::vector<Rigidbody *> &toSleep) {
-        bool allCandidates = true;
-        bool anyCandidate = false;
+                                    std::vector<Rigidbody *> &toSleep) -> size_t {
+        size_t candidateCount = 0;
+        bool quiet = true;
+        double minTimer = std::numeric_limits<double>::infinity();
         for (Rigidbody *body : island.bodies)
         {
-            if (body->sleepCandidateIndex != SIZE_MAX)
+            if (body->sleepCandidateIndex != Rigidbody::INVALID_INDEX)
             {
-                anyCandidate = true;
-            }
-            else
-            {
-                allCandidates = false;
-            }
-        }
-        if (!anyCandidate)
-        {
-            return;
-        }
-
-        if (allCandidates)
-        {
-            bool quiet = true;
-            double minTimer = std::numeric_limits<double>::infinity();
-            for (Rigidbody *body : island.bodies)
-            {
+                ++candidateCount;
                 quiet &= isQuiet(body);
                 minTimer = std::min(minTimer, body->getSleepTimer());
             }
+        }
+        if (candidateCount == 0)
+        {
+            return 0;
+        }
+
+        const size_t bodyCount = island.bodies.size();
+        if (candidateCount == bodyCount)
+        {
             const double timer = quiet ? minTimer + timeDelta : 0.0;
             if (timer >= SLEEP_DELAY)
             {
@@ -703,11 +717,10 @@ void PhysicsManager::updateSleepingStates(double timeDelta)
                     body->setSleepTimer(timer);
                 }
             }
-            return;
+            return candidateCount;
         }
 
         // Mixed island (some bodies supported, some unsupported): preserve exact sleep-candidate connectivity.
-        const size_t bodyCount = island.bodies.size();
         auto &parent = scratch.parent;
         auto &rank = scratch.rank;
         auto &compQuiet = scratch.compQuiet;
@@ -737,16 +750,16 @@ void PhysicsManager::updateSleepingStates(double timeDelta)
         };
         for (const ColliderPair *pair : island.contacts)
         {
-            auto *rbA = pair->getObjectA()->getAttachedRigidbody();
-            auto *rbB = pair->getObjectB()->getAttachedRigidbody();
+            const auto [rbA, rbB] = pairRigidbodies(pair);
             if (rbA == nullptr || rbB == nullptr ||
-                rbA->sleepCandidateIndex == SIZE_MAX || rbB->sleepCandidateIndex == SIZE_MAX ||
+                rbA->sleepCandidateIndex == Rigidbody::INVALID_INDEX ||
+                rbB->sleepCandidateIndex == Rigidbody::INVALID_INDEX ||
                 rbA->solverIslandId != island.id || rbB->solverIslandId != island.id)
             {
                 continue;
             }
-            uint32_t rootA = findRoot(static_cast<uint32_t>(rbA->solverIslandBodyIndex));
-            uint32_t rootB = findRoot(static_cast<uint32_t>(rbB->solverIslandBodyIndex));
+            uint32_t rootA = findRoot(rbA->solverIslandBodyIndex);
+            uint32_t rootB = findRoot(rbB->solverIslandBodyIndex);
             if (rootA != rootB)
             {
                 if (rank[rootA] < rank[rootB])
@@ -763,7 +776,7 @@ void PhysicsManager::updateSleepingStates(double timeDelta)
         for (size_t i = 0; i < bodyCount; ++i)
         {
             Rigidbody *body = island.bodies[i];
-            if (body->sleepCandidateIndex == SIZE_MAX)
+            if (body->sleepCandidateIndex == Rigidbody::INVALID_INDEX)
             {
                 continue;
             }
@@ -774,7 +787,7 @@ void PhysicsManager::updateSleepingStates(double timeDelta)
         for (size_t i = 0; i < bodyCount; ++i)
         {
             Rigidbody *body = island.bodies[i];
-            if (body->sleepCandidateIndex == SIZE_MAX)
+            if (body->sleepCandidateIndex == Rigidbody::INVALID_INDEX)
             {
                 continue;
             }
@@ -789,16 +802,19 @@ void PhysicsManager::updateSleepingStates(double timeDelta)
                 body->setSleepTimer(timer);
             }
         }
+        return candidateCount;
     };
 
     auto &bodiesToSleep = bodiesToSleepScratch;
     bodiesToSleep.clear();
+    size_t visitedCandidates = 0;
     const bool runParallel = activeIslandIds.size() >= 32 && hasParallelPhysicsWorkers();
     if (!runParallel)
     {
         for (int32_t islandId : activeIslandIds)
         {
-            evaluateIsland(persistentIslands[static_cast<size_t>(islandId)], serialSleepScratch, bodiesToSleep);
+            visitedCandidates +=
+                evaluateIsland(persistentIslands[static_cast<size_t>(islandId)], serialSleepScratch, bodiesToSleep);
         }
     }
     else
@@ -807,18 +823,25 @@ void PhysicsManager::updateSleepingStates(double timeDelta)
         {
             local.toSleep.clear();
         }
+        std::atomic<size_t> parallelVisited{0};
         tbb::task_group_context context(tbb::task_group_context::isolated);
         tbb::parallel_for(
             tbb::blocked_range<size_t>(0, activeIslandIds.size(), 16),
             [&](const auto &range) {
                 auto &localScratch = parallelSleepScratch.local();
+                size_t localCount = 0;
                 for (size_t i = range.begin(); i != range.end(); ++i)
                 {
-                    evaluateIsland(persistentIslands[static_cast<size_t>(activeIslandIds[i])], localScratch,
-                                   localScratch.toSleep);
+                    localCount += evaluateIsland(persistentIslands[static_cast<size_t>(activeIslandIds[i])],
+                                                 localScratch, localScratch.toSleep);
+                }
+                if (localCount > 0)
+                {
+                    parallelVisited.fetch_add(localCount, std::memory_order_relaxed);
                 }
             },
             context);
+        visitedCandidates = parallelVisited.load(std::memory_order_relaxed);
         for (auto &local : parallelSleepScratch)
         {
             bodiesToSleep.insert(bodiesToSleep.end(), local.toSleep.begin(), local.toSleep.end());
@@ -827,20 +850,23 @@ void PhysicsManager::updateSleepingStates(double timeDelta)
     }
 
     // Evaluate isolated sleep candidates (0 active dynamic contacts, e.g. zero-gravity bodies).
-    for (Rigidbody *body : sleepCandidates)
+    if (visitedCandidates < sleepCandidates.size())
     {
-        if (body->solverIslandId != -1)
+        for (Rigidbody *body : sleepCandidates)
         {
-            continue;
-        }
-        const double timer = isQuiet(body) ? body->getSleepTimer() + timeDelta : 0.0;
-        if (timer >= SLEEP_DELAY)
-        {
-            bodiesToSleep.push_back(body);
-        }
-        else
-        {
-            body->setSleepTimer(timer);
+            if (body->solverIslandId != -1)
+            {
+                continue;
+            }
+            const double timer = isQuiet(body) ? body->getSleepTimer() + timeDelta : 0.0;
+            if (timer >= SLEEP_DELAY)
+            {
+                bodiesToSleep.push_back(body);
+            }
+            else
+            {
+                body->setSleepTimer(timer);
+            }
         }
     }
 

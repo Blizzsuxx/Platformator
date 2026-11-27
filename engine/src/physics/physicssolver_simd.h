@@ -69,6 +69,8 @@ struct alignas(32) WideConstraint8
     uint8_t writeMaskA = 0;
     uint8_t writeMaskB = 0;
     uint8_t restitutionMask = 0;
+    uint8_t readMaskA = 0;
+    uint8_t readMaskB = 0;
 
     void resetMasks() noexcept
     {
@@ -76,6 +78,8 @@ struct alignas(32) WideConstraint8
         writeMaskA = 0;
         writeMaskB = 0;
         restitutionMask = 0;
+        readMaskA = 0;
+        readMaskB = 0;
     }
 };
 
@@ -154,7 +158,8 @@ __attribute__((target("avx2,fma"))) inline __m256 invEffectiveMass8AVX2(const fl
     const __m256 rB = _mm256_load_ps(armB);
     const __m256 k = _mm256_fmadd_ps(invIB, _mm256_mul_ps(rB, rB),
                                      _mm256_fmadd_ps(invIA, _mm256_mul_ps(rA, rA), invMSum));
-    return _mm256_and_ps(_mm256_cmp_ps(k, zero, _CMP_GT_OQ), _mm256_div_ps(one, k));
+    const __m256 gtZero = _mm256_cmp_ps(k, zero, _CMP_GT_OQ);
+    return _mm256_and_ps(gtZero, _mm256_div_ps(one, _mm256_blendv_ps(one, k, gtZero)));
 }
 
 template <typename BodyStateT>
@@ -218,17 +223,33 @@ __attribute__((target("avx2,fma"))) inline void gatherBodyVec4x8AVX2(const uint3
 
 template <typename BodyStateT>
 __attribute__((target("avx2,fma"))) inline void gatherBodyVels8AVX2(const uint32_t idx[8], const BodyStateT *bodies,
-                                                                    __m256 &vx, __m256 &vy, __m256 &w,
-                                                                    __m256 &invM) noexcept
+                                                                    uint8_t readMask, __m256 &vx, __m256 &vy,
+                                                                    __m256 &w, __m256 &invM) noexcept
 {
+    if (readMask == 0)
+    {
+        vx = _mm256_setzero_ps();
+        vy = _mm256_setzero_ps();
+        w = _mm256_setzero_ps();
+        invM = _mm256_setzero_ps();
+        return;
+    }
     gatherBodyVec4x8AVX2<BodyStateT, &BodyStateT::vx>(idx, bodies, vx, vy, w, invM);
 }
 
 template <typename BodyStateT>
 __attribute__((target("avx2,fma"))) inline void gatherBodyDeltas8AVX2(const uint32_t idx[8], const BodyStateT *bodies,
-                                                                      __m256 &dpX, __m256 &dpY,
+                                                                      uint8_t readMask, __m256 &dpX, __m256 &dpY,
                                                                       __m256 &dAngle, __m256 &invI) noexcept
 {
+    if (readMask == 0)
+    {
+        dpX = _mm256_setzero_ps();
+        dpY = _mm256_setzero_ps();
+        dAngle = _mm256_setzero_ps();
+        invI = _mm256_setzero_ps();
+        return;
+    }
     gatherBodyVec4x8AVX2<BodyStateT, &BodyStateT::dpX>(idx, bodies, dpX, dpY, dAngle, invI);
 }
 
@@ -280,8 +301,8 @@ __attribute__((target("avx2,fma"))) inline void applyWarmStartWide8AVX2(const Wi
                                                                         BodyStateT *bodies) noexcept
 {
     __m256 vAx, vAy, wA, invMA, vBx, vBy, wB, invMB;
-    gatherBodyVels8AVX2(c.bodyIndexA, bodies, vAx, vAy, wA, invMA);
-    gatherBodyVels8AVX2(c.bodyIndexB, bodies, vBx, vBy, wB, invMB);
+    gatherBodyVels8AVX2(c.bodyIndexA, bodies, c.readMaskA, vAx, vAy, wA, invMA);
+    gatherBodyVels8AVX2(c.bodyIndexB, bodies, c.readMaskB, vBx, vBy, wB, invMB);
     const __m256 invIA = _mm256_load_ps(c.invIA);
     const __m256 invIB = _mm256_load_ps(c.invIB);
 
@@ -392,8 +413,8 @@ __attribute__((target("avx2,fma"))) inline void solveWide8SoftAVX2(WideConstrain
                                                                    const ParamsT &params) noexcept
 {
     __m256 vAx, vAy, wA, invMA, vBx, vBy, wB, invMB;
-    gatherBodyVels8AVX2(c.bodyIndexA, bodies, vAx, vAy, wA, invMA);
-    gatherBodyVels8AVX2(c.bodyIndexB, bodies, vBx, vBy, wB, invMB);
+    gatherBodyVels8AVX2(c.bodyIndexA, bodies, c.readMaskA, vAx, vAy, wA, invMA);
+    gatherBodyVels8AVX2(c.bodyIndexB, bodies, c.readMaskB, vBx, vBy, wB, invMB);
 
     const __m256 zero = _mm256_setzero_ps();
     const __m256 nX = _mm256_load_ps(c.normalX);
@@ -406,8 +427,8 @@ __attribute__((target("avx2,fma"))) inline void solveWide8SoftAVX2(WideConstrain
     if constexpr (UseBias)
     {
         __m256 dpAx, dpAy, dpBx, dpBy;
-        gatherBodyDeltas8AVX2(c.bodyIndexA, bodies, dpAx, dpAy, dAngA, invIA);
-        gatherBodyDeltas8AVX2(c.bodyIndexB, bodies, dpBx, dpBy, dAngB, invIB);
+        gatherBodyDeltas8AVX2(c.bodyIndexA, bodies, c.readMaskA, dpAx, dpAy, dAngA, invIA);
+        gatherBodyDeltas8AVX2(c.bodyIndexB, bodies, c.readMaskB, dpBx, dpBy, dAngB, invIB);
         const __m256 dpX = _mm256_sub_ps(dpBx, dpAx);
         const __m256 dpY = _mm256_sub_ps(dpBy, dpAy);
         dpN = _mm256_fmadd_ps(dpX, nX, _mm256_mul_ps(dpY, nY));
@@ -497,8 +518,8 @@ __attribute__((target("avx2,fma"))) inline void applyRestitutionWide8AVX2(const 
     }
 
     __m256 vAx, vAy, wA, invMA, vBx, vBy, wB, invMB;
-    gatherBodyVels8AVX2(c.bodyIndexA, bodies, vAx, vAy, wA, invMA);
-    gatherBodyVels8AVX2(c.bodyIndexB, bodies, vBx, vBy, wB, invMB);
+    gatherBodyVels8AVX2(c.bodyIndexA, bodies, c.readMaskA, vAx, vAy, wA, invMA);
+    gatherBodyVels8AVX2(c.bodyIndexB, bodies, c.readMaskB, vBx, vBy, wB, invMB);
     const __m256 invIA = _mm256_load_ps(c.invIA);
     const __m256 invIB = _mm256_load_ps(c.invIB);
 

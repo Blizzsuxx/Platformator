@@ -125,15 +125,9 @@ class BoundingRadiusProjectionProxy
     {
         this->chunkIndex = chunkIndex == SIZE_MAX ? INVALID_CHUNK_INDEX : static_cast<uint8_t>(chunkIndex);
     }
-    bool updateCachedProjectedPosition()
+    void updateCachedProjectedPosition()
     {
-        const float next = projection->getProjectedPosition();
-        if (next == cachedProjectedPosition)
-        {
-            return false;
-        }
-        cachedProjectedPosition = next;
-        return true;
+        cachedProjectedPosition = projection->getProjectedPosition();
     }
 
     Collider *getCollider()

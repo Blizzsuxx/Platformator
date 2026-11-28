@@ -485,14 +485,14 @@ void Grid::applyCollectedPairDeltas()
     {
         return;
     }
-    pairDeltaScratch.clear();
-    if (pairDeltaScratch.capacity() < totalDeltas)
+    scratch.pairDeltas.clear();
+    if (scratch.pairDeltas.capacity() < totalDeltas)
     {
-        pairDeltaScratch.reserve(totalDeltas);
+        scratch.pairDeltas.reserve(totalDeltas);
     }
     for (auto &local : activePairDeltaCollector.localPairDeltas)
     {
-        pairDeltaScratch.insert(pairDeltaScratch.end(), local.begin(), local.end());
+        scratch.pairDeltas.insert(scratch.pairDeltas.end(), local.begin(), local.end());
         local.clear();
     }
     const auto deltaLess = [](const PairDelta &a, const PairDelta &b) {
@@ -502,23 +502,23 @@ void Grid::applyCollectedPairDeltas()
             return a.colliderA < b.colliderA;
         return a.colliderB < b.colliderB;
     };
-    if (pairDeltaScratch.size() >= PAIR_DELTA_PARALLEL_SORT_THRESHOLD && PhysicsManager::hasParallelPhysicsWorkers())
+    if (scratch.pairDeltas.size() >= PAIR_DELTA_PARALLEL_SORT_THRESHOLD && PhysicsManager::hasParallelPhysicsWorkers())
     {
-        tbb::parallel_sort(pairDeltaScratch.begin(), pairDeltaScratch.end(), deltaLess);
+        tbb::parallel_sort(scratch.pairDeltas.begin(), scratch.pairDeltas.end(), deltaLess);
     }
     else
     {
-        std::sort(pairDeltaScratch.begin(), pairDeltaScratch.end(), deltaLess);
+        std::sort(scratch.pairDeltas.begin(), scratch.pairDeltas.end(), deltaLess);
     }
-    for (size_t i = 0; i < pairDeltaScratch.size();)
+    for (size_t i = 0; i < scratch.pairDeltas.size();)
     {
-        const auto first = pairDeltaScratch[i];
+        const auto first = scratch.pairDeltas[i];
         int delta = 0;
         do
         {
-            delta += pairDeltaScratch[i++].delta;
-        } while (i < pairDeltaScratch.size() && pairDeltaScratch[i].colliderA == first.colliderA &&
-                 pairDeltaScratch[i].colliderB == first.colliderB);
+            delta += scratch.pairDeltas[i++].delta;
+        } while (i < scratch.pairDeltas.size() && scratch.pairDeltas[i].colliderA == first.colliderA &&
+                 scratch.pairDeltas[i].colliderB == first.colliderB);
         if (delta)
             applyPairWitnessDelta(first.colliderA, first.colliderB, delta);
     }
@@ -680,15 +680,18 @@ void Grid::flushPendingCellUpdates()
     platformator_detail::runPhysicsWork([&] { flushPendingWork(); });
 }
 
-void Grid::flushPendingWork()
+// ============================================================================
+// Deferred Flush Pipeline
+// ============================================================================
+
+size_t Grid::preparePendingColliders(bool hasWorkers)
 {
     const size_t opCount = pendingColliderOperations.size();
-    const bool hasWorkers = PhysicsManager::hasParallelPhysicsWorkers();
     const bool runPrepParallel = hasWorkers && opCount >= GRID_GEOMETRY_PREP_PARALLEL_THRESHOLD;
     const size_t prepChunkCount = runPrepParallel ? std::min<size_t>(32, (opCount + 63) / 64) : 1;
-    if (structuralWorkChunkScratch.size() < prepChunkCount)
+    if (scratch.structuralWorkChunks.size() < prepChunkCount)
     {
-        structuralWorkChunkScratch.resize(prepChunkCount);
+        scratch.structuralWorkChunks.resize(prepChunkCount);
     }
 
     const auto prepRange = [&](size_t start, size_t end, std::vector<Collider *> &structuralOut) {
@@ -697,7 +700,7 @@ void Grid::flushPendingWork()
         {
             if (i + 4 < end)
             {
-                __builtin_prefetch(pendingColliderOperations[i + 4], 0, 1);
+                platformator_detail::prefetchRead(pendingColliderOperations[i + 4]);
             }
             Collider *collider = pendingColliderOperations[i];
             const bool registered = collider->getIsRegisteredInGrid();
@@ -715,7 +718,7 @@ void Grid::flushPendingWork()
 
     if (!runPrepParallel)
     {
-        prepRange(0, opCount, structuralWorkChunkScratch[0]);
+        prepRange(0, opCount, scratch.structuralWorkChunks[0]);
     }
     else
     {
@@ -724,30 +727,34 @@ void Grid::flushPendingWork()
         tbb::parallel_for(size_t(0), prepChunkCount, [&](size_t chunkIdx) {
             const size_t start = chunkIdx * base + std::min(chunkIdx, rem);
             const size_t end = start + base + (chunkIdx < rem ? 1 : 0);
-            prepRange(start, end, structuralWorkChunkScratch[chunkIdx]);
+            prepRange(start, end, scratch.structuralWorkChunks[chunkIdx]);
         });
     }
 
-    if (cells.empty() && pendingColliderOperations.size() >= 32)
+    if (cells.empty() && opCount >= 32)
     {
         const float desiredCellSize = selectQuantizedCellSize(pendingColliderOperations);
         if (desiredCellSize != cellSize)
         {
             cellSize = desiredCellSize;
-            forEachIndexParallelOrSerial(pendingColliderOperations.size(), GRID_GEOMETRY_PREP_PARALLEL_THRESHOLD,
-                                         [&](size_t i) {
-                                             Collider *collider = pendingColliderOperations[i];
-                                             if (collider->desiredInGrid)
-                                             {
-                                                 collider->calculateGridCellRange(cellSize);
-                                             }
-                                         });
+            forEachIndexParallelOrSerial(opCount, GRID_GEOMETRY_PREP_PARALLEL_THRESHOLD, [&](size_t i) {
+                Collider *collider = pendingColliderOperations[i];
+                if (collider->desiredInGrid)
+                {
+                    collider->calculateGridCellRange(cellSize);
+                }
+            });
         }
     }
-    responseDirtyColliders.clear();
+    return prepChunkCount;
+}
+
+void Grid::applyStructuralColliderOps(size_t prepChunkCount)
+{
+    scratch.responseDirtyColliders.clear();
     for (size_t c = 0; c < prepChunkCount; ++c)
     {
-        for (Collider *collider : structuralWorkChunkScratch[c])
+        for (Collider *collider : scratch.structuralWorkChunks[c])
         {
             if (!collider->desiredInGrid)
             {
@@ -758,22 +765,21 @@ void Grid::flushPendingWork()
             {
                 addColliderInternal(collider);
                 if (owner && (collider->dirty & Collider::Response))
-                    responseDirtyColliders.push_back(collider);
+                    scratch.responseDirtyColliders.push_back(collider);
             }
             else
             {
                 if (collider->broadPhaseSyncNeeded || (collider->dirty & Collider::Filter))
                     syncColliderInternal(collider);
                 if (owner && (collider->dirty & Collider::Response))
-                    responseDirtyColliders.push_back(collider);
+                    scratch.responseDirtyColliders.push_back(collider);
             }
         }
     }
-    if (!cellsWithOperations.empty())
-    {
-        flushDirtyCells(pendingColliderOperations.size());
-        applyCollectedPairDeltas();
-    }
+}
+
+void Grid::reclaimEmptyCellsAndMaybeResize()
+{
     for (auto *cell : potentiallyEmptyCells)
     {
         const GridCellKey key = cell->getCellKey();
@@ -807,14 +813,183 @@ void Grid::flushPendingWork()
             }
         }
     }
+}
 
-    if (owner && !responseDirtyColliders.empty())
+void Grid::queueNarrowPhasePairsSerial()
+{
+    const size_t opCount = pendingColliderOperations.size();
+    for (size_t i = 0; i < opCount; ++i)
     {
-        for (auto *collider : responseDirtyColliders)
+        if (i + 4 < opCount)
+        {
+            platformator_detail::prefetchRead(pendingColliderOperations[i + 4]);
+        }
+        Collider *collider = pendingColliderOperations[i];
+        if (collider->desiredInGrid)
+        {
+            queuePairsForCollider(collider);
+        }
+        collider->gridQueueIndex = Collider::INVALID_INDEX;
+        collider->dirty = 0;
+    }
+}
+
+void Grid::queueNarrowPhasePairsParallel(bool useUniformChunks, size_t totalAdjacentPairs)
+{
+    const size_t opCount = pendingColliderOperations.size();
+    scratch.pairQueueRanges.clear();
+    if (useUniformChunks)
+    {
+        const size_t chunkCount = std::min<size_t>(32, (opCount + 127) / 128);
+        const size_t base = opCount / chunkCount;
+        const size_t rem = opCount % chunkCount;
+        size_t cursor = 0;
+        for (size_t c = 0; c < chunkCount; ++c)
+        {
+            const size_t len = base + (c < rem ? 1 : 0);
+            scratch.pairQueueRanges.emplace_back(cursor, cursor + len);
+            cursor += len;
+        }
+    }
+    else
+    {
+        const size_t targetPerChunk = std::max<size_t>(2048, (totalAdjacentPairs + 31) / 32);
+        size_t chunkStart = 0;
+        size_t chunkWeight = 0;
+        for (size_t idx = 0; idx < opCount; ++idx)
+        {
+            Collider *collider = pendingColliderOperations[idx];
+            if (collider->desiredInGrid)
+            {
+                chunkWeight += collider->adjacentPairs.size();
+            }
+            if (chunkWeight >= targetPerChunk && scratch.pairQueueRanges.size() < 63)
+            {
+                scratch.pairQueueRanges.emplace_back(chunkStart, idx + 1);
+                chunkStart = idx + 1;
+                chunkWeight = 0;
+            }
+        }
+        if (chunkStart < opCount)
+        {
+            scratch.pairQueueRanges.emplace_back(chunkStart, opCount);
+        }
+    }
+
+    const size_t chunkCount = scratch.pairQueueRanges.size();
+    if (scratch.pairQueueChunks.size() < chunkCount)
+    {
+        scratch.pairQueueChunks.resize(chunkCount);
+    }
+
+    // Pass 1: preserve exact serial insertion order by claiming each pair at the smallest
+    // queued endpoint gridQueueIndex without writing to ColliderPair.
+    tbb::parallel_for(size_t(0), chunkCount, [&](size_t chunkIdx) {
+        auto &local = scratch.pairQueueChunks[chunkIdx];
+        local.clear();
+        const auto [start, end] = scratch.pairQueueRanges[chunkIdx];
+        for (size_t idx = start; idx < end; ++idx)
+        {
+            if (idx + 2 < end)
+            {
+                platformator_detail::prefetchRead(pendingColliderOperations[idx + 2]);
+            }
+            Collider *collider = pendingColliderOperations[idx];
+            if (!collider->desiredInGrid || collider->adjacentPairs.empty())
+            {
+                continue;
+            }
+            const auto &adj = collider->adjacentPairs;
+            const size_t adjCount = adj.size();
+            const float cMinX = collider->getTightMinX();
+            const float cMaxX = collider->getTightMaxX();
+            const float cMinY = collider->getTightMinY();
+            const float cMaxY = collider->getTightMaxY();
+            for (size_t j = 0; j < adjCount; ++j)
+            {
+                if (j + 4 < adjCount)
+                {
+                    platformator_detail::prefetchRead(adj[j + 4]);
+                }
+                ColliderPair *pair = adj[j];
+                if (pair == nullptr || pair->getIsQueuedForNarrowPhase())
+                {
+                    continue;
+                }
+                const Collider *other = pair->getObjectA() == collider ? pair->getObjectB() : pair->getObjectA();
+                if ((!other->desiredInGrid || static_cast<size_t>(other->gridQueueIndex) > idx) &&
+                    (pair->getCollision() != nullptr || other->overlapsTightBounds(cMinX, cMaxX, cMinY, cMaxY)))
+                {
+                    local.push_back(pair);
+                }
+            }
+        }
+    });
+
+    scratch.pairQueueOffsets.resize(chunkCount);
+    size_t writeOffset = pendingNarrowPhasePairs.size();
+    for (size_t chunkIdx = 0; chunkIdx < chunkCount; ++chunkIdx)
+    {
+        scratch.pairQueueOffsets[chunkIdx] = writeOffset;
+        writeOffset += scratch.pairQueueChunks[chunkIdx].size();
+    }
+    const bool hasWrites = writeOffset > pendingNarrowPhasePairs.size();
+    if (hasWrites)
+    {
+        pendingNarrowPhasePairs.resize(writeOffset);
+    }
+
+    // Pass 2: scatter narrow-phase pairs AND reset gridQueueIndex/dirty in parallel (gridQueueIndex no longer read).
+    tbb::parallel_for(size_t(0), chunkCount, [&](size_t chunkIdx) {
+        if (hasWrites)
+        {
+            const auto &local = scratch.pairQueueChunks[chunkIdx];
+            const size_t localCount = local.size();
+            size_t outIdx = scratch.pairQueueOffsets[chunkIdx];
+            for (size_t j = 0; j < localCount; ++j)
+            {
+                if (j + 4 < localCount)
+                {
+                    platformator_detail::prefetchWrite(local[j + 4]);
+                }
+                ColliderPair *pair = local[j];
+                pair->setNarrowPhaseQueueIndex(outIdx);
+                pendingNarrowPhasePairs[outIdx] = pair;
+                ++outIdx;
+            }
+        }
+        const auto [start, end] = scratch.pairQueueRanges[chunkIdx];
+        for (size_t idx = start; idx < end; ++idx)
+        {
+            Collider *collider = pendingColliderOperations[idx];
+            collider->gridQueueIndex = Collider::INVALID_INDEX;
+            collider->dirty = 0;
+        }
+    });
+}
+
+void Grid::flushPendingWork()
+{
+    const size_t opCount = pendingColliderOperations.size();
+    const bool hasWorkers = PhysicsManager::hasParallelPhysicsWorkers();
+
+    const size_t prepChunkCount = preparePendingColliders(hasWorkers);
+    applyStructuralColliderOps(prepChunkCount);
+
+    if (!cellsWithOperations.empty())
+    {
+        flushDirtyCells(opCount);
+        applyCollectedPairDeltas();
+    }
+    reclaimEmptyCellsAndMaybeResize();
+
+    if (owner && !scratch.responseDirtyColliders.empty())
+    {
+        for (auto *collider : scratch.responseDirtyColliders)
         {
             owner->refreshResponse(collider);
         }
-        responseDirtyColliders.clear();
+        scratch.responseDirtyColliders.clear();
     }
 
     bool runPairQueueParallel = false;
@@ -839,154 +1014,14 @@ void Grid::flushPendingWork()
             runPairQueueParallel = totalAdjacentPairs >= GRID_PAIR_QUEUE_PARALLEL_THRESHOLD;
         }
     }
-    if (!runPairQueueParallel)
+
+    if (runPairQueueParallel)
     {
-        for (size_t i = 0; i < opCount; ++i)
-        {
-            if (i + 4 < opCount)
-            {
-                __builtin_prefetch(pendingColliderOperations[i + 4], 0, 1);
-            }
-            Collider *collider = pendingColliderOperations[i];
-            if (collider->desiredInGrid)
-            {
-                queuePairsForCollider(collider);
-            }
-            collider->gridQueueIndex = Collider::INVALID_INDEX;
-            collider->dirty = 0;
-        }
+        queueNarrowPhasePairsParallel(useUniformChunks, totalAdjacentPairs);
     }
     else
     {
-        pairQueueChunkRanges.clear();
-        if (useUniformChunks)
-        {
-            const size_t chunkCount = std::min<size_t>(32, (opCount + 127) / 128);
-            const size_t base = opCount / chunkCount;
-            const size_t rem = opCount % chunkCount;
-            size_t cursor = 0;
-            for (size_t c = 0; c < chunkCount; ++c)
-            {
-                const size_t len = base + (c < rem ? 1 : 0);
-                pairQueueChunkRanges.emplace_back(cursor, cursor + len);
-                cursor += len;
-            }
-        }
-        else
-        {
-            const size_t targetPerChunk = std::max<size_t>(2048, (totalAdjacentPairs + 31) / 32);
-            size_t chunkStart = 0;
-            size_t chunkWeight = 0;
-            for (size_t idx = 0; idx < opCount; ++idx)
-            {
-                Collider *collider = pendingColliderOperations[idx];
-                if (collider->desiredInGrid)
-                {
-                    chunkWeight += collider->adjacentPairs.size();
-                }
-                if (chunkWeight >= targetPerChunk && pairQueueChunkRanges.size() < 63)
-                {
-                    pairQueueChunkRanges.emplace_back(chunkStart, idx + 1);
-                    chunkStart = idx + 1;
-                    chunkWeight = 0;
-                }
-            }
-            if (chunkStart < opCount)
-            {
-                pairQueueChunkRanges.emplace_back(chunkStart, opCount);
-            }
-        }
-
-        const size_t chunkCount = pairQueueChunkRanges.size();
-        if (pairQueueChunkScratch.size() < chunkCount)
-        {
-            pairQueueChunkScratch.resize(chunkCount);
-        }
-
-        // Preserve exact serial insertion order by claiming each pair at the smallest
-        // queued endpoint gridQueueIndex without writing to ColliderPair in pass 1.
-        tbb::parallel_for(size_t(0), chunkCount, [&](size_t chunkIdx) {
-            auto &local = pairQueueChunkScratch[chunkIdx];
-            local.clear();
-            const auto [start, end] = pairQueueChunkRanges[chunkIdx];
-            for (size_t idx = start; idx < end; ++idx)
-            {
-                if (idx + 2 < end)
-                {
-                    __builtin_prefetch(pendingColliderOperations[idx + 2], 0, 1);
-                }
-                Collider *collider = pendingColliderOperations[idx];
-                if (!collider->desiredInGrid || collider->adjacentPairs.empty())
-                {
-                    continue;
-                }
-                const auto &adj = collider->adjacentPairs;
-                const size_t adjCount = adj.size();
-                const float cMinX = collider->getTightMinX();
-                const float cMaxX = collider->getTightMaxX();
-                const float cMinY = collider->getTightMinY();
-                const float cMaxY = collider->getTightMaxY();
-                for (size_t j = 0; j < adjCount; ++j)
-                {
-                    if (j + 4 < adjCount)
-                    {
-                        __builtin_prefetch(adj[j + 4], 0, 1);
-                    }
-                    ColliderPair *pair = adj[j];
-                    if (pair == nullptr || pair->getIsQueuedForNarrowPhase())
-                    {
-                        continue;
-                    }
-                    const Collider *other =
-                        pair->getObjectA() == collider ? pair->getObjectB() : pair->getObjectA();
-                    if ((!other->desiredInGrid || static_cast<size_t>(other->gridQueueIndex) > idx) &&
-                        (pair->getCollision() != nullptr || other->overlapsTightBounds(cMinX, cMaxX, cMinY, cMaxY)))
-                    {
-                        local.push_back(pair);
-                    }
-                }
-            }
-        });
-
-        pairQueueChunkOffsets.resize(chunkCount);
-        size_t writeOffset = pendingNarrowPhasePairs.size();
-        for (size_t chunkIdx = 0; chunkIdx < chunkCount; ++chunkIdx)
-        {
-            pairQueueChunkOffsets[chunkIdx] = writeOffset;
-            writeOffset += pairQueueChunkScratch[chunkIdx].size();
-        }
-        const bool hasWrites = writeOffset > pendingNarrowPhasePairs.size();
-        if (hasWrites)
-        {
-            pendingNarrowPhasePairs.resize(writeOffset);
-        }
-        // Pass 2: scatter narrow-phase pairs AND reset gridQueueIndex/dirty in parallel (gridQueueIndex no longer read).
-        tbb::parallel_for(size_t(0), chunkCount, [&](size_t chunkIdx) {
-            if (hasWrites)
-            {
-                const auto &local = pairQueueChunkScratch[chunkIdx];
-                const size_t localCount = local.size();
-                size_t outIdx = pairQueueChunkOffsets[chunkIdx];
-                for (size_t j = 0; j < localCount; ++j)
-                {
-                    if (j + 4 < localCount)
-                    {
-                        __builtin_prefetch(local[j + 4], 1, 1);
-                    }
-                    ColliderPair *pair = local[j];
-                    pair->setNarrowPhaseQueueIndex(outIdx);
-                    pendingNarrowPhasePairs[outIdx] = pair;
-                    ++outIdx;
-                }
-            }
-            const auto [start, end] = pairQueueChunkRanges[chunkIdx];
-            for (size_t idx = start; idx < end; ++idx)
-            {
-                Collider *collider = pendingColliderOperations[idx];
-                collider->gridQueueIndex = Collider::INVALID_INDEX;
-                collider->dirty = 0;
-            }
-        });
+        queueNarrowPhasePairsSerial();
     }
     pendingColliderOperations.clear();
 }
@@ -1022,18 +1057,7 @@ void Grid::clearAll()
     potentiallyEmptyCells.clear();
     cellsWithOperations.clear();
     pendingColliderOperations.clear();
-    responseDirtyColliders.clear();
-    for (auto &chunk : structuralWorkChunkScratch)
-    {
-        chunk.clear();
-    }
-    pairDeltaScratch.clear();
-    pairQueueChunkRanges.clear();
-    pairQueueChunkOffsets.clear();
-    for (auto &chunk : pairQueueChunkScratch)
-    {
-        chunk.clear();
-    }
+    scratch.clear();
     for (auto &local : activePairDeltaCollector.localPairDeltas)
     {
         local.clear();

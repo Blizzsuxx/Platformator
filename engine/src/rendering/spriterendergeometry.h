@@ -44,11 +44,23 @@ inline bool shouldPromoteSpriteAlphaBlend(SDL_Color color, SDL_BlendMode blendMo
     return color.a < 255 && blendMode == SDL_BLENDMODE_NONE;
 }
 
+inline bool isSafeSpriteRenderDestination(const SDL_FRect &destination) noexcept
+{
+    // The SDL software backend converts coordinates to integers and uses fixed-point
+    // vertices. Leave room for rotated corners and differences between vertices.
+    constexpr float limit = static_cast<float>(std::numeric_limits<int>::max() / 8);
+    return std::abs(destination.x) <= limit && std::abs(destination.y) <= limit &&
+           destination.w > 0.0f && destination.w <= limit && destination.h > 0.0f && destination.h <= limit;
+}
+
 inline bool submitSpriteRender(SDL_Renderer *renderer, SDL_Texture *texture,
                                const SDL_FRect *source, const SDL_FRect &destination,
                                float angleDegrees, SDL_FlipMode flip,
                                SDL_Color color = SDL_Color{255, 255, 255, 255})
 {
+    if (!isSafeSpriteRenderDestination(destination) || !std::isfinite(angleDegrees))
+        return false;
+
     const bool modulated = texture != nullptr && isColorModulated(color);
     Uint8 previousR = 255;
     Uint8 previousG = 255;
@@ -361,8 +373,8 @@ inline bool makeCertifiedRenderViewQuery(const SpriteRenderView &view, SpriteRen
 }
 
 // Bounds and classification consume the already prepared destination
-// rectangle. Invalid or uncertain inputs return Unclassifiable and must be
-// submitted using the existing SDL path.
+// rectangle. Invalid or uncertain inputs return Unclassifiable and stay in the
+// selection for geometry validation at submission time.
 inline SpriteRenderClassification classifySpriteForRender(const SDL_FRect &destination, float angleDegrees,
                                                             const SpriteRenderView &view,
                                                             SpriteRenderBounds *paddedBounds = nullptr) noexcept

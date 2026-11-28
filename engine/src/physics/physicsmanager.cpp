@@ -1,5 +1,4 @@
 #include "physics/physicsmanager.h"
-#include "physics/physicsgeometry.h"
 
 #include "benchmark/benchmark.h"
 #include "benchmark/workprobe.h"
@@ -8,7 +7,6 @@
 #include "core/membership.h"
 #include "core/runtimeaccess.h"
 #include "platformator/sprite.h"
-#include "rendering/debugdraw.h"
 
 #include <oneapi/tbb/blocked_range.h>
 #include <oneapi/tbb/global_control.h>
@@ -17,11 +15,12 @@
 #include <oneapi/tbb/task_group.h>
 
 #include <algorithm>
-#include <atomic>
-#include <cmath>
 #include <exception>
-#include <limits>
 #include <tuple>
+
+// ============================================================================
+// Lifecycle & Worker Detection
+// ============================================================================
 
 bool PhysicsManager::hasParallelPhysicsWorkers() noexcept
 {
@@ -35,9 +34,11 @@ PhysicsManager::PhysicsManager()
 {
 }
 
-PhysicsManager::~PhysicsManager()
-{
-}
+PhysicsManager::~PhysicsManager() = default;
+
+// ============================================================================
+// Body Movement Commit & Transform Publication
+// ============================================================================
 
 #if PLATFORMATOR_ENABLE_BENCHMARKS
 void PhysicsManager::integrateMovementForBenchmark(double timeDelta)
@@ -57,6 +58,11 @@ void PhysicsManager::integrateMovementForBenchmark(double timeDelta)
     }
     commitMovedBodies(timeDelta, false);
 }
+
+size_t PhysicsManager::countAwakeDynamicBodies() const
+{
+    return awakeDynamicBodies.size();
+}
 #endif
 
 void PhysicsManager::commitMovedBodies(double timeDelta, bool useSolverDeltas)
@@ -68,11 +74,14 @@ void PhysicsManager::commitMovedBodies(double timeDelta, bool useSolverDeltas)
         return;
     }
 
-    constexpr uint8_t FLAG_TRANSLATED = Rigidbody::INTEGRATE_TRANSLATED;
-    constexpr uint8_t FLAG_ROTATED = Rigidbody::INTEGRATE_ROTATED;
-    constexpr uint8_t FLAG_FAST_ROOT_LEAF = 1 << 2;
-    constexpr uint8_t FLAG_NEED_PUBLISH = 1 << 3;
-    constexpr uint8_t FLAG_HAS_SPRITE = 1 << 4;
+    enum MovedBodyFlags : uint8_t
+    {
+        MOVED_TRANSLATED = Rigidbody::INTEGRATE_TRANSLATED,
+        MOVED_ROTATED = Rigidbody::INTEGRATE_ROTATED,
+        MOVED_FAST_ROOT_LEAF = 1u << 2,
+        MOVED_NEED_PUBLISH = 1u << 3,
+        MOVED_HAS_SPRITE = 1u << 4,
+    };
 
     auto &manager = platformator_detail::RuntimeAccess::gameManager();
     const auto publishMoved = [&](GameObject *object, bool translated, bool rotated) {
@@ -95,15 +104,15 @@ void PhysicsManager::commitMovedBodies(double timeDelta, bool useSolverDeltas)
         {
             return;
         }
-        if ((flags & FLAG_FAST_ROOT_LEAF) != 0)
+        if ((flags & MOVED_FAST_ROOT_LEAF) != 0)
         {
-            if ((flags & FLAG_TRANSLATED) != 0)
+            if ((flags & MOVED_TRANSLATED) != 0)
             {
                 PLATFORMATOR_WORK_ADD(transformVisits, 1);
             }
-            if ((flags & FLAG_NEED_PUBLISH) != 0)
+            if ((flags & MOVED_NEED_PUBLISH) != 0)
             {
-                if ((flags & FLAG_HAS_SPRITE) != 0)
+                if ((flags & MOVED_HAS_SPRITE) != 0)
                 {
                     manager.publishRenderGeometryChange(body->getGameObject());
                 }
@@ -115,7 +124,7 @@ void PhysicsManager::commitMovedBodies(double timeDelta, bool useSolverDeltas)
             }
             return;
         }
-        publishMoved(body->getGameObject(), (flags & FLAG_TRANSLATED) != 0, (flags & FLAG_ROTATED) != 0);
+        publishMoved(body->getGameObject(), (flags & MOVED_TRANSLATED) != 0, (flags & MOVED_ROTATED) != 0);
     };
 
     const bool hasSolverDeltas = useSolverDeltas && !activeIslandIds.empty();
@@ -145,11 +154,12 @@ void PhysicsManager::commitMovedBodies(double timeDelta, bool useSolverDeltas)
         {
             return 0;
         }
+
         GameObject *object = body->getGameObject();
         if (object->parent == nullptr && object->children.empty() && object->transformQueueIndex == SIZE_MAX)
         {
-            const bool translated = (changes & FLAG_TRANSLATED) != 0;
-            const bool rotated = (changes & FLAG_ROTATED) != 0;
+            const bool translated = (changes & MOVED_TRANSLATED) != 0;
+            const bool rotated = (changes & MOVED_ROTATED) != 0;
             bool worldChanged = false;
             if (translated)
             {
@@ -157,13 +167,13 @@ void PhysicsManager::commitMovedBodies(double timeDelta, bool useSolverDeltas)
                 object->worldPosition = object->position;
                 object->immediateWorldPosition = object->position;
             }
-            uint8_t flags = static_cast<uint8_t>(changes | FLAG_FAST_ROOT_LEAF);
+            uint8_t flags = static_cast<uint8_t>(changes | MOVED_FAST_ROOT_LEAF);
             if (worldChanged || rotated)
             {
-                flags |= FLAG_NEED_PUBLISH;
+                flags |= MOVED_NEED_PUBLISH;
                 if (object->getComponent<Sprite>() != nullptr)
                 {
-                    flags |= FLAG_HAS_SPRITE;
+                    flags |= MOVED_HAS_SPRITE;
                 }
                 if (auto *collider = object->getComponent<Collider>())
                 {
@@ -197,8 +207,8 @@ void PhysicsManager::commitMovedBodies(double timeDelta, bool useSolverDeltas)
         return;
     }
 
-    movedBodyChanges.resize(totalMoving);
-    movedFastColliders.resize(totalMoving);
+    moveScratch.bodyChanges.resize(totalMoving);
+    moveScratch.fastColliders.resize(totalMoving);
     const size_t awakeCount = awakeDynamicBodies.size();
     tbb::task_group_context context(tbb::task_group_context::isolated);
     tbb::parallel_for(
@@ -208,27 +218,25 @@ void PhysicsManager::commitMovedBodies(double timeDelta, bool useSolverDeltas)
             {
                 const bool isDynamic = i < awakeCount;
                 auto *body = isDynamic ? awakeDynamicBodies[i] : movingKinematicBodies[i - awakeCount];
-                movedBodyChanges[i] = integrateAndClassify(body, isDynamic, movedFastColliders[i]);
+                moveScratch.bodyChanges[i] = integrateAndClassify(body, isDynamic, moveScratch.fastColliders[i]);
             }
         },
         context);
 
     for (size_t i = 0; i < totalMoving; ++i)
     {
-        if (movedBodyChanges[i] == 0)
+        if (moveScratch.bodyChanges[i] == 0)
         {
             continue;
         }
         auto *body = i < awakeCount ? awakeDynamicBodies[i] : movingKinematicBodies[i - awakeCount];
-        finishMoved(body, movedBodyChanges[i], movedFastColliders[i]);
+        finishMoved(body, moveScratch.bodyChanges[i], moveScratch.fastColliders[i]);
     }
 }
 
-void PhysicsManager::checkForCollisions()
-{
-    broadPhase();
-    narrowPhase();
-}
+// ============================================================================
+// Component Registration, Grid Access & World Reset
+// ============================================================================
 
 const Grid &PhysicsManager::getGrid() const
 {
@@ -325,7 +333,7 @@ void PhysicsManager::clearAll()
         body->participationQueueIndex = Rigidbody::INVALID_INDEX;
         body->supportDeltaIndex = Rigidbody::INVALID_INDEX;
         body->supportDelta = 0;
-        body->solverIslandId = -1;
+        body->solverIslandId = ColliderPair::INVALID_ISLAND_ID;
         body->solverIslandBodyIndex = Rigidbody::INVALID_INDEX;
         body->solverColorMask = 0;
     }
@@ -337,7 +345,7 @@ void PhysicsManager::clearAll()
     {
         body->supportDeltaIndex = Rigidbody::INVALID_INDEX;
         body->supportDelta = 0;
-        body->solverIslandId = -1;
+        body->solverIslandId = ColliderPair::INVALID_ISLAND_ID;
         body->solverIslandBodyIndex = Rigidbody::INVALID_INDEX;
         body->solverColorMask = 0;
     }
@@ -359,531 +367,41 @@ void PhysicsManager::clearAll()
     sleepCandidates.clear();
     pendingBodyChanges.clear();
     colliderComponents.clear();
+    contactPairs.clear();
+    supportDeltaBodies.clear();
+    pendingPhysicsEvents.clear();
+
     persistentIslands.clear();
     freeIslandIds.clear();
     activeIslandIds.clear();
     dirtySplitIslandIds.clear();
     kinematicSolverPairs.clear();
-    splitDsuParent.clear();
-    splitDsuRank.clear();
-    splitComponentOfBody.clear();
-    splitRemainingContacts.clear();
-    splitOldBodies.clear();
-    splitComponentContactCounts.clear();
-    splitContactComponents.clear();
-    splitComponentIslandIds.clear();
-    solverPreStepJobs.clear();
-    solverConstraints.clear();
-    solverBodyLocalIndices.clear();
-    solverBodyStates.clear();
-    solverBodyForces.clear();
-    solverBodyPrep.clear();
-    solverKinematicBodies.clear();
+
+    splitScratch.clear();
+    coloredScratch.clear();
+    scheduleScratch.clear();
+    narrowScratch.clear();
+    moveScratch.clear();
     solverBodyDeltas.clear();
     solverStep = 0;
-    solverTouchedWritableBodies.clear();
-    for (auto &blocks : colorWideBlocks)
-    {
-        blocks.clear();
-    }
-    for (auto &coldBlocks : colorWideColdBlocks)
-    {
-        coldBlocks.clear();
-    }
-    for (auto &tails : colorTailConstraints)
-    {
-        tails.clear();
-    }
-    overflowConstraints.clear();
-    bucketedIslandIds.clear();
-    islandWorkUnits.clear();
-    for (auto &chunk : narrowTransitionChunks)
-    {
-        chunk.clear();
-    }
-#if PLATFORMATOR_ENABLE_WORK_PROBES
-    narrowGeometryCounts.clear();
-#endif
-    const auto clearScratch = [](IslandSolverScratch &scratch) {
-        scratch.constraints.clear();
-        scratch.bodies.clear();
-        scratch.bodyForces.clear();
-        scratch.bodyPrep.clear();
-        scratch.writableBodies.clear();
-        scratch.bodyLocalIndices.clear();
-        scratch.kinematicBodies.clear();
-        scratch.wideSteps.clear();
-        scratch.wideCold.clear();
-    };
-    clearScratch(serialSolverScratch);
+
+    serialSolverScratch.clear();
     for (auto &scratch : solverIslandScratch)
     {
-        clearScratch(scratch);
+        scratch.clear();
     }
-    const auto clearSleepScratch = [](SleepScratch &scratch) {
-        scratch.parent.clear();
-        scratch.rank.clear();
-        scratch.compQuiet.clear();
-        scratch.compTimer.clear();
-        scratch.toSleep.clear();
-    };
-    clearSleepScratch(serialSleepScratch);
+    serialSleepScratch.clear();
     for (auto &scratch : parallelSleepScratch)
     {
-        clearSleepScratch(scratch);
+        scratch.clear();
     }
     bodiesToSleepScratch.clear();
-    solverIslandJobEnds.clear();
-    contactPairs.clear();
-    supportDeltaBodies.clear();
-    pendingPhysicsEvents.clear();
-    movedBodyChanges.clear();
-    movedFastColliders.clear();
     grid.clearAll();
 }
 
-void PhysicsManager::broadPhase()
-{
-    PLATFORMATOR_BENCH_SCOPE(BroadPhase);
-
-    grid.flushPendingCellUpdates();
-
-    PLATFORMATOR_BENCH_SET_COUNTER(OccupiedCellCount, grid.getCells().size());
-    PLATFORMATOR_BENCH_SET_COUNTER(CandidatePairCount, grid.getCandidatePairCount());
-}
-
-void PhysicsManager::narrowPhase()
-{
-    PLATFORMATOR_BENCH_SCOPE(NarrowPhase);
-
-    const auto &pendingPairs = *grid.getPendingNarrowPhasePairs();
-    const bool noPendingBodyChanges = pendingBodyChanges.empty();
-
-    const auto needsSerialTransition = [&](const ColliderPair *pair) noexcept -> bool {
-        auto *collision = pair->getCollision();
-        const bool hasContact = collision != nullptr;
-        if (pair->resultHadContact != hasContact)
-        {
-            return true;
-        }
-        if (!hasContact && !pair->isInSolver() && !pair->contributedSupportBodyA &&
-            !pair->contributedSupportBodyB && pair->contactIndex == ColliderPair::INVALID_INDEX)
-        {
-            return false;
-        }
-        if (hasContact && pair->contactIndex != ColliderPair::INVALID_INDEX)
-        {
-            if (!pair->isInSolver() && !pair->contributedSupportBodyA && !pair->contributedSupportBodyB)
-            {
-                const Collider *a = pair->getObjectA();
-                const Collider *b = pair->getObjectB();
-                if (a->getIsTrigger() || b->getIsTrigger() ||
-                    (noPendingBodyChanges && !a->hasNonStaticRigidbody() && !b->hasNonStaticRigidbody()))
-                {
-                    return false;
-                }
-            }
-            if (noPendingBodyChanges && pair->isInSolver())
-            {
-                const auto [supportsA, supportsB] = pairSupportFlags(pair, collision);
-                if ((pair->contributedSupportBodyA != nullptr) == supportsA &&
-                    (pair->contributedSupportBodyB != nullptr) == supportsB)
-                {
-                    return false;
-                }
-            }
-        }
-        return true;
-    };
-
-    const auto applySerialTransition = [&](ColliderPair *pair) {
-        auto *collision = pair->getCollision();
-        const bool hasContact = collision != nullptr;
-        if (pair->resultHadContact != hasContact)
-        {
-            const auto type = hasContact ? PhysicsEvent::COLLISION_ENTER : PhysicsEvent::COLLISION_EXIT;
-            addPendingPhysicsEvent(makePhysicsEvent(type, pair, collision));
-        }
-        reconcilePairSupport(pair);
-        refreshContactParticipation(pair);
-    };
-
-    if (pendingPairs.size() < NARROW_PHASE_PARALLEL_THRESHOLD || !hasParallelPhysicsWorkers())
-    {
-        const size_t pairCount = pendingPairs.size();
-            for (size_t i = 0; i < pairCount; ++i)
-            {
-                if (i + 4 < pairCount)
-                {
-                    const ColliderPair *pf = pendingPairs[i + 4];
-                    __builtin_prefetch(pf, 0, 1);
-                    __builtin_prefetch(reinterpret_cast<const char *>(pf) + 64, 0, 1);
-                }
-            ColliderPair *pair = pendingPairs[i];
-            processNarrowPhasePair(pair);
-            PLATFORMATOR_WORK_ADD(geometryPairs, pair->resultTestedGeometry ? 1 : 0);
-            PLATFORMATOR_WORK_ADD(contactTransitionChecks, 1);
-            if (needsSerialTransition(pair))
-            {
-                applySerialTransition(pair);
-            }
-        }
-    }
-    else
-    {
-        const size_t pairCount = pendingPairs.size();
-        const size_t chunkCount = std::min<size_t>(32, (pairCount + 63) / 64);
-        if (narrowTransitionChunks.size() < chunkCount)
-        {
-            narrowTransitionChunks.resize(chunkCount);
-        }
-#if PLATFORMATOR_ENABLE_WORK_PROBES
-        narrowGeometryCounts.assign(chunkCount, 0);
-#endif
-        const size_t base = pairCount / chunkCount;
-        const size_t rem = pairCount % chunkCount;
-
-        tbb::task_group_context context(tbb::task_group_context::isolated);
-        tbb::parallel_for(
-            size_t(0), chunkCount,
-            [&](size_t chunkIdx) {
-                auto &transitions = narrowTransitionChunks[chunkIdx];
-                transitions.clear();
-                const size_t start = chunkIdx * base + std::min(chunkIdx, rem);
-                const size_t end = start + base + (chunkIdx < rem ? 1 : 0);
-#if PLATFORMATOR_ENABLE_WORK_PROBES
-                uint64_t tested = 0;
-#endif
-                for (size_t i = start; i < end; ++i)
-                {
-                    if (i + 4 < end)
-                    {
-                        const ColliderPair *pf = pendingPairs[i + 4];
-                        __builtin_prefetch(pf, 0, 1);
-                        __builtin_prefetch(reinterpret_cast<const char *>(pf) + 64, 0, 1);
-                    }
-                    ColliderPair *pair = pendingPairs[i];
-                    processNarrowPhasePair(pair);
-#if PLATFORMATOR_ENABLE_WORK_PROBES
-                    if (pair->resultTestedGeometry)
-                    {
-                        ++tested;
-                    }
-#endif
-                    if (needsSerialTransition(pair))
-                    {
-                        transitions.push_back(pair);
-                    }
-                }
-#if PLATFORMATOR_ENABLE_WORK_PROBES
-                narrowGeometryCounts[chunkIdx] = tested;
-#endif
-            },
-            context);
-
-#if PLATFORMATOR_ENABLE_WORK_PROBES
-        uint64_t totalTested = 0;
-        for (size_t c = 0; c < chunkCount; ++c)
-        {
-            totalTested += narrowGeometryCounts[c];
-        }
-        PLATFORMATOR_WORK_ADD(geometryPairs, totalTested);
-        PLATFORMATOR_WORK_ADD(contactTransitionChecks, pairCount);
-#endif
-
-        for (size_t c = 0; c < chunkCount; ++c)
-        {
-            for (ColliderPair *pair : narrowTransitionChunks[c])
-            {
-                applySerialTransition(pair);
-            }
-        }
-    }
-    flushSupportDeltas();
-
-#if PLATFORMATOR_ENABLE_DEBUG_TOOLS
-    for (int32_t islandId : activeIslandIds)
-    {
-        for (const ColliderPair *pair : persistentIslands[static_cast<size_t>(islandId)].contacts)
-        {
-            if (auto *collision = pair->getCollision())
-            {
-                DebugDraw::getInstance().addCollisionDebugObject(*collision);
-            }
-        }
-    }
-    for (const ColliderPair *pair : kinematicSolverPairs)
-    {
-        if (auto *collision = pair->getCollision())
-        {
-            DebugDraw::getInstance().addCollisionDebugObject(*collision);
-        }
-    }
-#endif
-
-#if PLATFORMATOR_ENABLE_BENCHMARKS
-    PLATFORMATOR_BENCH_SET_COUNTER(PendingNarrowPhasePairCount, pendingPairs.size());
-    PLATFORMATOR_BENCH_SET_COUNTER(ActiveCollisionCount, contactPairs.size());
-#endif
-
-    grid.clearPendingNarrowPhasePairs();
-}
-
-#if PLATFORMATOR_ENABLE_BENCHMARKS
-size_t PhysicsManager::countAwakeDynamicBodies() const
-{
-    return awakeDynamicBodies.size();
-}
-#endif
-
-void PhysicsManager::processNarrowPhasePair(ColliderPair *pair)
-{
-    // Structural queue mutation/erasure cannot overlap this distinct-pair worker batch.
-    pair->setNarrowPhaseQueueIndex(SIZE_MAX);
-    pair->resultHadContact = pair->getCollision() != nullptr;
-#if PLATFORMATOR_ENABLE_WORK_PROBES
-    pair->resultTestedGeometry = false;
-#endif
-    const Collider *colA = pair->getObjectA();
-    const Collider *colB = pair->getObjectB();
-    if (colA->isRetired() || colB->isRetired() || !colA->getIsOwnerActive() || !colB->getIsOwnerActive())
-    {
-        pair->clearCollisionNoEvent();
-        return;
-    }
-    if (pair->shouldUpdate())
-    {
-#if PLATFORMATOR_ENABLE_WORK_PROBES
-        pair->resultTestedGeometry = true;
-#endif
-        physics_geometry::updateContactGeometry(*pair, gravityVectorNormalized);
-    }
-}
-
-void PhysicsManager::updateSleepingStates(double timeDelta)
-{
-#if PLATFORMATOR_ENABLE_BENCHMARKS
-    if (benchmarkSleepingDisabled)
-    {
-        return;
-    }
-#endif
-    PLATFORMATOR_WORK_ADD(sleepBodies, sleepCandidates.size());
-    if (sleepCandidates.empty())
-    {
-        return;
-    }
-
-    constexpr float linearThresholdSq = LINEAR_SLEEP_THRESHOLD * LINEAR_SLEEP_THRESHOLD;
-    const auto isQuiet = [](const Rigidbody *body) noexcept {
-        return body->getVelocity().squaredNorm() <= linearThresholdSq &&
-               std::abs(body->getAngularVelocity()) <= ANGULAR_SLEEP_THRESHOLD;
-    };
-
-    const auto evaluateIsland = [&](const PersistentIsland &island, SleepScratch &scratch,
-                                    std::vector<Rigidbody *> &toSleep) -> size_t {
-        size_t candidateCount = 0;
-        bool quiet = true;
-        double minTimer = std::numeric_limits<double>::infinity();
-        for (Rigidbody *body : island.bodies)
-        {
-            if (body->sleepCandidateIndex != Rigidbody::INVALID_INDEX)
-            {
-                ++candidateCount;
-                quiet &= isQuiet(body);
-                minTimer = std::min(minTimer, body->getSleepTimer());
-            }
-        }
-        if (candidateCount == 0)
-        {
-            return 0;
-        }
-
-        const size_t bodyCount = island.bodies.size();
-        if (candidateCount == bodyCount)
-        {
-            const double timer = quiet ? minTimer + timeDelta : 0.0;
-            if (timer >= SLEEP_DELAY)
-            {
-                for (Rigidbody *body : island.bodies)
-                {
-                    toSleep.push_back(body);
-                }
-            }
-            else
-            {
-                for (Rigidbody *body : island.bodies)
-                {
-                    body->setSleepTimer(timer);
-                }
-            }
-            return candidateCount;
-        }
-
-        // Mixed island (some bodies supported, some unsupported): preserve exact sleep-candidate connectivity.
-        auto &parent = scratch.parent;
-        auto &rank = scratch.rank;
-        auto &compQuiet = scratch.compQuiet;
-        auto &compTimer = scratch.compTimer;
-        parent.resize(bodyCount);
-        rank.assign(bodyCount, 0);
-        compQuiet.assign(bodyCount, 1);
-        compTimer.resize(bodyCount);
-        for (size_t i = 0; i < bodyCount; ++i)
-        {
-            parent[i] = static_cast<uint32_t>(i);
-            compTimer[i] = island.bodies[i]->getSleepTimer();
-        }
-        const auto findRoot = [&](uint32_t x) -> uint32_t {
-            uint32_t root = x;
-            while (parent[root] != root)
-            {
-                root = parent[root];
-            }
-            while (parent[x] != x)
-            {
-                const uint32_t next = parent[x];
-                parent[x] = root;
-                x = next;
-            }
-            return root;
-        };
-        for (const ColliderPair *pair : island.contacts)
-        {
-            const auto [rbA, rbB] = pairRigidbodies(pair);
-            if (rbA == nullptr || rbB == nullptr ||
-                rbA->sleepCandidateIndex == Rigidbody::INVALID_INDEX ||
-                rbB->sleepCandidateIndex == Rigidbody::INVALID_INDEX ||
-                rbA->solverIslandId != island.id || rbB->solverIslandId != island.id)
-            {
-                continue;
-            }
-            uint32_t rootA = findRoot(rbA->solverIslandBodyIndex);
-            uint32_t rootB = findRoot(rbB->solverIslandBodyIndex);
-            if (rootA != rootB)
-            {
-                if (rank[rootA] < rank[rootB])
-                {
-                    std::swap(rootA, rootB);
-                }
-                parent[rootB] = rootA;
-                if (rank[rootA] == rank[rootB])
-                {
-                    ++rank[rootA];
-                }
-            }
-        }
-        for (size_t i = 0; i < bodyCount; ++i)
-        {
-            Rigidbody *body = island.bodies[i];
-            if (body->sleepCandidateIndex == Rigidbody::INVALID_INDEX)
-            {
-                continue;
-            }
-            const uint32_t root = findRoot(static_cast<uint32_t>(i));
-            compQuiet[root] = static_cast<uint8_t>(compQuiet[root] && isQuiet(body));
-            compTimer[root] = std::min(compTimer[root], body->getSleepTimer());
-        }
-        for (size_t i = 0; i < bodyCount; ++i)
-        {
-            Rigidbody *body = island.bodies[i];
-            if (body->sleepCandidateIndex == Rigidbody::INVALID_INDEX)
-            {
-                continue;
-            }
-            const uint32_t root = findRoot(static_cast<uint32_t>(i));
-            const double timer = compQuiet[root] ? compTimer[root] + timeDelta : 0.0;
-            if (timer >= SLEEP_DELAY)
-            {
-                toSleep.push_back(body);
-            }
-            else
-            {
-                body->setSleepTimer(timer);
-            }
-        }
-        return candidateCount;
-    };
-
-    auto &bodiesToSleep = bodiesToSleepScratch;
-    bodiesToSleep.clear();
-    size_t visitedCandidates = 0;
-    const bool runParallel = activeIslandIds.size() >= 32 && hasParallelPhysicsWorkers();
-    if (!runParallel)
-    {
-        for (int32_t islandId : activeIslandIds)
-        {
-            visitedCandidates +=
-                evaluateIsland(persistentIslands[static_cast<size_t>(islandId)], serialSleepScratch, bodiesToSleep);
-        }
-    }
-    else
-    {
-        for (auto &local : parallelSleepScratch)
-        {
-            local.toSleep.clear();
-        }
-        std::atomic<size_t> parallelVisited{0};
-        tbb::task_group_context context(tbb::task_group_context::isolated);
-        tbb::parallel_for(
-            tbb::blocked_range<size_t>(0, activeIslandIds.size(), 16),
-            [&](const auto &range) {
-                auto &localScratch = parallelSleepScratch.local();
-                size_t localCount = 0;
-                for (size_t i = range.begin(); i != range.end(); ++i)
-                {
-                    localCount += evaluateIsland(persistentIslands[static_cast<size_t>(activeIslandIds[i])],
-                                                 localScratch, localScratch.toSleep);
-                }
-                if (localCount > 0)
-                {
-                    parallelVisited.fetch_add(localCount, std::memory_order_relaxed);
-                }
-            },
-            context);
-        visitedCandidates = parallelVisited.load(std::memory_order_relaxed);
-        for (auto &local : parallelSleepScratch)
-        {
-            bodiesToSleep.insert(bodiesToSleep.end(), local.toSleep.begin(), local.toSleep.end());
-            local.toSleep.clear();
-        }
-    }
-
-    // Evaluate isolated sleep candidates (0 active dynamic contacts, e.g. zero-gravity bodies).
-    if (visitedCandidates < sleepCandidates.size())
-    {
-        for (Rigidbody *body : sleepCandidates)
-        {
-            if (body->solverIslandId != -1)
-            {
-                continue;
-            }
-            const double timer = isQuiet(body) ? body->getSleepTimer() + timeDelta : 0.0;
-            if (timer >= SLEEP_DELAY)
-            {
-                bodiesToSleep.push_back(body);
-            }
-            else
-            {
-                body->setSleepTimer(timer);
-            }
-        }
-    }
-
-    if (!bodiesToSleep.empty())
-    {
-        std::sort(bodiesToSleep.begin(), bodiesToSleep.end(), [](const Rigidbody *a, const Rigidbody *b) {
-            return a->getPhysicsManagerIndex() < b->getPhysicsManagerIndex();
-        });
-        for (Rigidbody *body : bodiesToSleep)
-        {
-            body->setIsSleeping(true);
-        }
-    }
-
-    // Sleep decisions queue membership changes; drain only after all traversals finish.
-    reconcileChangedBodies();
-}
+// ============================================================================
+// Physics Events & Gravity
+// ============================================================================
 
 void PhysicsManager::addPendingPhysicsEvent(const PhysicsEvent &event)
 {
@@ -916,8 +434,9 @@ void PhysicsManager::handlePendingPhysicsEvents(double timeDelta)
         const int family = event.type == PhysicsEvent::COLLISION_EXIT ? 0 : 1;
         return std::tuple{family, event.colliderA->getHandle(), event.colliderB->getHandle()};
     };
-    std::sort(pendingPhysicsEvents.begin(), pendingPhysicsEvents.end(), [&](const auto &a, const auto &b)
-              { return key(a) < key(b); });
+    std::sort(pendingPhysicsEvents.begin(), pendingPhysicsEvents.end(),
+              [&](const auto &a, const auto &b) { return key(a) < key(b); });
+
     std::exception_ptr error;
     for (const PhysicsEvent &event : pendingPhysicsEvents)
     {
@@ -967,4 +486,3 @@ PhysicsEvent PhysicsManager::makePhysicsEvent(PhysicsEvent::EventType type, cons
 {
     return PhysicsEvent{type, collision, pair->getObjectA(), pair->getObjectB()};
 }
-

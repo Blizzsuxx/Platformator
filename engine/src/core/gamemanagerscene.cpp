@@ -32,14 +32,8 @@ void GameManager::loadScene(const Scene &scene)
     }
 }
 
-void GameManager::saveScene(const Scene &scene)
+std::vector<GameObject *> GameManager::collectRootObjects() const
 {
-    assertCanMutate();
-    if (!isIdle())
-    {
-        throw std::logic_error("Scene save requires an idle runtime");
-    }
-
     std::vector<GameObject *> rootObjects;
     rootObjects.reserve(gameObjects.size());
     for (GameObject *gameObject : gameObjects)
@@ -49,7 +43,17 @@ void GameManager::saveScene(const Scene &scene)
             rootObjects.push_back(gameObject);
         }
     }
-    scene.saveScene(rootObjects);
+    return rootObjects;
+}
+
+void GameManager::saveScene(const Scene &scene)
+{
+    assertCanMutate();
+    if (!isIdle())
+    {
+        throw std::logic_error("Scene save requires an idle runtime");
+    }
+    scene.saveScene(collectRootObjects());
 }
 
 void GameManager::clearObjects()

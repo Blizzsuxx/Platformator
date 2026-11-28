@@ -2,12 +2,21 @@
 
 #include "buildconfig.h"
 
+// ============================================================================
+// Window & Fixed-Step Simulation Loop
+// ============================================================================
 constexpr float SCREEN_WIDTH = 1920.0f;
 constexpr float SCREEN_HEIGHT = 1080.0f;
 constexpr int TARGET_FPS = 120;
 constexpr double FRAME_TIME = 1.0 / static_cast<double>(TARGET_FPS);
 constexpr double FIXED_TIME_STEP = 1.0 / 120.0;
 constexpr unsigned MAXIMUM_CATCH_UP_STEPS = 8;
+
+// ============================================================================
+// Physics World, Support & Sleeping
+// ============================================================================
+constexpr float GRAVITY_VECTOR_X = 0.0f;
+constexpr float GRAVITY_VECTOR_Y = 98.10f;
 
 constexpr float SUPPORT_NORMAL_THRESHOLD = 0.85f;
 constexpr float LINEAR_SLEEP_THRESHOLD = 5.0f;
@@ -18,21 +27,31 @@ constexpr float WAKE_LINEAR_EPSILON = 1e-3f;
 constexpr float WAKE_LINEAR_EPSILON_SQUARED = WAKE_LINEAR_EPSILON * WAKE_LINEAR_EPSILON;
 constexpr float WAKE_ANGULAR_EPSILON = 1e-4f;
 
+// ============================================================================
+// Broadphase Grid, Fat AABBs & Interval Lists
+// ============================================================================
 constexpr float GRID_CELL_SIZE = 200.0f;
 constexpr float FAT_AABB_MARGIN = 2.5f;
 constexpr float FAT_AABB_VELOCITY_LEAD_STEPS = 5.0f;
 constexpr float FAT_AABB_MAX_VELOCITY_LEAD = 48.0f;
-constexpr float GRAVITY_VECTOR_X = 0.0f;
-constexpr float GRAVITY_VECTOR_Y = 98.10f;
 
+constexpr size_t MAX_CHUNK_SIZE = 32;
+constexpr size_t CHUNK_MERGE_THRESHOLD = MAX_CHUNK_SIZE - 4;
+constexpr size_t MAX_RECYCLED_CHUNKS_PER_LIST = 8;
+constexpr size_t MAX_RECYCLED_GRID_CELLS = 4096;
+
+// ============================================================================
+// Soft-Contact TGS Solver
+// ============================================================================
 constexpr size_t COLLISION_SOLVER_SUBSTEPS = 4;
 constexpr float CONTACT_HERTZ = 30.0f;
 constexpr float CONTACT_DAMPING_RATIO = 10.0f;
 constexpr float COLLISION_ALLOWED_PENETRATION = 0.01f;
 constexpr float RESTITUTION_VELOCITY_THRESHOLD = 1.0f;
-constexpr size_t MAX_CHUNK_SIZE = 32;
-constexpr size_t CHUNK_MERGE_THRESHOLD = MAX_CHUNK_SIZE - 4;
-constexpr size_t MAX_RECYCLED_CHUNKS_PER_LIST = 8;
+
+// ============================================================================
+// Parallel Physics Dispatch Thresholds
+// ============================================================================
 constexpr size_t NARROW_PHASE_PARALLEL_THRESHOLD = 64;
 constexpr size_t BODY_INTEGRATION_PARALLEL_THRESHOLD = 256;
 constexpr size_t GRID_UPDATE_PARALLEL_THRESHOLD = 64;
@@ -41,4 +60,3 @@ constexpr size_t GRID_CELL_FLUSH_PARALLEL_THRESHOLD = 16;
 constexpr size_t GRID_CELL_FLUSH_DENSE_MIN_CELLS = 4;
 constexpr size_t GRID_PAIR_QUEUE_PARALLEL_THRESHOLD = 4096;
 constexpr size_t PAIR_DELTA_PARALLEL_SORT_THRESHOLD = 1024;
-constexpr size_t MAX_RECYCLED_GRID_CELLS = 4096;

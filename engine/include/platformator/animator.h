@@ -39,6 +39,8 @@ class Animator : public Component
     void addOnClipEndCallback(const std::function<void()> &callback);
 
   private:
+    friend class GameManager;
+
     Asset::Reference<AnimationClip> currentAnimationClip;
     size_t currentFrameIndex;
     double accumulatedTime;

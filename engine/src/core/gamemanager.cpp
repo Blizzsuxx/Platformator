@@ -24,13 +24,6 @@
 
 namespace
 {
-template <typename T> void swapRemoveIndexed(std::vector<T *> &list, T *item)
-{
-    ::swapRemoveIndexed(
-        list, item, [](const T *entry) { return entry->getGameManagerIndex(); },
-        [](T *entry, size_t index) { entry->setGameManagerIndex(index); });
-}
-
 template <typename MemberFn>
 void dispatchScriptUpdate(const std::vector<ScriptComponent *> &scripts, MemberFn fn, double timeDelta)
 {
@@ -593,12 +586,9 @@ void GameManager::registerComponentInSystems(Component *component)
 {
     switch (component->getType())
     {
-    case ComponentType::ANIMATOR: {
-        auto *animator = static_cast<Animator *>(component);
-        animatorComponents.push_back(animator);
-        animator->setGameManagerIndex(animatorComponents.size() - 1);
+    case ComponentType::ANIMATOR:
+        membership(animatorComponents, static_cast<Animator *>(component), &Animator::gameManagerIndex, true);
         break;
-    }
     case ComponentType::SCRIPT: {
         auto *script = static_cast<ScriptComponent *>(component);
         script->setGameManagerIndex(0);
@@ -637,7 +627,7 @@ void GameManager::unregisterComponentFromSystems(Component *component)
     switch (component->getType())
     {
     case ComponentType::ANIMATOR:
-        swapRemoveIndexed(animatorComponents, static_cast<Animator *>(component));
+        membership(animatorComponents, static_cast<Animator *>(component), &Animator::gameManagerIndex, false);
         break;
     case ComponentType::SCRIPT: {
         auto *script = static_cast<ScriptComponent *>(component);

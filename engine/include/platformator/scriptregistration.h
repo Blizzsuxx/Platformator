@@ -49,6 +49,10 @@ void resolveSerializedField(T &value, platformator::ReferenceResolver &resolver,
 }
 } // namespace platformator_json_detail
 
+// ============================================================================
+// Internal Macro Machinery (SERIALIZABLE_SCRIPT expansion)
+// ============================================================================
+
 #define PLATFORMATOR_CONCAT_INNER(left, right) left##right
 #define PLATFORMATOR_CONCAT(left, right) PLATFORMATOR_CONCAT_INNER(left, right)
 #define PLATFORMATOR_FOR_EACH_1(macro, value1) macro(value1)
@@ -213,6 +217,10 @@ void resolveSerializedField(T &value, platformator::ReferenceResolver &resolver,
 
 #define SERIALIZABLE_SCRIPT(Type, ...)                                                                                 \
     PLATFORMATOR_SERIALIZABLE_SCRIPT_SELECT(PLATFORMATOR_HAS_FIELDS_FLAG(__VA_ARGS__))(Type __VA_OPT__(, __VA_ARGS__))
+
+// ============================================================================
+// Built-in JSON Serializers (SDL / Eigen value types)
+// ============================================================================
 
 inline void to_json(nlohmann::json &j, const SDL_FRect &rect)
 {

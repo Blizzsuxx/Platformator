@@ -227,7 +227,10 @@ struct AudioPreviewService::Impl
 
 AudioPreviewService::AudioPreviewService() : impl_(std::make_unique<Impl>())
 {
-    impl_->worker = std::thread([state = impl_.get()] { state->run(); });
+    impl_->worker = std::thread([state = impl_.get()] {
+        state->run();
+        SDL_CleanupTLS();
+    });
 }
 
 bool AudioPreviewService::warm_queued_for_testing() const noexcept

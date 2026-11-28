@@ -531,24 +531,24 @@ std::pair<LocalSortArray *, size_t> SegmentedIntervalList::find(ProjectionProxy 
     return {nullptr, SIZE_MAX};
 }
 
-void SegmentedIntervalList::swap(ProjectionProxy *leftRadiusProjection, size_t leftRadiusProjectionIndex,
-                                 ProjectionProxy *rightRadiusProjection, size_t rightRadiusProjectionIndex)
+void SegmentedIntervalList::swap(ProjectionProxy *leftProxy, size_t leftProxyIndex,
+                                 ProjectionProxy *rightProxy, size_t rightProxyIndex)
 {
-    Collider *colliderA = leftRadiusProjection->getCollider();
-    Collider *colliderB = rightRadiusProjection->getCollider();
+    Collider *colliderA = leftProxy->getCollider();
+    Collider *colliderB = rightProxy->getCollider();
 
-    LocalSortArray *leftChunk = leftRadiusProjection->getChunk();
-    LocalSortArray *rightChunk = rightRadiusProjection->getChunk();
+    LocalSortArray *leftChunk = leftProxy->getChunk();
+    LocalSortArray *rightChunk = rightProxy->getChunk();
 
-    const float leftPos = leftChunk->getPosition(leftRadiusProjectionIndex);
-    const bool leftMax = leftChunk->getIsMaxima(leftRadiusProjectionIndex);
-    const float rightPos = rightChunk->getPosition(rightRadiusProjectionIndex);
-    const bool rightMax = rightChunk->getIsMaxima(rightRadiusProjectionIndex);
+    const float leftPos = leftChunk->getPosition(leftProxyIndex);
+    const bool leftMax = leftChunk->getIsMaxima(leftProxyIndex);
+    const float rightPos = rightChunk->getPosition(rightProxyIndex);
+    const bool rightMax = rightChunk->getIsMaxima(rightProxyIndex);
 
-    leftChunk->setSlot(leftRadiusProjectionIndex, rightRadiusProjection, rightPos, rightMax);
-    rightChunk->setSlot(rightRadiusProjectionIndex, leftRadiusProjection, leftPos, leftMax);
-    rightRadiusProjection->setChunkIndex(leftRadiusProjectionIndex);
-    leftRadiusProjection->setChunkIndex(rightRadiusProjectionIndex);
+    leftChunk->setSlot(leftProxyIndex, rightProxy, rightPos, rightMax);
+    rightChunk->setSlot(rightProxyIndex, leftProxy, leftPos, leftMax);
+    rightProxy->setChunkIndex(leftProxyIndex);
+    leftProxy->setChunkIndex(rightProxyIndex);
 
     if (colliderA != colliderB)
     {
@@ -564,8 +564,8 @@ void SegmentedIntervalList::swap(ProjectionProxy *leftRadiusProjection, size_t l
 
     if (leftChunk != rightChunk)
     {
-        leftRadiusProjection->setChunk(rightChunk);
-        rightRadiusProjection->setChunk(leftChunk);
+        leftProxy->setChunk(rightChunk);
+        rightProxy->setChunk(leftChunk);
 
         if (!isPrimary)
         {

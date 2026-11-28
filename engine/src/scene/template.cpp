@@ -302,32 +302,30 @@ GameObject *Template::instantiateImpl(std::optional<Eigen::Vector2f> worldPositi
     for (auto &obj : context.clonedObjects)
         obj.release();
 
-    bool committed = false;
+    // Removes the partially instantiated clone tree unless the transaction below commits.
     struct RollbackGuard
     {
         GameManager &manager;
         GameObject *root;
         std::vector<ScriptComponent *> &scripts;
-        bool &committed;
+        bool committed = false;
+
         ~RollbackGuard() noexcept
         {
-            if (!committed)
+            if (committed)
+                return;
+            for (ScriptComponent *script : scripts)
+                script->destructionDelivered = true;
+            try
             {
-                for (ScriptComponent *script : scripts)
-                {
-                    script->destructionDelivered = true;
-                }
-                try
-                {
-                    manager.removeGameObject(root);
-                    manager.flushIfIdle();
-                }
-                catch (...)
-                {
-                }
+                manager.removeGameObject(root);
+                manager.flushIfIdle();
+            }
+            catch (...)
+            {
             }
         }
-    } rollbackGuard{manager, clonedRoot, context.clonedScripts, committed};
+    } rollbackGuard{manager, clonedRoot, context.clonedScripts};
 
     if (parent != nullptr)
     {
@@ -336,17 +334,14 @@ GameObject *Template::instantiateImpl(std::optional<Eigen::Vector2f> worldPositi
             clonedRoot->setLocalPosition(protoRoot.getLocalPosition());
     }
 
-    if (!context.clonedScripts.empty())
+    for (ScriptComponent *script : context.clonedScripts)
     {
-        for (ScriptComponent *script : context.clonedScripts)
-        {
-            for (Behavior *behavior : script->getPendingBehaviors())
-                behavior->resolveReferences(cloneResolver);
-            script->markPendingReferencesResolved();
-        }
+        for (Behavior *behavior : script->getPendingBehaviors())
+            behavior->resolveReferences(cloneResolver);
+        script->markPendingReferencesResolved();
     }
 
-    committed = true;
+    rollbackGuard.committed = true;
     manager.flushIfIdle();
     return clonedRoot;
 }

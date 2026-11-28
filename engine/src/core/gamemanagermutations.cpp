@@ -248,69 +248,61 @@ void GameManager::reconcilePending(std::exception_ptr &error)
     } while (!reconciliations.empty() || !dirtyTransforms.empty());
 }
 
-void GameManager::drainRetirements(std::exception_ptr &error)
+bool GameManager::hasRetiredScripts() const
 {
-    if (retiredComponents.empty() && gameObjectsToDelete.empty())
-    {
-        return;
-    }
-
-    PLATFORMATOR_BENCH_SCOPE(Retirement);
-    bool hasScriptDestruction = false;
     for (auto *component : retiredComponents)
     {
         if (component->getType() == ComponentType::SCRIPT)
         {
-            hasScriptDestruction = true;
-            break;
+            return true;
         }
     }
-    if (!hasScriptDestruction)
+    for (auto *object : gameObjectsToDelete)
     {
-        for (auto *object : gameObjectsToDelete)
+        if (object->components[ComponentType::SCRIPT] != nullptr)
         {
-            if (object->components[ComponentType::SCRIPT] != nullptr)
-            {
-                hasScriptDestruction = true;
-                break;
-            }
+            return true;
         }
     }
+    return false;
+}
 
-    if (hasScriptDestruction)
+void GameManager::deliverRetirementDestructionCallbacks(std::exception_ptr &error)
+{
+    // Move the whole batch into the callback phase before invoking any script.
+    for (auto *component : retiredComponents)
     {
-        for (auto *component : retiredComponents)
+        component->lifecycle = ObjectLifecycle::DestroyCallbacks;
+    }
+    for (auto *object : gameObjectsToDelete)
+    {
+        object->lifecycle = ObjectLifecycle::DestroyCallbacks;
+        for (auto *component : object->components)
         {
-            component->lifecycle = ObjectLifecycle::DestroyCallbacks;
-        }
-        for (auto *object : gameObjectsToDelete)
-        {
-            object->lifecycle = ObjectLifecycle::DestroyCallbacks;
-            for (auto *component : object->components)
+            if (component)
             {
-                if (component)
-                {
-                    component->lifecycle = ObjectLifecycle::DestroyCallbacks;
-                }
-            }
-        }
-        for (auto *component : retiredComponents)
-        {
-            if (component->getType() == ComponentType::SCRIPT)
-            {
-                runDestructionCallbacks(static_cast<ScriptComponent *>(component), error);
-            }
-        }
-        for (auto *object : gameObjectsToDelete)
-        {
-            if (auto *script = object->getComponent<ScriptComponent>())
-            {
-                runDestructionCallbacks(script, error);
+                component->lifecycle = ObjectLifecycle::DestroyCallbacks;
             }
         }
     }
+    for (auto *component : retiredComponents)
+    {
+        if (component->getType() == ComponentType::SCRIPT)
+        {
+            runDestructionCallbacks(static_cast<ScriptComponent *>(component), error);
+        }
+    }
+    for (auto *object : gameObjectsToDelete)
+    {
+        if (auto *script = object->getComponent<ScriptComponent>())
+        {
+            runDestructionCallbacks(script, error);
+        }
+    }
+}
 
-    // All callbacks finish before any batch allocation is freed.
+void GameManager::deleteRetiredEntities()
+{
     for (auto *component : retiredComponents)
     {
         registry.erase(*component);
@@ -331,6 +323,22 @@ void GameManager::drainRetirements(std::exception_ptr &error)
         delete object;
     }
     gameObjectsToDelete.clear();
+}
+
+void GameManager::drainRetirements(std::exception_ptr &error)
+{
+    if (retiredComponents.empty() && gameObjectsToDelete.empty())
+    {
+        return;
+    }
+
+    PLATFORMATOR_BENCH_SCOPE(Retirement);
+    if (hasRetiredScripts())
+    {
+        deliverRetirementDestructionCallbacks(error);
+    }
+    // All callbacks finish before any batch allocation is freed.
+    deleteRetiredEntities();
 }
 
 void GameManager::commitLocalMutations()

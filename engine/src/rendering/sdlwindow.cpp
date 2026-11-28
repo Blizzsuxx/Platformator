@@ -12,12 +12,6 @@
 #include "benchmark/benchmark.h"
 #include "benchmark/workprobe.h"
 #include "rendering/spriterendergeometry.h"
-#if PLATFORMATOR_ENABLE_DEBUG_TOOLS
-#include "core/runtimeaccess.h"
-#include "physics/physicsmanager.h"
-#include "platformator/boxcollider.h"
-#include "platformator/circlecollider.h"
-#endif
 
 namespace
 {
@@ -134,11 +128,7 @@ SDLWindow::SDLWindow(const WindowSettings &windowSettings, const DebugSettings &
     try
     {
         const RenderCullingPolicy cullingPolicy = resolveRenderCullingPolicy(windowSettings);
-#if PLATFORMATOR_ENABLE_DEBUG_TOOLS
         debugDraw.setSettings(debugSettings);
-#else
-        (void)debugSettings;
-#endif
 
         if (!init())
         {
@@ -184,7 +174,7 @@ bool SDLWindow::init()
 
     if (!SDL_Init(initFlags))
     {
-        printf("SDL could not initialize! SDL_Error: %s", SDL_GetError());
+        PLATFORMATOR_LOG("SDL could not initialize! SDL_Error: %s\n", SDL_GetError());
         return false;
     }
 
@@ -199,7 +189,7 @@ bool SDLWindow::init()
     window = SDL_CreateWindow("Platformator", windowSettings.width, windowSettings.height, windowFlags);
     if (window == nullptr)
     {
-        printf("Window could not be created! SDL_Error: %s", SDL_GetError());
+        PLATFORMATOR_LOG("Window could not be created! SDL_Error: %s\n", SDL_GetError());
         return false;
     }
 
@@ -212,7 +202,7 @@ bool SDLWindow::init()
     renderer = SDL_CreateRenderer(window, nullptr);
     if (renderer == nullptr)
     {
-        printf("Renderer could not be created! SDL_Error: %s", SDL_GetError());
+        PLATFORMATOR_LOG("Renderer could not be created! SDL_Error: %s\n", SDL_GetError());
         return false;
     }
     SDL_SetRenderVSync(renderer, 1);
@@ -348,31 +338,10 @@ void SDLWindow::render()
     SDL_RenderClear(renderer);
     if (mainCamera != nullptr)
     {
-#if PLATFORMATOR_ENABLE_DEBUG_TOOLS
-        if (PhysicsManager *physicsManager = platformator_detail::RuntimeAccess::physicsManager();
-            physicsManager != nullptr && shouldSimulateFrame())
+        if (shouldSimulateFrame())
         {
-            if (debugDraw.isShowingGridCells())
-            {
-                for (const auto &cellEntry : physicsManager->getGrid().getCells())
-                {
-                    debugDraw.addGridCellDebugObject(cellEntry.first);
-                }
-            }
-            if (debugDraw.isShowingColliders())
-            {
-                for (Collider *collider : physicsManager->getColliders())
-                {
-                    if (collider == nullptr)
-                        continue;
-                    if (collider->getColliderType() == ColliderType::BoxCollider)
-                        debugDraw.addBoxColliderDebugObject(*static_cast<const BoxCollider *>(collider));
-                    else if (collider->getColliderType() == ColliderType::CircleCollider)
-                        debugDraw.addCircleColliderDebugObject(*static_cast<const CircleCollider *>(collider));
-                }
-            }
+            debugDraw.collectPhysicsDebugObjects();
         }
-#endif
 
         bool cullingEligible = false;
         if (windowSettings.enableRenderCulling)
@@ -386,9 +355,7 @@ void SDLWindow::render()
         prepareDrawOrder(useCachedSelection);
         renderSpritesBatched(mainCamera, renderView, useCachedSelection);
 
-#if PLATFORMATOR_ENABLE_DEBUG_TOOLS
         debugDraw.render(renderer, renderView);
-#endif
     }
 
     PLATFORMATOR_RENDER_BEFORE_PRESENT(renderer, renderWidth, renderHeight);
@@ -399,9 +366,7 @@ void SDLWindow::render()
 
 void SDLWindow::clearDebugObjects()
 {
-#if PLATFORMATOR_ENABLE_DEBUG_TOOLS
     debugDraw.clearDebugObjects();
-#endif
 }
 
 SDL_Window *SDLWindow::getWindow() const

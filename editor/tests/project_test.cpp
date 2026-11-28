@@ -380,6 +380,8 @@ class ProjectPanelFrames
             ImGui_ImplSDL3_ProcessEvent(&event);
         ImGui_ImplSDLRenderer3_NewFrame();
         ImGui_ImplSDL3_NewFrame();
+        // Drive simulated input with a fixed frame clock so clicks keep the same cadence under instrumentation.
+        ImGui::GetIO().DeltaTime = 1.0f / 60.0f;
         for (const auto &[key, down] : keyEvents)
             ImGui::GetIO().AddKeyEvent(key, down);
         if (textInput != nullptr)

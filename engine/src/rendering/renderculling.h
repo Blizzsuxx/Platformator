@@ -40,11 +40,16 @@ class RenderCullingState
     void reserveRecords(RecordIndex capacity);
     void appendRecord(platformator::ObjectHandle spriteHandle);
     void removeRecord(RecordIndex index);
+    RecordIndex recordCount() const;
+    Record &recordAt(RecordIndex index);
+    void releaseStorage() noexcept;
+
     void markDirty(RecordIndex index, platformator::ObjectHandle spriteHandle) noexcept;
     RecordIndex dirtyCount() const;
     RecordIndex dirtyAt(RecordIndex index) const;
     void clearDirtyQueue() noexcept;
-    void releaseStorage() noexcept;
+
+    // Cached projection and visible membership
     const std::vector<RecordIndex> &visibleRanks() const;
     bool selectionValid() const;
     uint64_t visibleMembershipRevision() const noexcept;
@@ -58,9 +63,8 @@ class RenderCullingState
     void updateVisibleRank(RecordIndex rank, bool visible);
     bool finishVisibleDelta();
     void setPreparedViewKey(const SpriteRenderViewKey &view);
+
     bool validateMembershipInvariants() const;
-    RecordIndex recordCount() const;
-    Record &recordAt(RecordIndex index);
     void publishCapacityObservation() const;
 
   private:

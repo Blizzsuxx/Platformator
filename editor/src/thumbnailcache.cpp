@@ -339,8 +339,6 @@ bool ThumbnailCache::make_room_for_locked(std::uint64_t bytes, const std::string
             if (replica.texture != nullptr)
                 SDL_DestroyTexture(replica.texture);
         }
-        if (victim->second.pixels != nullptr)
-            SDL_DestroySurface(victim->second.pixels);
         retainedBytes_ -= victim->second.bytes;
         const auto evictedKey = victim->first;
         entries_.erase(victim);
@@ -390,7 +388,7 @@ void ThumbnailCache::poll_uploads(SDL_Renderer *renderer)
                     continue;
                 }
                 replicaRequest.emplace(*pending);
-                replicaPixels = entry->second.pixels;
+                replicaPixels = entry->second.pixels.get();
                 replicaBytes = entry->second.pixelBytes;
                 pendingReplicas_.erase(pending);
                 uploadingBytes_ = replicaBytes;
@@ -445,7 +443,7 @@ void ThumbnailCache::poll_uploads(SDL_Renderer *renderer)
 
         work::record(work::Counter::TextureUploads);
         SDL_Texture *texture = SDL_CreateTextureFromSurface(renderer, result->surface);
-        SDL_Surface *previousPixels = nullptr;
+        SDLImageSurface previousPixels(nullptr, SDL_DestroySurface);
         std::vector<SDL_Texture *> previousTextures;
         bool published = false;
         {
@@ -461,7 +459,6 @@ void ThumbnailCache::poll_uploads(SDL_Renderer *renderer)
             else if (stillCurrent)
             {
                 auto &cached = entry->second;
-                previousPixels = cached.pixels;
                 for (const auto &[previousRenderer, replica] : cached.replicas)
                 {
                     (void)previousRenderer;
@@ -469,8 +466,8 @@ void ThumbnailCache::poll_uploads(SDL_Renderer *renderer)
                         previousTextures.push_back(replica.texture);
                 }
                 retainedBytes_ -= cached.bytes;
-                cached.pixels = result->surface;
-                result->surface = nullptr;
+                previousPixels = std::move(cached.pixels);
+                cached.pixels.reset(std::exchange(result->surface, nullptr));
                 cached.pixelBytes = bytes;
                 cached.replicas.clear();
                 cached.replicas.emplace(renderer, Entry::Replica{texture, bytes});
@@ -487,8 +484,6 @@ void ThumbnailCache::poll_uploads(SDL_Renderer *renderer)
         }
         if (!published && texture != nullptr)
             SDL_DestroyTexture(texture);
-        if (previousPixels != nullptr)
-            SDL_DestroySurface(previousPixels);
         for (SDL_Texture *previous : previousTextures)
             SDL_DestroyTexture(previous);
         result.reset();
@@ -513,7 +508,7 @@ void ThumbnailCache::poll_uploads(SDL_Renderer *renderer)
         const auto entry = entries_.find(replicaRequest->key);
         const bool current = replicaRequest->cacheGeneration == cacheGeneration_ &&
             entry != entries_.end() && entry->second.revision == replicaRequest->revision &&
-            entry->second.pixels == replicaPixels;
+            entry->second.pixels.get() == replicaPixels;
         if (current && texture != nullptr)
         {
             const auto [replica, inserted] = entry->second.replicas.emplace(
@@ -610,8 +605,6 @@ void ThumbnailCache::clear(SDL_Renderer *renderer) noexcept
             if (replica.texture != nullptr)
                 SDL_DestroyTexture(replica.texture);
         }
-        if (entry.pixels != nullptr)
-            SDL_DestroySurface(entry.pixels);
     }
     entries_.clear();
     retainedBytes_ = 0;

@@ -6,6 +6,7 @@
 #include <filesystem>
 #include <functional>
 #include <map>
+#include <memory>
 #include <mutex>
 #include <oneapi/tbb/task_group.h>
 #include <optional>
@@ -81,7 +82,7 @@ class ThumbnailCache
             SDL_Texture *texture = nullptr;
             std::uint64_t bytes = 0;
         };
-        SDL_Surface *pixels = nullptr;
+        std::unique_ptr<SDL_Surface, decltype(&SDL_DestroySurface)> pixels{nullptr, SDL_DestroySurface};
         std::uint64_t pixelBytes = 0;
         std::map<SDL_Renderer *, Replica> replicas;
         std::uint64_t bytes = 0;

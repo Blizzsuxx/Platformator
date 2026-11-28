@@ -183,11 +183,6 @@ int end_of_bytes(void *user)
 #define STBI_REALLOC_SIZED(pointer, oldSize, newSize) \
     bounded_stbi::reallocate(pointer, oldSize, newSize)
 #define STBI_FREE(pointer) bounded_stbi::release(pointer)
-// SDL_image's private fork removes this legacy diagnostic variable while its
-// GIF helper still references it. This private stb_image translation unit
-// supplies the required local state; failures are surfaced through SDL's
-// thread-local error channel.
-static const char *stbi__g_failure_reason = "";
 #include "../../vendored/SDL3_image-3.4.8/src/stb_image.h"
 
 namespace platformator_editor
@@ -489,7 +484,7 @@ PreparedImage prepare_image(const std::filesystem::path &path)
         int decodedHeight = 0;
         stbi_uc *decodedPixels = nullptr;
         {
-            SDL_ClearError();
+            stbi__g_failure_reason = nullptr;
             bounded_stbi::BudgetScope budgetScope(decoderBudget);
             bounded_stbi::ByteCursor cursor{encoded.data(), encoded.size(), 0};
             const stbi_io_callbacks callbacks{
@@ -499,7 +494,7 @@ PreparedImage prepare_image(const std::filesystem::path &path)
         }
         if (decodedPixels == nullptr)
         {
-            const char *decoderError = SDL_GetError();
+            const char *decoderError = stbi_failure_reason();
             if (decoderBudget->allocationDenied.load(std::memory_order_relaxed))
             {
                 result.preflight.status = ImagePreflightStatus::WorkingSetLimit;

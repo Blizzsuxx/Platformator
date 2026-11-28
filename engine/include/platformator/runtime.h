@@ -41,34 +41,41 @@ class Runtime
     Runtime &operator=(const Runtime &) = delete;
     ~Runtime();
 
+    // --- Active instance & paths -------------------------------------------
     static Runtime &current();
     static Runtime *tryGetCurrent();
+    uint64_t getRuntimeSerial() const;
     const std::filesystem::path &getAssetRoot() const;
 
+    // --- Objects & scenes --------------------------------------------------
     GameObject *createGameObject();
     void destroyGameObject(GameObject *gameObject);
     void clearScene();
-    // Stop and release all independent fire-and-forget tracks.
-    void stopTransientAudio();
     void requestClearScene();
     void requestLoadScene(const std::string &sceneFilePath);
     GameObject *getGameObject(const std::string &name) const;
+    const std::vector<GameObject *> &getAllGameObjects() const;
     BaseObject *getObjectById(int id) const;
     BaseObject *resolveHandle(ObjectHandle handle, platformator_detail::ObjectKind kind) const;
-    uint64_t getRuntimeSerial() const;
     Camera *getMainCamera() const;
     void createMainCameraIfNoMainCameraExists();
+    void loadScene(Scene &scene);
+    void loadScene(const std::string &sceneFilePath);
+    void saveScene(Scene &scene);
+    void saveScene();
+    void saveScene(const std::string &sceneFilePath);
+
+    // --- Asset loading -----------------------------------------------------
     // Nonempty asset requests must exist and load successfully; failures throw.
     // A retained cached resource is reused without rechecking its filesystem path.
     AnimationClip *loadAnimationClip(const std::string &filePath) const;
     AudioWrapper *loadAudio(const std::string &filePath) const;
     Template *loadTemplate(const std::string &filePath) const;
-    void loadScene(Scene &scene);
-    void loadScene(const std::string &sceneFilePath);
     TextureWrapper *loadTexture(const std::string &filePath) const;
-    void saveScene(Scene &scene);
-    void saveScene();
-    void saveScene(const std::string &sceneFilePath);
+
+    // --- Execution & stepping ----------------------------------------------
+    // Stop and release all independent fire-and-forget tracks.
+    void stopTransientAudio();
     void run();
     // Runs the normal interactive loop and invokes a bounded, nonblocking
     // owner-thread service before each frame.
@@ -86,6 +93,8 @@ class Runtime
     void simulateFrameWithCustomCallback(double timeDelta, const std::function<void(double)> &prePhysicsStepHook);
     bool simulateAndRenderFrameWithCustomCallback(double timeDelta,
                                                   const std::function<void(double)> &prePhysicsStepHook);
+
+    // --- Input, window & renderer ------------------------------------------
     // Poll native or embedded Game view input. Call on the runtime owner thread.
     bool isKeyDown(SDL_Scancode key) const;
     SDL_MouseButtonFlags getMouseState(float *x = nullptr, float *y = nullptr) const;
@@ -94,8 +103,8 @@ class Runtime
     SDL_Color getClearColor() const;
     void setClearColor(const SDL_Color &color);
     void setClearColor(std::uint8_t r, std::uint8_t g, std::uint8_t b, std::uint8_t a = 255);
-    const std::vector<GameObject *> &getAllGameObjects() const;
 
+    // --- Physics queries ---------------------------------------------------
     // Queries the synchronized physics world (Grid + AABB and published collider
     // geometry from the latest step commit, scene load, or idle reconciliation).
     // Synced entry points: Behavior::fixedUpdate(double) (observes the prior step's

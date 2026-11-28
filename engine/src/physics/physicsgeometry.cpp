@@ -12,6 +12,12 @@ namespace physics_geometry
 namespace
 {
 // Circle dispatch builds its own manifold; clipping below is exclusively box/box.
+constexpr uint32_t FEATURE_CIRCLE_CIRCLE = 0x100u;
+constexpr uint32_t FEATURE_CIRCLE_BOX_BASE = 0x200u;
+// Hysteresis favoring box A axes over box B axes to prevent face-flipping jitter on near-ties.
+constexpr float SAT_RELATIVE_AXIS_BIAS = 0.98f;
+constexpr float SAT_ABSOLUTE_AXIS_SLOP = 0.001f;
+
 void calculateBoxContactPoints(Collision *collision, const BoxCollider *referenceBox, const BoxCollider *incidentBox,
                                int refAxis, bool refPositive, int incAxis, bool incPositive);
 
@@ -46,7 +52,7 @@ void circleCircleCollision(ColliderPair &pair, const Eigen::Vector2f &gravityDir
     collision->setNormal(normal);
     collision->getContactPoints().setSinglePoint(
         (a->getCachedWorldPosition() + normal * radiusA + b->getCachedWorldPosition() - normal * radiusB) * 0.5f,
-        ContactFeature(0x100), distance - radius);
+        ContactFeature(FEATURE_CIRCLE_CIRCLE), distance - radius);
     collision->updateSupportState(gravityDirection);
 }
 
@@ -70,7 +76,7 @@ void circleBoxCollision(ColliderPair &pair, const Eigen::Vector2f &gravityDirect
     }
     Eigen::Vector2f localNormal;
     float separation;
-    uint32_t feature = 0x200;
+    uint32_t feature = FEATURE_CIRCLE_BOX_BASE;
     if (squared > 0)
     {
         const float distance = std::sqrt(squared);
@@ -99,38 +105,10 @@ void circleBoxCollision(ColliderPair &pair, const Eigen::Vector2f &gravityDirect
                                                  ContactFeature(feature), separation);
     collision->updateSupportState(gravityDirection);
 }
-} // namespace
-
-void updateContactGeometry(ColliderPair &pair, const Eigen::Vector2f &gravityDirection)
+void boxBoxCollision(ColliderPair &pair, const BoxCollider *boxA, const BoxCollider *boxB,
+                     const Eigen::Vector2f &gravityDirection)
 {
-    const Collider *colliderA = pair.getObjectA();
-    const Collider *colliderB = pair.getObjectB();
-
-    if (!colliderA->overlapsTightBounds(*colliderB))
-    {
-        pair.clearCollisionNoEvent();
-        return;
-    }
-
-    const ColliderType typeA = colliderA->getColliderType();
-    const ColliderType typeB = colliderB->getColliderType();
-
-    if (typeA != ColliderType::BoxCollider || typeB != ColliderType::BoxCollider)
-    {
-        if (typeA == ColliderType::CircleCollider && typeB == ColliderType::CircleCollider)
-        {
-            circleCircleCollision(pair, gravityDirection);
-        }
-        else
-        {
-            circleBoxCollision(pair, gravityDirection);
-        }
-        return;
-    }
-
     // Analytical 2D OBB SAT: avoids virtual calls and 4-vertex projection loops.
-    const auto *boxA = static_cast<const BoxCollider *>(colliderA);
-    const auto *boxB = static_cast<const BoxCollider *>(colliderB);
     const auto &axesA = boxA->getAxes();
     const auto &axesB = boxB->getAxes();
     const float hAx = boxA->getPublishedHalfWidth();
@@ -234,7 +212,7 @@ void updateContactGeometry(ColliderPair &pair, const Eigen::Vector2f &gravityDir
             refPositive = distA1 >= 0.0f;
         }
 
-        if (overlapB0 < minOverlap * 0.98f - 0.001f)
+        if (overlapB0 < minOverlap * SAT_RELATIVE_AXIS_BIAS - SAT_ABSOLUTE_AXIS_SLOP)
         {
             minOverlap = overlapB0;
             minNormal = distB0 > 0.0f ? (-axesB[0]).eval() : axesB[0];
@@ -243,7 +221,7 @@ void updateContactGeometry(ColliderPair &pair, const Eigen::Vector2f &gravityDir
             refPositive = distB0 <= 0.0f;
         }
 
-        if (overlapB1 < minOverlap && (swapped || overlapB1 < minOverlap * 0.98f - 0.001f))
+        if (overlapB1 < minOverlap && (swapped || overlapB1 < minOverlap * SAT_RELATIVE_AXIS_BIAS - SAT_ABSOLUTE_AXIS_SLOP))
         {
             minNormal = distB1 > 0.0f ? (-axesB[1]).eval() : axesB[1];
             swapped = true;
@@ -260,29 +238,13 @@ void updateContactGeometry(ColliderPair &pair, const Eigen::Vector2f &gravityDir
         float incProjY;
         if (!swapped)
         {
-            if (refAxis == 0)
-            {
-                incProjX = sign * r00;
-                incProjY = sign * r01;
-            }
-            else
-            {
-                incProjX = sign * (-r01);
-                incProjY = sign * r00;
-            }
+            incProjX = sign * (refAxis == 0 ? r00 : -r01);
+            incProjY = sign * (refAxis == 0 ? r01 : r00);
         }
         else
         {
-            if (refAxis == 0)
-            {
-                incProjX = sign * r00;
-                incProjY = sign * (-r01);
-            }
-            else
-            {
-                incProjX = sign * r01;
-                incProjY = sign * r00;
-            }
+            incProjX = sign * (refAxis == 0 ? r00 : r01);
+            incProjY = sign * (refAxis == 0 ? -r01 : r00);
         }
         if (std::abs(incProjX) > std::abs(incProjY))
         {
@@ -310,6 +272,35 @@ void updateContactGeometry(ColliderPair &pair, const Eigen::Vector2f &gravityDir
         return;
     }
     collision->updateSupportState(gravityDirection);
+}
+} // namespace
+
+void updateContactGeometry(ColliderPair &pair, const Eigen::Vector2f &gravityDirection)
+{
+    const Collider *colliderA = pair.getObjectA();
+    const Collider *colliderB = pair.getObjectB();
+
+    if (!colliderA->overlapsTightBounds(*colliderB))
+    {
+        pair.clearCollisionNoEvent();
+        return;
+    }
+
+    const ColliderType typeA = colliderA->getColliderType();
+    const ColliderType typeB = colliderB->getColliderType();
+    if (typeA == ColliderType::BoxCollider && typeB == ColliderType::BoxCollider)
+    {
+        boxBoxCollision(pair, static_cast<const BoxCollider *>(colliderA), static_cast<const BoxCollider *>(colliderB),
+                        gravityDirection);
+    }
+    else if (typeA == ColliderType::CircleCollider && typeB == ColliderType::CircleCollider)
+    {
+        circleCircleCollision(pair, gravityDirection);
+    }
+    else
+    {
+        circleBoxCollision(pair, gravityDirection);
+    }
 }
 
 namespace

@@ -34,7 +34,225 @@ struct ScopedBenchmarkTiming
     }
 };
 #endif
+
+template <typename Entry>
+bool spriteDrawEntryLess(const Entry &left, const Entry &right) noexcept
+{
+    PLATFORMATOR_RENDER_CULLING_ADD(spriteOrderComparisons, 1);
+    if (left.zOrder != right.zOrder)
+    {
+        return left.zOrder < right.zOrder;
+    }
+    return left.registrationSequence < right.registrationSequence;
+}
+
+class SpriteBatcher
+{
+  public:
+    SpriteBatcher(SDL_Renderer *renderer, bool isSoftwareRenderer, std::vector<SDL_Vertex> &vertices,
+                  std::vector<int> &indices)
+        : renderer(renderer), isSoftwareRenderer(isSoftwareRenderer), vertices(vertices), indices(indices)
+    {
+    }
+
+    void prepareTextureState(SDL_Texture *texture, SDL_Color color)
+    {
+        if (texture != batchTexture)
+        {
+            flush();
+            batchTexture = texture;
+            texBlendMode = SDL_BLENDMODE_BLEND;
+            SDL_GetTextureBlendMode(batchTexture, &texBlendMode);
+            texR = 1.0f;
+            texG = 1.0f;
+            texB = 1.0f;
+            texA = 1.0f;
+            SDL_GetTextureColorModFloat(batchTexture, &texR, &texG, &texB);
+            SDL_GetTextureAlphaModFloat(batchTexture, &texA);
+            promoteAlphaBlend = platformator_detail::shouldPromoteSpriteAlphaBlend(color, texBlendMode);
+            texSizeValid = false;
+            return;
+        }
+        const bool promoteAlpha = platformator_detail::shouldPromoteSpriteAlphaBlend(color, texBlendMode);
+        if (promoteAlpha != promoteAlphaBlend)
+        {
+            flush();
+            promoteAlphaBlend = promoteAlpha;
+        }
+    }
+
+    bool resolveUVs(const SDL_FRect *src, SDL_FlipMode flip, float &u0, float &v0, float &u1, float &v1)
+    {
+        u0 = 0.0f;
+        v0 = 0.0f;
+        u1 = 1.0f;
+        v1 = 1.0f;
+        if (src != nullptr)
+        {
+            if (!texSizeValid)
+            {
+                texSizeValid = SDL_GetTextureSize(batchTexture, &texW, &texH) && texW > 0.0f && texH > 0.0f;
+                if (texSizeValid)
+                {
+                    invTexW = 1.0f / texW;
+                    invTexH = 1.0f / texH;
+                }
+            }
+            if (texSizeValid)
+            {
+                const SDL_FRect bounds{0, 0, texW, texH};
+                SDL_FRect clipped{};
+                if (!SDL_GetRectIntersectionFloat(src, &bounds, &clipped))
+                {
+                    return false;
+                }
+                u0 = clipped.x * invTexW;
+                v0 = clipped.y * invTexH;
+                u1 = (clipped.x + clipped.w) * invTexW;
+                v1 = (clipped.y + clipped.h) * invTexH;
+            }
+        }
+        if ((flip & SDL_FLIP_HORIZONTAL) != 0)
+        {
+            std::swap(u0, u1);
+        }
+        if ((flip & SDL_FLIP_VERTICAL) != 0)
+        {
+            std::swap(v0, v1);
+        }
+        return true;
+    }
+
+    void appendQuad(const GameObject *object, const SDL_FRect &dst, SDL_Color color, float u0, float v0, float u1,
+                    float v1)
+    {
+        constexpr float inv255 = 1.0f / 255.0f;
+        const bool modulated = platformator_detail::isColorModulated(color);
+        const SDL_FColor fcolor =
+            modulated ? SDL_FColor{static_cast<float>(color.r) * inv255, static_cast<float>(color.g) * inv255,
+                                   static_cast<float>(color.b) * inv255, static_cast<float>(color.a) * inv255}
+                      : SDL_FColor{texR, texG, texB, texA};
+
+        float x0, y0, x1, y1, x2, y2, x3, y3;
+        if (object->getRotation() == 0.0f)
+        {
+            const float right = dst.x + dst.w;
+            const float bottom = dst.y + dst.h;
+            x0 = dst.x;
+            y0 = dst.y;
+            x1 = right;
+            y1 = dst.y;
+            x2 = right;
+            y2 = bottom;
+            x3 = dst.x;
+            y3 = bottom;
+        }
+        else
+        {
+            const float hx = dst.w * 0.5f;
+            const float hy = dst.h * 0.5f;
+            const float cx = dst.x + hx;
+            const float cy = dst.y + hy;
+            const float c = object->getCosRotation();
+            const float s = object->getSinRotation();
+            const float hc = hx * c;
+            const float hs = hx * s;
+            const float vc = hy * c;
+            const float vs = hy * s;
+            x0 = cx - hc + vs;
+            y0 = cy - hs - vc;
+            x1 = cx + hc + vs;
+            y1 = cy + hs - vc;
+            x2 = cx + hc - vs;
+            y2 = cy + hs + vc;
+            x3 = cx - hc - vs;
+            y3 = cy - hs + vc;
+        }
+
+        vertices.push_back(SDL_Vertex{{x0, y0}, fcolor, {u0, v0}});
+        vertices.push_back(SDL_Vertex{{x1, y1}, fcolor, {u1, v0}});
+        vertices.push_back(SDL_Vertex{{x2, y2}, fcolor, {u1, v1}});
+        vertices.push_back(SDL_Vertex{{x3, y3}, fcolor, {u0, v1}});
+    }
+
+    void flush()
+    {
+        if (vertices.empty() || batchTexture == nullptr)
+        {
+            return;
+        }
+
+        const size_t vertexCount = vertices.size();
+        const size_t quadCount = vertexCount / 4;
+        const size_t requiredIndices = quadCount * 6;
+        if (indices.size() < requiredIndices)
+        {
+            const size_t startQuad = indices.size() / 6;
+            indices.resize(requiredIndices);
+            for (size_t q = startQuad; q < quadCount; ++q)
+            {
+                const int base = static_cast<int>(q * 4);
+                const size_t dst = q * 6;
+                indices[dst + 0] = base + 0;
+                indices[dst + 1] = base + 1;
+                indices[dst + 2] = base + 2;
+                indices[dst + 3] = base + 0;
+                indices[dst + 4] = base + 2;
+                indices[dst + 5] = base + 3;
+            }
+        }
+
+        if (promoteAlphaBlend)
+        {
+            SDL_SetTextureBlendMode(batchTexture, SDL_BLENDMODE_BLEND);
+        }
+
+        SDL_RenderGeometryRaw(renderer, batchTexture,
+                              &vertices[0].position.x, static_cast<int>(sizeof(SDL_Vertex)),
+                              &vertices[0].color, static_cast<int>(sizeof(SDL_Vertex)),
+                              &vertices[0].tex_coord.x, static_cast<int>(sizeof(SDL_Vertex)),
+                              static_cast<int>(vertexCount),
+                              indices.data(), static_cast<int>(requiredIndices),
+                              static_cast<int>(sizeof(int)));
+
+        if (isSoftwareRenderer)
+        {
+            // SDL3's software RenderGeometryRaw fast path mutates texture color/alpha mod internally.
+            SDL_SetTextureColorModFloat(batchTexture, texR, texG, texB);
+            SDL_SetTextureAlphaModFloat(batchTexture, texA);
+        }
+        if (promoteAlphaBlend)
+        {
+            SDL_SetTextureBlendMode(batchTexture, texBlendMode);
+        }
+
+        vertices.clear();
+    }
+
+  private:
+    SDL_Renderer *renderer;
+    bool isSoftwareRenderer;
+    std::vector<SDL_Vertex> &vertices;
+    std::vector<int> &indices;
+
+    SDL_Texture *batchTexture = nullptr;
+    SDL_BlendMode texBlendMode = SDL_BLENDMODE_BLEND;
+    float texR = 1.0f;
+    float texG = 1.0f;
+    float texB = 1.0f;
+    float texA = 1.0f;
+    bool promoteAlphaBlend = false;
+    float texW = 0.0f;
+    float texH = 0.0f;
+    float invTexW = 0.0f;
+    float invTexH = 0.0f;
+    bool texSizeValid = false;
+};
 } // namespace
+
+// ============================================================================
+// Visible Selection Culling
+// ============================================================================
 
 bool SDLWindow::prepareVisibleSelection(Camera *camera, const platformator_detail::SpriteRenderView &view)
 {
@@ -164,19 +382,16 @@ bool SDLWindow::prepareVisibleSelection(Camera *camera, const platformator_detai
     return true;
 }
 
+// ============================================================================
+// Draw Ordering
+// ============================================================================
+
 #if PLATFORMATOR_ENABLE_BENCHMARK_ORDER_MODES
 bool SDLWindow::trySingleEntryRepair(SpriteDrawOrder &order, size_t population)
 {
     if (order.orderMode != BenchmarkSpriteOrderMode::SingleEntryRepair || !order.orderDirty ||
         !order.singleEditCandidateValid || order.singleEditSlot >= population)
         return false;
-
-    const auto entryLess = [](const SpriteDrawEntry &left, const SpriteDrawEntry &right) {
-        PLATFORMATOR_RENDER_CULLING_ADD(spriteOrderComparisons, 1);
-        if (left.zOrder != right.zOrder)
-            return left.zOrder < right.zOrder;
-        return left.registrationSequence < right.registrationSequence;
-    };
 
     const size_t targetRank = order.singleEditSlot;
     size_t oldPos = order.entries.size();
@@ -197,20 +412,21 @@ bool SDLWindow::trySingleEntryRepair(SpriteDrawOrder &order, size_t population)
     const SpriteDrawEntry updated{targetRank, spriteComponents[targetRank]->getZOrder(),
                                   order.sequenceBySlot[targetRank]};
     size_t moves = 0;
-    if (oldPos > 0 && entryLess(updated, order.entries[oldPos - 1]))
+    if (oldPos > 0 && spriteDrawEntryLess(updated, order.entries[oldPos - 1]))
     {
         auto it = std::lower_bound(order.entries.begin(),
-                                   order.entries.begin() + static_cast<std::ptrdiff_t>(oldPos), updated, entryLess);
+                                   order.entries.begin() + static_cast<std::ptrdiff_t>(oldPos), updated,
+                                   spriteDrawEntryLess<SpriteDrawEntry>);
         const size_t newPos = static_cast<size_t>(it - order.entries.begin());
         std::move_backward(it, order.entries.begin() + static_cast<std::ptrdiff_t>(oldPos),
                            order.entries.begin() + static_cast<std::ptrdiff_t>(oldPos + 1));
         order.entries[newPos] = updated;
         moves = oldPos - newPos;
     }
-    else if (oldPos + 1 < order.entries.size() && entryLess(order.entries[oldPos + 1], updated))
+    else if (oldPos + 1 < order.entries.size() && spriteDrawEntryLess(order.entries[oldPos + 1], updated))
     {
         auto it = std::lower_bound(order.entries.begin() + static_cast<std::ptrdiff_t>(oldPos + 1),
-                                   order.entries.end(), updated, entryLess);
+                                   order.entries.end(), updated, spriteDrawEntryLess<SpriteDrawEntry>);
         const size_t newPos = static_cast<size_t>(it - order.entries.begin()) - 1;
         std::move(order.entries.begin() + static_cast<std::ptrdiff_t>(oldPos + 1), it,
                   order.entries.begin() + static_cast<std::ptrdiff_t>(oldPos));
@@ -278,13 +494,7 @@ void SDLWindow::prepareDrawOrder(bool useCachedSelection)
     if (order.entries.size() > 1)
     {
         PLATFORMATOR_RENDER_CULLING_ADD(spriteOrderSorts, 1);
-        std::sort(order.entries.begin(), order.entries.end(),
-                  [](const SpriteDrawEntry &left, const SpriteDrawEntry &right) {
-                      PLATFORMATOR_RENDER_CULLING_ADD(spriteOrderComparisons, 1);
-                      if (left.zOrder != right.zOrder)
-                          return left.zOrder < right.zOrder;
-                      return left.registrationSequence < right.registrationSequence;
-                  });
+        std::sort(order.entries.begin(), order.entries.end(), spriteDrawEntryLess<SpriteDrawEntry>);
     }
 
     order.preparedAll = currentAll;
@@ -316,6 +526,10 @@ void SDLWindow::publishOrderCapacityObservation() const noexcept
     }
 #endif
 }
+
+// ============================================================================
+// Sprite Registration & Change Notifications
+// ============================================================================
 
 void SDLWindow::addSpriteComponent(Sprite *spriteComponent)
 {
@@ -364,14 +578,11 @@ void SDLWindow::removeSpriteComponent(Sprite *spriteComponent)
         return;
     }
 
-    size_t removeIndex = spriteComponent->getWindowIndex();
-    size_t lastIndex = spriteComponents.size() - 1;
+    const size_t removeIndex = spriteComponent->getWindowIndex();
+    const size_t lastIndex = spriteComponents.size() - 1;
 
     if (spriteDrawOrder)
-    {
         spriteDrawOrder->invalidateForPopulationChange();
-    }
-
     if (renderCullingState)
         renderCullingState->removeRecord(removeIndex);
 
@@ -473,13 +684,16 @@ SDLWindow::BenchmarkOrderTiming SDLWindow::consumeBenchmarkSelectionTiming() noe
 }
 #endif
 
+// ============================================================================
+// Batched Sprite Submission & Storage Lifecycle
+// ============================================================================
+
 void SDLWindow::renderSpritesBatched(Camera *camera, const platformator_detail::SpriteRenderView &view,
                                      bool useCachedSelection)
 {
     if (!spriteDrawOrder || spriteDrawOrder->entries.empty())
         return;
 
-    constexpr float inv255 = 1.0f / 255.0f;
     spriteBatchVertices.clear();
     if (const size_t expectedVertices = spriteDrawOrder->entries.size() * 4;
         spriteBatchVertices.capacity() < expectedVertices)
@@ -487,69 +701,7 @@ void SDLWindow::renderSpritesBatched(Camera *camera, const platformator_detail::
         spriteBatchVertices.reserve(expectedVertices);
     }
 
-    SDL_Texture *batchTexture = nullptr;
-    SDL_BlendMode batchTexBlendMode = SDL_BLENDMODE_BLEND;
-    float batchTexR = 1.0f;
-    float batchTexG = 1.0f;
-    float batchTexB = 1.0f;
-    float batchTexA = 1.0f;
-    bool batchPromoteAlphaBlend = false;
-    float batchTexW = 0.0f;
-    float batchTexH = 0.0f;
-    float invBatchTexW = 0.0f;
-    float invBatchTexH = 0.0f;
-    bool batchTexSizeValid = false;
-
-    const auto flushBatch = [&]() {
-        if (spriteBatchVertices.empty() || batchTexture == nullptr)
-            return;
-
-        const size_t vertexCount = spriteBatchVertices.size();
-        const size_t quadCount = vertexCount / 4;
-        const size_t requiredIndices = quadCount * 6;
-        if (spriteBatchIndices.size() < requiredIndices)
-        {
-            const size_t startQuad = spriteBatchIndices.size() / 6;
-            spriteBatchIndices.resize(requiredIndices);
-            for (size_t q = startQuad; q < quadCount; ++q)
-            {
-                const int base = static_cast<int>(q * 4);
-                const size_t dst = q * 6;
-                spriteBatchIndices[dst + 0] = base + 0;
-                spriteBatchIndices[dst + 1] = base + 1;
-                spriteBatchIndices[dst + 2] = base + 2;
-                spriteBatchIndices[dst + 3] = base + 0;
-                spriteBatchIndices[dst + 4] = base + 2;
-                spriteBatchIndices[dst + 5] = base + 3;
-            }
-        }
-
-        if (batchPromoteAlphaBlend)
-        {
-            SDL_SetTextureBlendMode(batchTexture, SDL_BLENDMODE_BLEND);
-        }
-
-        SDL_RenderGeometryRaw(renderer, batchTexture,
-                              &spriteBatchVertices[0].position.x, static_cast<int>(sizeof(SDL_Vertex)),
-                              &spriteBatchVertices[0].color, static_cast<int>(sizeof(SDL_Vertex)),
-                              &spriteBatchVertices[0].tex_coord.x, static_cast<int>(sizeof(SDL_Vertex)),
-                              static_cast<int>(vertexCount),
-                              spriteBatchIndices.data(), static_cast<int>(requiredIndices),
-                              static_cast<int>(sizeof(int)));
-
-        if (isSoftwareRenderer)
-        {
-            // SDL3's software RenderGeometryRaw fast path mutates texture color/alpha mod internally.
-            SDL_SetTextureColorModFloat(batchTexture, batchTexR, batchTexG, batchTexB);
-            SDL_SetTextureAlphaModFloat(batchTexture, batchTexA);
-        }
-        if (batchPromoteAlphaBlend)
-        {
-            SDL_SetTextureBlendMode(batchTexture, batchTexBlendMode);
-        }
-
-        spriteBatchVertices.clear();
-    };
+    SpriteBatcher batcher(renderer, isSoftwareRenderer, spriteBatchVertices, spriteBatchIndices);
 
     for (const auto &entry : spriteDrawOrder->entries)
     {
@@ -586,130 +738,20 @@ void SDLWindow::renderSpritesBatched(Camera *camera, const platformator_detail::
 
         PLATFORMATOR_RENDER_SUBMISSION(sprite);
 
-        if (!std::isfinite(dst.x) || !std::isfinite(dst.y) || !std::isfinite(dst.w) || !std::isfinite(dst.h))
-        {
-            if (useCachedSelection)
-            {
-                angleDegrees = object->getRotationInDegrees();
-            }
-            flushBatch();
-            platformator_detail::submitSpriteRender(renderer, texture, sprite->getSourceRect(), dst, angleDegrees,
-                                                    sprite->getFlip(), sprite->getColor());
-            continue;
-        }
-        if (dst.w <= 0.0f || dst.h <= 0.0f)
+        if (!platformator_detail::isSafeSpriteRenderDestination(dst))
             continue;
 
         const SDL_Color color = sprite->getColor();
-        const bool modulated = platformator_detail::isColorModulated(color);
-        if (texture != batchTexture)
-        {
-            flushBatch();
-            batchTexture = texture;
-            batchTexBlendMode = SDL_BLENDMODE_BLEND;
-            SDL_GetTextureBlendMode(batchTexture, &batchTexBlendMode);
-            batchTexR = 1.0f;
-            batchTexG = 1.0f;
-            batchTexB = 1.0f;
-            batchTexA = 1.0f;
-            SDL_GetTextureColorModFloat(batchTexture, &batchTexR, &batchTexG, &batchTexB);
-            SDL_GetTextureAlphaModFloat(batchTexture, &batchTexA);
-            batchPromoteAlphaBlend = platformator_detail::shouldPromoteSpriteAlphaBlend(color, batchTexBlendMode);
-            batchTexSizeValid = false;
-        }
-        else
-        {
-            const bool promoteAlpha = platformator_detail::shouldPromoteSpriteAlphaBlend(color, batchTexBlendMode);
-            if (promoteAlpha != batchPromoteAlphaBlend)
-            {
-                flushBatch();
-                batchPromoteAlphaBlend = promoteAlpha;
-            }
-        }
+        batcher.prepareTextureState(texture, color);
 
-        float u0 = 0.0f;
-        float v0 = 0.0f;
-        float u1 = 1.0f;
-        float v1 = 1.0f;
-        if (const SDL_FRect *src = sprite->getSourceRect())
-        {
-            if (!batchTexSizeValid)
-            {
-                batchTexSizeValid =
-                    SDL_GetTextureSize(batchTexture, &batchTexW, &batchTexH) && batchTexW > 0.0f && batchTexH > 0.0f;
-                if (batchTexSizeValid)
-                {
-                    invBatchTexW = 1.0f / batchTexW;
-                    invBatchTexH = 1.0f / batchTexH;
-                }
-            }
-            if (batchTexSizeValid)
-            {
-                const SDL_FRect bounds{0, 0, batchTexW, batchTexH};
-                SDL_FRect clipped{};
-                if (!SDL_GetRectIntersectionFloat(src, &bounds, &clipped))
-                    continue;
-                u0 = clipped.x * invBatchTexW;
-                v0 = clipped.y * invBatchTexH;
-                u1 = (clipped.x + clipped.w) * invBatchTexW;
-                v1 = (clipped.y + clipped.h) * invBatchTexH;
-            }
-        }
+        float u0 = 0.0f, v0 = 0.0f, u1 = 1.0f, v1 = 1.0f;
+        if (!batcher.resolveUVs(sprite->getSourceRect(), sprite->getFlip(), u0, v0, u1, v1))
+            continue;
 
-        const SDL_FlipMode flip = sprite->getFlip();
-        if ((flip & SDL_FLIP_HORIZONTAL) != 0)
-            std::swap(u0, u1);
-        if ((flip & SDL_FLIP_VERTICAL) != 0)
-            std::swap(v0, v1);
-
-        const SDL_FColor fcolor =
-            modulated ? SDL_FColor{static_cast<float>(color.r) * inv255, static_cast<float>(color.g) * inv255,
-                                   static_cast<float>(color.b) * inv255, static_cast<float>(color.a) * inv255}
-                      : SDL_FColor{batchTexR, batchTexG, batchTexB, batchTexA};
-
-        float x0, y0, x1, y1, x2, y2, x3, y3;
-        if (object->getRotation() == 0.0f)
-        {
-            const float right = dst.x + dst.w;
-            const float bottom = dst.y + dst.h;
-            x0 = dst.x;
-            y0 = dst.y;
-            x1 = right;
-            y1 = dst.y;
-            x2 = right;
-            y2 = bottom;
-            x3 = dst.x;
-            y3 = bottom;
-        }
-        else
-        {
-            const float hx = dst.w * 0.5f;
-            const float hy = dst.h * 0.5f;
-            const float cx = dst.x + hx;
-            const float cy = dst.y + hy;
-            const float c = object->getCosRotation();
-            const float s = object->getSinRotation();
-            const float hc = hx * c;
-            const float hs = hx * s;
-            const float vc = hy * c;
-            const float vs = hy * s;
-            x0 = cx - hc + vs;
-            y0 = cy - hs - vc;
-            x1 = cx + hc + vs;
-            y1 = cy + hs - vc;
-            x2 = cx + hc - vs;
-            y2 = cy + hs + vc;
-            x3 = cx - hc - vs;
-            y3 = cy - hs + vc;
-        }
-
-        spriteBatchVertices.push_back(SDL_Vertex{{x0, y0}, fcolor, {u0, v0}});
-        spriteBatchVertices.push_back(SDL_Vertex{{x1, y1}, fcolor, {u1, v0}});
-        spriteBatchVertices.push_back(SDL_Vertex{{x2, y2}, fcolor, {u1, v1}});
-        spriteBatchVertices.push_back(SDL_Vertex{{x3, y3}, fcolor, {u0, v1}});
+        batcher.appendQuad(object, dst, color, u0, v0, u1, v1);
     }
 
-    flushBatch();
+    batcher.flush();
 }
 
 void SDLWindow::releaseRenderingStorage() noexcept
@@ -722,9 +764,7 @@ void SDLWindow::releaseRenderingStorage() noexcept
     benchmarkSelectionTiming = {};
 #endif
     if (spriteDrawOrder)
-    {
         spriteDrawOrder->releaseStorage();
-    }
     publishOrderCapacityObservation();
 }
 
@@ -739,4 +779,3 @@ void SDLWindow::clearSceneComponents() noexcept
     mainCamera = nullptr;
     releaseRenderingStorage();
 }
-

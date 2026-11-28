@@ -1033,7 +1033,7 @@ static int      stbi__pnm_is16(stbi__context *s);
 #endif
 
 #ifndef STBI_NO_FAILURE_STRINGS
-#if 1 /* SDL_image change: */
+#if !defined(PLATFORMATOR_BOUNDED_DECODER) /* SDL_image change: */
 static int stbi__err(const char *str)
 {
    SDL_SetError("%s", str);

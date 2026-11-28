@@ -2,6 +2,7 @@
 
 #include "buildconfig.h"
 #include "physics/broadphase/grid.h"
+#include "physics/disjointset.h"
 #include "physics/physicssolver_simd.h"
 #include "platformator/collider.h"
 #include "platformator/collision.h"
@@ -115,6 +116,7 @@ private:
     void flushPendingColliderOperations();
     void clearAll();
 
+    // Pair-ordered (handle order) endpoint rigidbodies using cached island pointers when valid.
     static std::pair<Rigidbody *, Rigidbody *> pairRigidbodies(const ColliderPair *pair) noexcept
     {
         Rigidbody *rbA = pair->cachedRbA;
@@ -125,6 +127,7 @@ private:
         }
         return {pair->getObjectA()->getAttachedRigidbody(), pair->getObjectB()->getAttachedRigidbody()};
     }
+
     static std::pair<bool, bool> pairSupportFlags(const ColliderPair *pair, const Collision *collision) noexcept
     {
         if (collision == nullptr)
@@ -140,11 +143,19 @@ private:
              (referenceIsA ? Collision::SUPPORTS_INCIDENT : Collision::SUPPORTS_REFERENCE)) != 0;
         return {supportsA, supportsB};
     }
-    static bool extractSolverPair(ColliderPair *pair, Collision *&outCollision, Rigidbody *&outRbA,
-                                  Rigidbody *&outRbB) noexcept
+
+    // Reference/incident-ordered contact endpoints (collision->getNormal() points refBody -> incBody).
+    struct SolverContactPair
     {
-        outCollision = pair->getCollision();
-        if (outCollision == nullptr)
+        Collision *collision = nullptr;
+        Rigidbody *refBody = nullptr;
+        Rigidbody *incBody = nullptr;
+    };
+
+    static bool extractSolverContactPair(ColliderPair *pair, SolverContactPair &out) noexcept
+    {
+        out.collision = pair->getCollision();
+        if (out.collision == nullptr)
         {
             return false;
         }
@@ -153,16 +164,21 @@ private:
         {
             return false;
         }
-        const bool refIsA = outCollision->getReferenceObject() == pair->getObjectA();
-        outRbA = refIsA ? rbA : rbB;
-        outRbB = refIsA ? rbB : rbA;
+        const bool refIsA = out.collision->getReferenceObject() == pair->getObjectA();
+        out.refBody = refIsA ? rbA : rbB;
+        out.incBody = refIsA ? rbB : rbA;
         return true;
     }
 
-    void updateSleepingStates(double timeDelta);
+    // ------------------------------------------------------------------------
+    // Narrow-Phase, Support & Body Participation
+    // ------------------------------------------------------------------------
     void broadPhase();
     void narrowPhase();
     void processNarrowPhasePair(ColliderPair *pair);
+    bool needsNarrowPhaseTransition(const ColliderPair *pair, bool noPendingBodyChanges) const noexcept;
+    void applyNarrowPhaseTransition(ColliderPair *pair);
+    void emitNarrowPhaseDebugDraw() const;
     void refreshContactParticipation(ColliderPair *pair);
     void refreshSolverParticipation(ColliderPair *pair, bool live);
     void removePair(ColliderPair *pair);
@@ -181,6 +197,7 @@ private:
 #endif
 
     void commitMovedBodies(double timeDelta, bool useSolverDeltas);
+    void updateSleepingStates(double timeDelta);
 
     struct SoftStepParams
     {
@@ -344,15 +361,35 @@ private:
         std::vector<std::pair<Rigidbody *, uint32_t>> kinematicBodies;
         std::vector<platformator_solver_simd::WideConstraint8> wideSteps;
         std::vector<platformator_solver_simd::WideConstraint8Cold> wideCold;
+
+        void clear() noexcept
+        {
+            constraints.clear();
+            bodies.clear();
+            bodyForces.clear();
+            bodyPrep.clear();
+            writableBodies.clear();
+            bodyLocalIndices.clear();
+            kinematicBodies.clear();
+            wideSteps.clear();
+            wideCold.clear();
+        }
     };
 
     struct SleepScratch
     {
-        std::vector<uint32_t> parent;
-        std::vector<uint8_t> rank;
+        platformator_detail::DisjointSet dsu;
         std::vector<uint8_t> compQuiet;
         std::vector<double> compTimer;
         std::vector<Rigidbody *> toSleep;
+
+        void clear() noexcept
+        {
+            dsu.clear();
+            compQuiet.clear();
+            compTimer.clear();
+            toSleep.clear();
+        }
     };
 
     struct IslandColorGraph
@@ -366,7 +403,7 @@ private:
 
     struct PersistentIsland
     {
-        int32_t id = -1;
+        int32_t id = ColliderPair::INVALID_ISLAND_ID;
         size_t activeListIndex = SIZE_MAX;
         std::vector<Rigidbody *> bodies;
         std::vector<ColliderPair *> contacts;
@@ -375,6 +412,28 @@ private:
         bool maySplit = false;
         bool splitQueued = false;
         bool hasSleepingEndpoint = false;
+    };
+
+    struct IslandSplitScratch
+    {
+        platformator_detail::DisjointSet dsu;
+        std::vector<int32_t> componentOfBody;
+        std::vector<ColliderPair *> remainingContacts;
+        std::vector<Rigidbody *> oldBodies;
+        std::vector<size_t> componentContactCounts;
+        std::vector<int32_t> contactComponents;
+        std::vector<int32_t> componentIslandIds;
+
+        void clear() noexcept
+        {
+            dsu.clear();
+            componentOfBody.clear();
+            remainingContacts.clear();
+            oldBodies.clear();
+            componentContactCounts.clear();
+            contactComponents.clear();
+            componentIslandIds.clear();
+        }
     };
 
     struct SolverPreStepJob
@@ -386,6 +445,88 @@ private:
         uint32_t bodyIndexB = 0;
     };
 
+    struct ColoredSolverScratch
+    {
+        std::vector<SolverPreStepJob> preStepJobs;
+        std::vector<SolverConstraint> constraints;
+        std::vector<uint32_t> bodyLocalIndices;
+        std::vector<SolverBodyState> bodyStates;
+        std::vector<SolverBodyForce> bodyForces;
+        std::vector<BodyPrepCache> bodyPrep;
+        std::vector<std::pair<Rigidbody *, uint32_t>> kinematicBodies;
+        std::vector<WritableSolverBody> writableBodies;
+        std::array<std::vector<platformator_solver_simd::WideConstraint8>, IslandColorGraph::MAX_PARALLEL_COLORS>
+            colorWideBlocks;
+        std::array<std::vector<platformator_solver_simd::WideConstraint8Cold>, IslandColorGraph::MAX_PARALLEL_COLORS>
+            colorWideColdBlocks;
+        std::array<std::vector<SolverConstraint>, IslandColorGraph::MAX_PARALLEL_COLORS> colorTailConstraints;
+        std::vector<SolverConstraint> overflowConstraints;
+
+        void clear() noexcept
+        {
+            preStepJobs.clear();
+            constraints.clear();
+            bodyLocalIndices.clear();
+            bodyStates.clear();
+            bodyForces.clear();
+            bodyPrep.clear();
+            kinematicBodies.clear();
+            writableBodies.clear();
+            for (auto &blocks : colorWideBlocks)
+                blocks.clear();
+            for (auto &coldBlocks : colorWideColdBlocks)
+                coldBlocks.clear();
+            for (auto &tails : colorTailConstraints)
+                tails.clear();
+            overflowConstraints.clear();
+        }
+    };
+
+    struct IslandScheduleScratch
+    {
+        std::vector<int32_t> bucketedIslandIds;
+        std::vector<IslandWorkUnit> islandWorkUnits;
+        std::vector<size_t> jobEnds;
+
+        void clear() noexcept
+        {
+            bucketedIslandIds.clear();
+            islandWorkUnits.clear();
+            jobEnds.clear();
+        }
+    };
+
+    struct NarrowPhaseScratch
+    {
+        std::vector<std::vector<ColliderPair *>> transitionChunks;
+#if PLATFORMATOR_ENABLE_WORK_PROBES
+        std::vector<uint64_t> geometryCounts;
+#endif
+        void clear() noexcept
+        {
+            for (auto &chunk : transitionChunks)
+                chunk.clear();
+#if PLATFORMATOR_ENABLE_WORK_PROBES
+            geometryCounts.clear();
+#endif
+        }
+    };
+
+    struct MoveCommitScratch
+    {
+        std::vector<uint8_t> bodyChanges;
+        std::vector<Collider *> fastColliders;
+
+        void clear() noexcept
+        {
+            bodyChanges.clear();
+            fastColliders.clear();
+        }
+    };
+
+    // ------------------------------------------------------------------------
+    // Persistent Island & Color-Graph Management
+    // ------------------------------------------------------------------------
     int32_t acquirePersistentIsland();
     void recyclePersistentIsland(int32_t islandId);
     void setPersistentIslandActive(PersistentIsland &island, bool active);
@@ -396,6 +537,8 @@ private:
     void removeContactFromPersistentIsland(ColliderPair *pair);
     void updatePersistentIslandContact(ColliderPair *pair, bool solve, Collision::CollisionType response,
                                        Rigidbody *rbA, Rigidbody *rbB);
+    int32_t findIslandComponents(PersistentIsland &island);
+    void partitionIslandByComponents(int32_t islandId, int32_t componentCount);
     void splitPersistentIsland(int32_t islandId);
     void splitDirtyIslands();
     void wakePersistentIslandEndpoints();
@@ -403,10 +546,26 @@ private:
     static void insertContactIntoColorGraph(IslandColorGraph &graph, ColliderPair *pair);
     static void removeContactFromColorGraph(IslandColorGraph &graph, ColliderPair *pair);
     static void ensureIslandColorGraph(PersistentIsland &island);
+
+    // ------------------------------------------------------------------------
+    // Sleeping Evaluation
+    // ------------------------------------------------------------------------
+    static size_t evaluateIslandSleep(const PersistentIsland &island, double timeDelta, SleepScratch &scratch,
+                                      std::vector<Rigidbody *> &toSleep);
+    static void evaluateMixedIslandSleep(const PersistentIsland &island, double timeDelta, SleepScratch &scratch,
+                                         std::vector<Rigidbody *> &toSleep);
+
+    // ------------------------------------------------------------------------
+    // Soft-Contact Solver (Scalar, 8-Wide Island Group, & Graph-Colored)
+    // ------------------------------------------------------------------------
     SoftStepParams makeSoftStepParams(double timeDelta) const noexcept;
     SolverBodyForce makeBodyForce(const Rigidbody *rb) const noexcept;
     void commitWritableBodies(const std::vector<WritableSolverBody> &writable,
                               const std::vector<SolverBodyState> &states) noexcept;
+    void populateColoredIslandBodies(const PersistentIsland &island);
+    bool solveColoredIslandWideAVX2(const PersistentIsland &island, const SoftStepParams &params, bool allowParallel);
+    bool solveColoredIslandScalar(const PersistentIsland &island, const SoftStepParams &params, bool allowParallel,
+                                  bool hasMovingKinematic);
     bool solveColoredIsland(PersistentIsland &island, const SoftStepParams &params, bool allowParallel);
 
     static bool constraintHasActiveRestitution(const SolverConstraint &constraint, float restitutionThreshold) noexcept
@@ -445,64 +604,46 @@ private:
     void solveConstraintsSerial(const SoftStepParams &params);
     void solveIslands(const SoftStepParams &params, size_t totalContacts);
     void resolveKinematicPairs();
-    void resolveKinematicCollision(const Collision *collision, Rigidbody *rbA, Rigidbody *rbB);
+    void resolveKinematicCollision(const Collision *collision, Rigidbody *refBody, Rigidbody *incBody);
     void resolveKinematicBodyAgainstNormal(Rigidbody *rigidBody, const Eigen::Vector2f &approachNormal,
                                            float correctionDistance);
     PhysicsEvent makePhysicsEvent(PhysicsEvent::EventType type, const ColliderPair *pair,
                                   Collision *collision);
 
+    // ------------------------------------------------------------------------
+    // Registered Entities & Persistent World State
+    // ------------------------------------------------------------------------
     std::vector<Rigidbody *> registeredBodies;
-    std::vector<Rigidbody *> awakeDynamicBodies, movingKinematicBodies, sleepCandidates, pendingBodyChanges;
+    std::vector<Rigidbody *> awakeDynamicBodies;
+    std::vector<Rigidbody *> movingKinematicBodies;
+    std::vector<Rigidbody *> sleepCandidates;
+    std::vector<Rigidbody *> pendingBodyChanges;
     std::vector<Collider *> colliderComponents;
+    std::vector<ColliderPair *> contactPairs;
+    std::vector<Rigidbody *> supportDeltaBodies;
+    std::vector<PhysicsEvent> pendingPhysicsEvents;
+
+    // Persistent island & kinematic solver membership
     std::vector<PersistentIsland> persistentIslands;
     std::vector<int32_t> freeIslandIds;
     std::vector<int32_t> activeIslandIds;
     std::vector<int32_t> dirtySplitIslandIds;
     std::vector<ColliderPair *> kinematicSolverPairs;
-    std::vector<uint32_t> splitDsuParent;
-    std::vector<uint8_t> splitDsuRank;
-    std::vector<int32_t> splitComponentOfBody;
-    std::vector<ColliderPair *> splitRemainingContacts;
-    std::vector<Rigidbody *> splitOldBodies;
-    std::vector<size_t> splitComponentContactCounts;
-    std::vector<int32_t> splitContactComponents;
-    std::vector<int32_t> splitComponentIslandIds;
-    std::vector<SolverPreStepJob> solverPreStepJobs;
-    std::vector<SolverConstraint> solverConstraints;
-    std::vector<uint32_t> solverBodyLocalIndices;
-    std::vector<SolverBodyState> solverBodyStates;
-    std::vector<SolverBodyForce> solverBodyForces;
-    std::vector<BodyPrepCache> solverBodyPrep;
-    std::vector<std::pair<Rigidbody *, uint32_t>> solverKinematicBodies;
+
+    // Reusable per-step scratch storage (retains capacity across frames)
+    IslandSplitScratch splitScratch;
+    ColoredSolverScratch coloredScratch;
+    IslandScheduleScratch scheduleScratch;
+    NarrowPhaseScratch narrowScratch;
+    MoveCommitScratch moveScratch;
     std::vector<SolverBodyDelta> solverBodyDeltas;
     uint32_t solverStep = 0;
-    std::vector<WritableSolverBody> solverTouchedWritableBodies;
-    std::array<std::vector<platformator_solver_simd::WideConstraint8>, IslandColorGraph::MAX_PARALLEL_COLORS>
-        colorWideBlocks;
-    std::array<std::vector<platformator_solver_simd::WideConstraint8Cold>, IslandColorGraph::MAX_PARALLEL_COLORS>
-        colorWideColdBlocks;
-    std::array<std::vector<SolverConstraint>, IslandColorGraph::MAX_PARALLEL_COLORS> colorTailConstraints;
-    std::vector<SolverConstraint> overflowConstraints;
-    std::vector<int32_t> bucketedIslandIds;
-    std::vector<IslandWorkUnit> islandWorkUnits;
-    std::vector<std::vector<ColliderPair *>> narrowTransitionChunks;
-#if PLATFORMATOR_ENABLE_WORK_PROBES
-    std::vector<uint64_t> narrowGeometryCounts;
-#endif
     IslandSolverScratch serialSolverScratch;
     tbb::enumerable_thread_specific<IslandSolverScratch> solverIslandScratch;
     SleepScratch serialSleepScratch;
     tbb::enumerable_thread_specific<SleepScratch> parallelSleepScratch;
     std::vector<Rigidbody *> bodiesToSleepScratch;
 
-    std::vector<size_t> solverIslandJobEnds;
-
-    std::vector<ColliderPair *> contactPairs;
-    std::vector<Rigidbody *> supportDeltaBodies;
-    std::vector<PhysicsEvent> pendingPhysicsEvents;
-
-    std::vector<uint8_t> movedBodyChanges;
-    std::vector<Collider *> movedFastColliders;
     Grid grid;
 
     Eigen::Vector2f gravityVector;

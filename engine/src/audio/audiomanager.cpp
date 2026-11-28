@@ -1,13 +1,13 @@
 #include "audio/audiomanager.h"
 
 #include <algorithm>
-#include <cstdio>
 #include <memory>
 #include <stdexcept>
 #include <string>
 
 #include <SDL3/SDL.h>
 
+#include "buildconfig.h"
 #include "platformator/audio.h"
 #include "platformator/audiowrapper.h"
 #include "platformator/gameobject.h"
@@ -21,7 +21,7 @@ AudioManager::AudioManager(bool headless) : mixer(nullptr), mixerInitialized(fal
 
     if (!MIX_Init())
     {
-        std::printf("SDL_mixer could not initialize! SDL_mixer Error: %s", SDL_GetError());
+        PLATFORMATOR_LOG("SDL_mixer could not initialize! SDL_mixer Error: %s\n", SDL_GetError());
         throw std::runtime_error(std::string("Failed to initialize SDL_mixer: ") + SDL_GetError());
     }
     mixerInitialized = true;
@@ -29,7 +29,7 @@ AudioManager::AudioManager(bool headless) : mixer(nullptr), mixerInitialized(fal
     mixer = MIX_CreateMixerDevice(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, nullptr);
     if (mixer == nullptr)
     {
-        std::printf("SDL_mixer could not create a mixer device! SDL_mixer Error: %s", SDL_GetError());
+        PLATFORMATOR_LOG("SDL_mixer could not create a mixer device! SDL_mixer Error: %s\n", SDL_GetError());
         close();
         throw std::runtime_error(std::string("Failed to create SDL_mixer device: ") + SDL_GetError());
     }

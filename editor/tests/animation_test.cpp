@@ -818,19 +818,6 @@ void test_authored_sprite_dimensions_preserved_across_animation_and_preview()
     const auto assetRoot = projectRoot / "assets";
     std::filesystem::create_directories(assetRoot / "animations");
 
-    RuntimeOptions runtimeOptions;
-    runtimeOptions.windowSettings.width = 64;
-    runtimeOptions.windowSettings.height = 64;
-    runtimeOptions.assetRoot = assetRoot.string();
-    platformator::Runtime runtime(runtimeOptions);
-
-    // Part A: Animator::applyCurrentFrame preserves positive authored Sprite width & height
-    GameObject *gameObject = runtime.createGameObject();
-    gameObject->addComponent<Sprite>();
-    Sprite *sprite = gameObject->getComponent<Sprite>();
-    sprite->setWidth(48.0f);
-    sprite->setHeight(64.0f);
-
     std::vector<AnimationFrame> frames;
     AnimationFrame frame1;
     frame1.duration = 0.1f;
@@ -843,6 +830,19 @@ void test_authored_sprite_dimensions_preserved_across_animation_and_preview()
     frames.push_back(frame2);
 
     AnimationClip clip(frames, true, "");
+
+    RuntimeOptions runtimeOptions;
+    runtimeOptions.windowSettings.width = 64;
+    runtimeOptions.windowSettings.height = 64;
+    runtimeOptions.assetRoot = assetRoot.string();
+    platformator::Runtime runtime(runtimeOptions);
+
+    // Part A: Animator::applyCurrentFrame preserves positive authored Sprite width & height
+    GameObject *gameObject = runtime.createGameObject();
+    gameObject->addComponent<Sprite>();
+    Sprite *sprite = gameObject->getComponent<Sprite>();
+    sprite->setWidth(48.0f);
+    sprite->setHeight(64.0f);
 
     gameObject->addComponent<Animator>();
     Animator *animator = gameObject->getComponent<Animator>();

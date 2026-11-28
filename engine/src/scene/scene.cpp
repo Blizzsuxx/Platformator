@@ -1,7 +1,5 @@
 #include "platformator/scene.h"
 
-#include "core/pathmanager.h"
-
 #include <atomic>
 #include <cerrno>
 #include <cstdio>
@@ -9,46 +7,17 @@
 #include <utility>
 
 #include "core/gamemanager.h"
-#include "platformator/gameobject.h"
-#include "platformator/runtime.h"
+#include "core/pathmanager.h"
 #include "core/runtimeaccess.h"
+#include "platformator/gameobject.h"
 #include "scene/referenceserialization.h"
 
-Scene::Scene(std::string filepath) : filePath(std::move(filepath))
+namespace
 {
-}
-
-Scene::~Scene() = default;
-
-std::vector<GameObject *> Scene::loadScene()
+// Writes to a uniquely named sibling temp file, then renames over the destination so readers never
+// observe a partially written scene.
+void writeFileAtomically(const std::filesystem::path &destination, const std::string &contents)
 {
-    auto &manager = platformator_detail::RuntimeAccess::gameManager();
-    manager.assertCanMutate();
-    if (!manager.isIdle())
-        throw std::logic_error("Scene::loadScene requires an idle runtime. Use Runtime::requestLoadScene in callbacks.");
-    manager.loadScene(*this);
-    std::vector<GameObject *> roots;
-    for (auto *object : platformator::Runtime::current().getAllGameObjects())
-        if (!object->getParent())
-            roots.push_back(object);
-    return roots;
-}
-
-void Scene::saveScene(const std::vector<GameObject *> &gameObjects) const
-{
-    auto &manager = platformator_detail::RuntimeAccess::gameManager();
-    manager.assertCanMutate();
-    if (!manager.isIdle())
-        throw std::logic_error("Scene save requires an idle runtime");
-    if (filePath.empty())
-        throw std::invalid_argument("Scene save path is empty");
-    GameManager::PhaseGuard saving(manager, GameManager::Phase::Saving);
-    platformator_detail::SceneReferenceScope references(gameObjects);
-    nlohmann::json document = nlohmann::json::array();
-    for (const auto *object : gameObjects)
-        document.push_back(*object);
-    const auto contents = document.dump(4);
-    const auto destination = resolvedFilePath();
     struct TemporaryFile
     {
         std::filesystem::path path;
@@ -89,6 +58,41 @@ void Scene::saveScene(const std::vector<GameObject *> &gameObjects) const
     if (std::fclose(std::exchange(temporary.file, nullptr)) != 0)
         throw std::runtime_error("Cannot close scene temporary file for '" + destination.string() + "'");
     std::filesystem::rename(temporary.path, destination);
+    temporary.path.clear();
+}
+} // namespace
+
+Scene::Scene(std::string filepath) : filePath(std::move(filepath))
+{
+}
+
+Scene::~Scene() = default;
+
+std::vector<GameObject *> Scene::loadScene()
+{
+    auto &manager = platformator_detail::RuntimeAccess::gameManager();
+    manager.assertCanMutate();
+    if (!manager.isIdle())
+        throw std::logic_error("Scene::loadScene requires an idle runtime. Use Runtime::requestLoadScene in callbacks.");
+    manager.loadScene(*this);
+    return manager.collectRootObjects();
+}
+
+void Scene::saveScene(const std::vector<GameObject *> &gameObjects) const
+{
+    auto &manager = platformator_detail::RuntimeAccess::gameManager();
+    manager.assertCanMutate();
+    if (!manager.isIdle())
+        throw std::logic_error("Scene save requires an idle runtime");
+    if (filePath.empty())
+        throw std::invalid_argument("Scene save path is empty");
+    GameManager::PhaseGuard saving(manager, GameManager::Phase::Saving);
+    platformator_detail::SceneReferenceScope references(gameObjects);
+    nlohmann::json document = nlohmann::json::array();
+    for (const auto *object : gameObjects)
+        document.push_back(*object);
+    const auto contents = document.dump(4);
+    writeFileAtomically(resolvedFilePath(), contents);
 }
 
 std::filesystem::path Scene::resolvedFilePath() const

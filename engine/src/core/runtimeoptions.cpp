@@ -2,9 +2,9 @@
 
 #include <algorithm>
 #include <cctype>
+#include <charconv>
 #include <limits>
 #include <stdexcept>
-#include <charconv>
 
 namespace
 {
@@ -49,6 +49,48 @@ namespace
             throw std::runtime_error(argumentName + " must be a positive native descriptor value.");
         target = static_cast<std::uintptr_t>(parsedValue);
     }
+
+    struct EditorSessionArguments
+    {
+        bool requested = false;
+        std::optional<std::uintptr_t> commandReadHandle;
+        std::optional<std::uintptr_t> eventWriteHandle;
+        std::optional<std::uintptr_t> frameMappingHandle;
+
+        bool parse(int argc, char *args[], int &index, const std::string &argument)
+        {
+            if (argument == "--editor-session-v1")
+            {
+                if (requested)
+                    throw std::runtime_error("--editor-session-v1 may be specified only once.");
+                requested = true;
+            }
+            else if (argument == "--editor-session-command-fd")
+                parseUniqueSessionDescriptor(argc, args, index, argument, commandReadHandle);
+            else if (argument == "--editor-session-event-fd")
+                parseUniqueSessionDescriptor(argc, args, index, argument, eventWriteHandle);
+            else if (argument == "--editor-session-frame-fd")
+                parseUniqueSessionDescriptor(argc, args, index, argument, frameMappingHandle);
+            else
+                return false;
+            return true;
+        }
+
+        std::optional<EditorSessionLaunchOptions> validate(const RuntimeOptions &options) const
+        {
+            if (!requested && !commandReadHandle && !eventWriteHandle && !frameMappingHandle)
+                return std::nullopt;
+            if (!requested || !commandReadHandle || !eventWriteHandle || !frameMappingHandle)
+                throw std::runtime_error("editor-session v1 requires its command, event, and frame descriptors.");
+            constexpr EditorSessionLaunchOptions expected{};
+            if (*commandReadHandle != expected.commandReadHandle || *eventWriteHandle != expected.eventWriteHandle ||
+                *frameMappingHandle != expected.frameMappingHandle)
+                throw std::runtime_error("editor-session v1 descriptors must be mapped to child descriptors 3, 4, and 5.");
+            if (options.smokeSteps != 0 || options.windowSettings.headless)
+                throw std::runtime_error("editor-session v1 cannot be combined with smoke or headless runtime modes.");
+            return EditorSessionLaunchOptions{*commandReadHandle, *eventWriteHandle, *frameMappingHandle};
+        }
+    };
 
     std::string normalizeArgumentValue(std::string value)
     {
@@ -114,17 +156,22 @@ namespace
     DebugSettings parseDebugDrawSettings(const std::string &value)
     {
         const std::string normalizedValue = normalizeArgumentValue(value);
-        if (normalizedValue == "all")
-        {
-            return {false, true, true, true, true, true};
-        }
-
         if (normalizedValue == "none" || normalizedValue == "default")
         {
             return {};
         }
 
-        DebugSettings debugSettings{false, false, false, false, false, false};
+        DebugSettings debugSettings{};
+        if (normalizedValue == "all")
+        {
+            debugSettings.showColliders = true;
+            debugSettings.showCollisionPoints = true;
+            debugSettings.showCollisionNormals = true;
+            debugSettings.showGridCells = true;
+            debugSettings.showFps = true;
+            return debugSettings;
+        }
+
         size_t tokenStart = 0;
 
         while (tokenStart <= value.size())
@@ -154,10 +201,7 @@ RuntimeOptions parseRuntimeOptions(int argc, char *args[], const std::string &de
 {
     RuntimeOptions runtimeOptions{defaultScenePath, {}, {}};
     bool scenePathSpecified = false;
-    bool editorSessionRequested = false;
-    std::optional<std::uintptr_t> commandReadHandle;
-    std::optional<std::uintptr_t> eventWriteHandle;
-    std::optional<std::uintptr_t> frameMappingHandle;
+    EditorSessionArguments editorSession;
 
     for (int index = 1; index < argc; index++)
     {
@@ -175,28 +219,8 @@ RuntimeOptions parseRuntimeOptions(int argc, char *args[], const std::string &de
             runtimeOptions.assetRoot = requireArgumentValue(argc, args, index, argument);
             continue;
         }
-        if (argument == "--editor-session-v1")
-        {
-            if (editorSessionRequested)
-                throw std::runtime_error("--editor-session-v1 may be specified only once.");
-            editorSessionRequested = true;
+        if (editorSession.parse(argc, args, index, argument))
             continue;
-        }
-        if (argument == "--editor-session-command-fd")
-        {
-            parseUniqueSessionDescriptor(argc, args, index, argument, commandReadHandle);
-            continue;
-        }
-        if (argument == "--editor-session-event-fd")
-        {
-            parseUniqueSessionDescriptor(argc, args, index, argument, eventWriteHandle);
-            continue;
-        }
-        if (argument == "--editor-session-frame-fd")
-        {
-            parseUniqueSessionDescriptor(argc, args, index, argument, frameMappingHandle);
-            continue;
-        }
         if (argument == "--smoke-steps")
         {
             runtimeOptions.smokeSteps = parsePositive<std::uint64_t>(
@@ -271,18 +295,6 @@ RuntimeOptions parseRuntimeOptions(int argc, char *args[], const std::string &de
         throw std::runtime_error("Unknown runtime argument: " + argument);
     }
 
-    const bool anySessionDescriptor = commandReadHandle || eventWriteHandle || frameMappingHandle;
-    if (editorSessionRequested || anySessionDescriptor)
-    {
-        if (!editorSessionRequested || !commandReadHandle || !eventWriteHandle || !frameMappingHandle)
-            throw std::runtime_error("editor-session v1 requires its command, event, and frame descriptors.");
-        if (*commandReadHandle != 3 || *eventWriteHandle != 4 || *frameMappingHandle != 5)
-            throw std::runtime_error("editor-session v1 descriptors must be mapped to child descriptors 3, 4, and 5.");
-        if (runtimeOptions.smokeSteps != 0 || runtimeOptions.windowSettings.headless)
-            throw std::runtime_error("editor-session v1 cannot be combined with smoke or headless runtime modes.");
-        runtimeOptions.editorSession = EditorSessionLaunchOptions{
-            *commandReadHandle, *eventWriteHandle, *frameMappingHandle};
-    }
-
+    runtimeOptions.editorSession = editorSession.validate(runtimeOptions);
     return runtimeOptions;
 }

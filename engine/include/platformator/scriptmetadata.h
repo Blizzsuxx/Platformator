@@ -122,6 +122,10 @@ nlohmann::json script_descriptor_json(const ScriptDescriptor &descriptor);
 
 namespace metadata_detail
 {
+// ============================================================================
+// Field Descriptor Traits (editor schema)
+// ============================================================================
+
 template <typename T, typename Enable = void> struct ScriptFieldTraits
 {
     static constexpr ScriptFieldKind kind = ScriptFieldKind::OpaqueJson;
@@ -374,16 +378,11 @@ template <typename Owner, typename T> ScriptFieldDescriptor describe_script_fiel
 {
     return ScriptFieldTraits<std::remove_cv_t<T>>::describe(name);
 }
-} // namespace metadata_detail
 
-template <typename Owner, typename T> ScriptFieldDescriptor describe_script_field(std::string_view name,
-                                                                                  T Owner::*member)
-{
-    return metadata_detail::describe_script_field(name, member);
-}
+// ============================================================================
+// Runtime Field Inspection (read-only, bounded)
+// ============================================================================
 
-namespace metadata_detail
-{
 template <typename T> struct IsOptional : std::false_type
 {
 };
@@ -618,6 +617,12 @@ void append_script_field(ScriptInspectionResult &result, std::string_view name, 
 }
 
 } // namespace metadata_detail
+
+template <typename Owner, typename T> ScriptFieldDescriptor describe_script_field(std::string_view name,
+                                                                                  T Owner::*member)
+{
+    return metadata_detail::describe_script_field(name, member);
+}
 
 inline ScriptInspectionLimits bounded_script_inspection_limits(ScriptInspectionLimits limits) noexcept
 {

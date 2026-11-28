@@ -287,6 +287,46 @@ void DebugDraw::addCollisionDebugObject(const Collision &collision)
     }
 }
 
+void DebugDraw::collectPhysicsDebugObjects()
+{
+    if (!showGridCells && !showColliders)
+    {
+        return;
+    }
+
+    PhysicsManager *physicsManager = platformator_detail::RuntimeAccess::physicsManager();
+    if (physicsManager == nullptr)
+    {
+        return;
+    }
+
+    if (showGridCells)
+    {
+        for (const auto &cellEntry : physicsManager->getGrid().getCells())
+        {
+            addGridCellDebugObject(cellEntry.first);
+        }
+    }
+    if (showColliders)
+    {
+        for (Collider *collider : physicsManager->getColliders())
+        {
+            if (collider == nullptr)
+            {
+                continue;
+            }
+            if (collider->getColliderType() == ColliderType::BoxCollider)
+            {
+                addBoxColliderDebugObject(*static_cast<const BoxCollider *>(collider));
+            }
+            else if (collider->getColliderType() == ColliderType::CircleCollider)
+            {
+                addCircleColliderDebugObject(*static_cast<const CircleCollider *>(collider));
+            }
+        }
+    }
+}
+
 void DebugDraw::clearDebugObjects()
 {
     debugObjectsBuffer.clear();

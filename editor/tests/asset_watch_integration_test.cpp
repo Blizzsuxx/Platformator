@@ -1761,10 +1761,10 @@ void test_project_session_wakes_owner_on_native_completion()
     std::filesystem::create_directories(assets);
     std::ofstream(project / "CMakeLists.txt") << "project(wake-test)\n";
 
-    ProjectSession session(project, assets);
     std::mutex mutex;
     std::condition_variable condition;
     bool woke = false;
+    ProjectSession session(project, assets);
     session.set_wake_callback([&] {
         {
             std::lock_guard lock(mutex);

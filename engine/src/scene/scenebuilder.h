@@ -40,6 +40,7 @@ class SceneBuildContext : public platformator_detail::RetainingReferenceResolver
     BaseObject *findHandle(platformator::ObjectHandle handle, platformator_detail::ObjectKind kind) override;
 
   private:
+    GameObject *allocateStagedObject();
     GameObject *buildObject(const nlohmann::json &record, GameObject *parent = nullptr);
     void addIdentity(BaseObject &object, platformator_detail::ObjectKind kind);
     std::string path;

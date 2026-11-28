@@ -353,6 +353,46 @@ AnimationClip *AssetStore::findAnimationClip(const std::string &filePath)
     return animations.find(filePath);
 }
 
+void AssetStore::rebindReloadedClipFrameTextures(AnimationClip &replacement, const nlohmann::json &preparedDocument)
+{
+    // Deserialization can resolve a frame through a cached logical request
+    // alias that still points at the prior symlink target. The editor has
+    // already prepared current frame textures before this owner-thread commit;
+    // bind those current wrappers into the replacement clip and rebind each
+    // serialized request so future Runtime loads observe the adopted target.
+    const auto preparedFrames = preparedDocument.find("frames");
+    if (preparedFrames == preparedDocument.end() || !preparedFrames->is_array())
+        return;
+
+    const auto frameCount = std::min(preparedFrames->size(), replacement.frames.size());
+    for (std::size_t index = 0; index < frameCount; ++index)
+    {
+        const auto &frame = (*preparedFrames)[index];
+        if (!frame.is_object())
+        {
+            continue;
+        }
+        const auto texturePath = frame.find("textureWrapperFilePath");
+        if (texturePath == frame.end() || !texturePath->is_string())
+        {
+            continue;
+        }
+        const auto &request = texturePath->get_ref<const std::string &>();
+        if (request.empty())
+        {
+            continue;
+        }
+        const auto resolvedTexture = PathManager::getInstance().resolveAssetPath(request);
+        const auto cachedTexture = textures.entries.find(resolvedTexture.canonicalPath);
+        if (cachedTexture == textures.entries.end())
+        {
+            continue;
+        }
+        replacement.frames[index].setTextureWrapper(cachedTexture->second.get());
+        textures.aliases.rebind(request, resolvedTexture.canonicalPath);
+    }
+}
+
 AnimationClip *AssetStore::reloadAnimationClip(const std::string &filePath, const nlohmann::json &preparedDocument)
 {
     if (filePath.empty())
@@ -372,42 +412,7 @@ AnimationClip *AssetStore::reloadAnimationClip(const std::string &filePath, cons
             throw std::runtime_error("Animation '" + filePath + "': " + error.what());
         }
 
-        // Deserialization can resolve a frame through a cached logical request
-        // alias that still points at the prior symlink target. The editor has
-        // already prepared current frame textures before this owner-thread commit;
-        // bind those current wrappers into the replacement clip and rebind each
-        // serialized request so future Runtime loads observe the adopted target.
-        const auto preparedFrames = preparedDocument.find("frames");
-        if (preparedFrames != preparedDocument.end() && preparedFrames->is_array())
-        {
-            const auto frameCount = std::min(preparedFrames->size(), replacement->frames.size());
-            for (std::size_t index = 0; index < frameCount; ++index)
-            {
-                const auto &frame = (*preparedFrames)[index];
-                if (!frame.is_object())
-                {
-                    continue;
-                }
-                const auto texturePath = frame.find("textureWrapperFilePath");
-                if (texturePath == frame.end() || !texturePath->is_string())
-                {
-                    continue;
-                }
-                const auto &request = texturePath->get_ref<const std::string &>();
-                if (request.empty())
-                {
-                    continue;
-                }
-                const auto resolvedTexture = PathManager::getInstance().resolveAssetPath(request);
-                const auto cachedTexture = textures.entries.find(resolvedTexture.canonicalPath);
-                if (cachedTexture == textures.entries.end())
-                {
-                    continue;
-                }
-                replacement->frames[index].setTextureWrapper(cachedTexture->second.get());
-                textures.aliases.rebind(request, resolvedTexture.canonicalPath);
-            }
-        }
+        rebindReloadedClipFrameTextures(*replacement, preparedDocument);
         replacement->setFilePath(resolved.canonicalPath);
         return replacement;
     });
@@ -446,7 +451,7 @@ Template *AssetStore::loadTemplate(const std::string &filePath, bool required, b
                           struct ActiveLoadGuard
                           {
                               std::unordered_set<std::string> &active;
-                              std::string key;
+                              const std::string &key;
                               ~ActiveLoadGuard()
                               {
                                   active.erase(key);
@@ -471,6 +476,11 @@ Template *AssetStore::loadTemplate(const std::string &filePath, bool required, b
 
 void AssetStore::freeTemplate(Template *tpl)
 {
+    if (tpl == nullptr)
+    {
+        return;
+    }
+    PLATFORMATOR_LOG("Freeing template: %s\n", tpl->getFilePath().c_str());
     templates.free(tpl);
 }
 

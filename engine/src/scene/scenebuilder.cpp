@@ -27,6 +27,56 @@ namespace
 using Json = nlohmann::json;
 using Kind = platformator_detail::ObjectKind;
 using platformator_detail::positive;
+using platformator_detail::objectKind;
+
+template <typename T> std::pair<std::unique_ptr<Component>, Kind> readComponent(const Json &entry)
+{
+    auto component = std::make_unique<T>();
+    from_json(entry, *component);
+    return {std::move(component), objectKind<T>()};
+}
+
+template <typename T>
+std::pair<std::unique_ptr<Component>, Kind> readComponent(const Json &entry, platformator::ReferenceResolver &resolver)
+{
+    auto component = std::make_unique<T>();
+    deserialize(entry, *component, resolver);
+    return {std::move(component), objectKind<T>()};
+}
+
+std::pair<std::unique_ptr<Component>, Kind> buildComponentFromJson(
+    const Json &entry, platformator::ReferenceResolver &resolver)
+{
+    switch (entry.at("type").get<int>())
+    {
+    case ANIMATOR:
+        return readComponent<Animator>(entry, resolver);
+    case AUDIO:
+        return readComponent<Audio>(entry, resolver);
+    case CAMERA:
+        positive(entry.at("width").get<float>(), "camera.width");
+        positive(entry.at("height").get<float>(), "camera.height");
+        return readComponent<Camera>(entry);
+    case COLLIDER:
+        switch (entry.at("colliderType").get<int>())
+        {
+        case static_cast<int>(ColliderType::BoxCollider):
+            return readComponent<BoxCollider>(entry);
+        case static_cast<int>(ColliderType::CircleCollider):
+            return readComponent<CircleCollider>(entry);
+        default:
+            throw std::invalid_argument("Unknown collider shape");
+        }
+    case RIGID_BODY:
+        return readComponent<Rigidbody>(entry);
+    case SCRIPT:
+        return readComponent<ScriptComponent>(entry);
+    case SPRITE:
+        return readComponent<Sprite>(entry, resolver);
+    default:
+        throw std::invalid_argument("Unknown component type");
+    }
+}
 } // namespace
 
 namespace platformator_detail
@@ -73,56 +123,11 @@ GameObject *buildObjectSubtree(const Json &record, platformator::ReferenceResolv
     object->setRotation(rotation);
     object->setScale(scale);
     object->setActive(record.at("active").get<bool>());
-    const auto makeFromJson = [&]<typename T>(Kind k, const nlohmann::json &entry) -> std::pair<std::unique_ptr<Component>, Kind> {
-        auto value = std::make_unique<T>();
-        from_json(entry, *value);
-        return {std::move(value), k};
-    };
-    const auto makeDeserialized = [&]<typename T>(Kind k, const nlohmann::json &entry) -> std::pair<std::unique_ptr<Component>, Kind> {
-        auto value = std::make_unique<T>();
-        deserialize(entry, *value, resolver);
-        return {std::move(value), k};
-    };
     for (const auto &entry : record.at("components"))
     {
-        std::unique_ptr<Component> component;
-        Kind kind;
-        switch (entry.at("type").get<int>())
-        {
-        case ANIMATOR:
-            std::tie(component, kind) = makeDeserialized.template operator()<Animator>(Kind::Animator, entry);
-            break;
-        case AUDIO:
-            std::tie(component, kind) = makeDeserialized.template operator()<Audio>(Kind::Audio, entry);
-            break;
-        case CAMERA:
-            positive(entry.at("width").get<float>(), "camera.width");
-            positive(entry.at("height").get<float>(), "camera.height");
-            std::tie(component, kind) = makeFromJson.template operator()<Camera>(Kind::Camera, entry);
-            break;
-        case COLLIDER:
-            if (entry.at("colliderType").get<int>() == static_cast<int>(ColliderType::BoxCollider))
-                std::tie(component, kind) = makeFromJson.template operator()<BoxCollider>(Kind::BoxCollider, entry);
-            else if (entry.at("colliderType").get<int>() == static_cast<int>(ColliderType::CircleCollider))
-                std::tie(component, kind) = makeFromJson.template operator()<CircleCollider>(Kind::CircleCollider, entry);
-            else
-                throw std::invalid_argument("Unknown collider shape");
-            break;
-        case RIGID_BODY:
-            std::tie(component, kind) = makeFromJson.template operator()<Rigidbody>(Kind::Rigidbody, entry);
-            break;
-        case SCRIPT:
-            std::tie(component, kind) = makeFromJson.template operator()<ScriptComponent>(Kind::ScriptComponent, entry);
-            break;
-        case SPRITE:
-            std::tie(component, kind) = makeDeserialized.template operator()<Sprite>(Kind::Sprite, entry);
-            break;
-        default:
-            throw std::invalid_argument("Unknown component type");
-        }
-        auto *raw = component.get();
-        object->addComponent(raw);
-        component.release();
+        auto [component, kind] = buildComponentFromJson(entry, resolver);
+        object->addComponent(component.get());
+        auto *raw = component.release();
         if (sink.onIdentity)
             sink.onIdentity(sink.context, *raw, kind);
     }
@@ -161,24 +166,26 @@ void SceneBuildContext::addIdentity(BaseObject &object, Kind kind)
     }
 }
 
+GameObject *SceneBuildContext::allocateStagedObject()
+{
+    auto *object = new GameObject();
+    try
+    {
+        objects.push_back(object);
+    }
+    catch (...)
+    {
+        delete object;
+        throw;
+    }
+    return object;
+}
+
 GameObject *SceneBuildContext::buildObject(const Json &record, GameObject *parent)
 {
     const platformator_detail::SubtreeBuildSink sink{
         this,
-        [](void *context) -> GameObject * {
-            auto *self = static_cast<SceneBuildContext *>(context);
-            auto *object = new GameObject();
-            try
-            {
-                self->objects.push_back(object);
-            }
-            catch (...)
-            {
-                delete object;
-                throw;
-            }
-            return object;
-        },
+        [](void *context) -> GameObject * { return static_cast<SceneBuildContext *>(context)->allocateStagedObject(); },
         [](void *context, BaseObject &obj, Kind kind) {
             static_cast<SceneBuildContext *>(context)->addIdentity(obj, kind);
         }};
@@ -215,16 +222,7 @@ void SceneBuildContext::prepare(const std::string &sceneFilePath)
         {
             if (nextFileId > static_cast<int64_t>(std::numeric_limits<int>::max()) - 1)
                 throw std::overflow_error("No IDs available for fallback camera");
-            auto *object = new GameObject();
-            try
-            {
-                objects.push_back(object);
-            }
-            catch (...)
-            {
-                delete object;
-                throw;
-            }
+            auto *object = allocateStagedObject();
             object->setId(static_cast<int>(nextFileId++));
             object->setName("Main Camera");
             object->addComponent<Camera>();

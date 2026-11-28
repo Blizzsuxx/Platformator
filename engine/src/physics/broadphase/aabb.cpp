@@ -57,6 +57,26 @@ void AABB::add(Collider *element)
     intervalListY.add(&binding->yBinding);
 }
 
+template <typename FnX, typename FnY>
+void AABB::runAxesInParallelOrSerial(bool parallel, FnX &&fnX, FnY &&fnY)
+{
+    if (parallel && PhysicsManager::hasParallelPhysicsWorkers())
+    {
+        const bool hadSink = activeDeltaSink != nullptr;
+        activeDeltaSink = nullptr;
+        tbb::parallel_invoke(std::forward<FnX>(fnX), std::forward<FnY>(fnY));
+        if (hadSink)
+        {
+            beginDeltaBatch();
+        }
+    }
+    else
+    {
+        fnX();
+        fnY();
+    }
+}
+
 void AABB::addBatch(const std::vector<Collider *> &colliders)
 {
     if (colliders.size() < 32)
@@ -98,61 +118,33 @@ void AABB::addBatch(const std::vector<Collider *> &colliders)
             yProxies.push_back(&binding->yBinding.maxProxy);
         }
 
-        auto buildX = [&]() {
-            std::sort(xProxies.begin(), xProxies.end(), proxySortLess);
-            intervalListX.addBulkEmpty(xProxies);
-        };
-        auto buildY = [&]() {
-            std::sort(yProxies.begin(), yProxies.end(), proxySortLess);
-            intervalListY.addBulkEmpty(yProxies);
-        };
-
-        if (added.size() >= 64 && PhysicsManager::hasParallelPhysicsWorkers())
-        {
-            const bool hadSink = activeDeltaSink != nullptr;
-            activeDeltaSink = nullptr;
-            tbb::parallel_invoke(buildX, buildY);
-            if (hadSink)
-            {
-                beginDeltaBatch();
-            }
-        }
-        else
-        {
-            buildX();
-            buildY();
-        }
+        runAxesInParallelOrSerial(
+            added.size() >= 64,
+            [&]() {
+                std::sort(xProxies.begin(), xProxies.end(), proxySortLess);
+                intervalListX.addBulkEmpty(xProxies);
+            },
+            [&]() {
+                std::sort(yProxies.begin(), yProxies.end(), proxySortLess);
+                intervalListY.addBulkEmpty(yProxies);
+            });
         return;
     }
 
-    auto insertX = [&]() {
-        for (ColliderBinding *binding : added)
-        {
-            intervalListX.add(&binding->xBinding);
-        }
-    };
-    auto insertY = [&]() {
-        for (ColliderBinding *binding : added)
-        {
-            intervalListY.add(&binding->yBinding);
-        }
-    };
-
-    if (added.size() >= 64 && PhysicsManager::hasParallelPhysicsWorkers())
-    {
-        const bool hadSink = activeDeltaSink != nullptr;
-        activeDeltaSink = nullptr;
-        tbb::parallel_invoke(insertX, insertY);
-        if (hadSink)
-        {
-            beginDeltaBatch();
-        }
-    }
-    else
-    {
-        insertX();
-        insertY();
-    }
+    runAxesInParallelOrSerial(
+        added.size() >= 64,
+        [&]() {
+            for (ColliderBinding *binding : added)
+            {
+                intervalListX.add(&binding->xBinding);
+            }
+        },
+        [&]() {
+            for (ColliderBinding *binding : added)
+            {
+                intervalListY.add(&binding->yBinding);
+            }
+        });
 }
 
 void AABB::beginDeltaBatch()
@@ -278,33 +270,20 @@ void AABB::removeBatch(const std::vector<Collider *> &colliders)
         return;
     }
 
-    auto removeX = [&]() {
-        for (ColliderBinding *binding : toRemove)
-        {
-            intervalListX.remove(&binding->xBinding);
-        }
-    };
-    auto removeY = [&]() {
-        for (ColliderBinding *binding : toRemove)
-        {
-            intervalListY.remove(&binding->yBinding);
-        }
-    };
-    if (PhysicsManager::hasParallelPhysicsWorkers())
-    {
-        const bool hadSink = activeDeltaSink != nullptr;
-        activeDeltaSink = nullptr;
-        tbb::parallel_invoke(removeX, removeY);
-        if (hadSink)
-        {
-            beginDeltaBatch();
-        }
-    }
-    else
-    {
-        removeX();
-        removeY();
-    }
+    runAxesInParallelOrSerial(
+        true,
+        [&]() {
+            for (ColliderBinding *binding : toRemove)
+            {
+                intervalListX.remove(&binding->xBinding);
+            }
+        },
+        [&]() {
+            for (ColliderBinding *binding : toRemove)
+            {
+                intervalListY.remove(&binding->yBinding);
+            }
+        });
 
     for (ColliderBinding *binding : toRemove)
     {

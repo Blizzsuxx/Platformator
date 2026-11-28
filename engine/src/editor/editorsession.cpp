@@ -63,6 +63,25 @@ bool validate_pipe_descriptor(int descriptor, int requiredAccess, const char *la
     return true;
 }
 
+void *validate_and_map_frame_descriptor(int mappingFd, std::size_t &outMappingBytes)
+{
+    const int descriptorFlags = ::fcntl(mappingFd, F_GETFD);
+    const int statusFlags = ::fcntl(mappingFd, F_GETFL);
+    struct stat status{};
+    if (descriptorFlags < 0 || statusFlags < 0 || ::fstat(mappingFd, &status) != 0)
+        throw std::invalid_argument(system_error("cannot inspect session frame mapping", errno));
+    if ((statusFlags & O_ACCMODE) != O_RDWR || !S_ISREG(status.st_mode) ||
+        status.st_size < 0 || static_cast<std::uint64_t>(status.st_size) != FrameMappingBytes)
+        throw std::invalid_argument("frame mapping descriptor must name exactly two 640x360 RGBA8 slots");
+    if (::fcntl(mappingFd, F_SETFD, descriptorFlags | FD_CLOEXEC) < 0)
+        throw std::runtime_error(system_error("cannot make frame mapping close-on-exec", errno));
+    void *address = ::mmap(nullptr, FrameMappingBytes, PROT_READ | PROT_WRITE, MAP_SHARED, mappingFd, 0);
+    if (address == MAP_FAILED)
+        throw std::runtime_error(system_error("cannot map editor-session frame slots", errno));
+    outMappingBytes = FrameMappingBytes;
+    return address;
+}
+
 enum class WriteStatus
 {
     Progress,
@@ -145,23 +164,7 @@ EditorSessionService::EditorSessionService(EditorSessionLaunchOptions launch)
         if (!validate_pipe_descriptor(commandRead_, O_RDONLY, "command descriptor", error) ||
             !validate_pipe_descriptor(eventWrite_, O_WRONLY, "event descriptor", error))
             throw std::invalid_argument(error);
-        const int mappingDescriptorFlags = ::fcntl(mappingFd_, F_GETFD);
-        const int mappingStatusFlags = ::fcntl(mappingFd_, F_GETFL);
-        struct stat mappingStatus{};
-        if (mappingDescriptorFlags < 0 || mappingStatusFlags < 0 || ::fstat(mappingFd_, &mappingStatus) != 0)
-            throw std::invalid_argument(system_error("cannot inspect session frame mapping", errno));
-        if ((mappingStatusFlags & O_ACCMODE) != O_RDWR || !S_ISREG(mappingStatus.st_mode) ||
-            mappingStatus.st_size < 0 || static_cast<std::uint64_t>(mappingStatus.st_size) != FrameMappingBytes)
-            throw std::invalid_argument("frame mapping descriptor must name exactly two 640x360 RGBA8 slots");
-        if (::fcntl(mappingFd_, F_SETFD, mappingDescriptorFlags | FD_CLOEXEC) < 0)
-            throw std::runtime_error(system_error("cannot make frame mapping close-on-exec", errno));
-        mappingAddress_ = ::mmap(nullptr, FrameMappingBytes, PROT_READ | PROT_WRITE, MAP_SHARED, mappingFd_, 0);
-        if (mappingAddress_ == MAP_FAILED)
-        {
-            mappingAddress_ = nullptr;
-            throw std::runtime_error(system_error("cannot map editor-session frame slots", errno));
-        }
-        mappingBytes_ = FrameMappingBytes;
+        mappingAddress_ = validate_and_map_frame_descriptor(mappingFd_, mappingBytes_);
     }
     catch (...)
     {
@@ -390,7 +393,8 @@ bool EditorSessionService::handle_pause_state_request(const editor_session::Mess
     return true;
 }
 
-bool EditorSessionService::handle_input_request(const editor_session::Message &message, ::SDLWindow *window)
+std::optional<bool> EditorSessionService::try_handle_input_request(const editor_session::Message &message,
+                                                                   ::SDLWindow *window)
 {
     if (message.type == "release_all_inputs")
     {
@@ -408,10 +412,10 @@ bool EditorSessionService::handle_input_request(const editor_session::Message &m
         heldKeys_.clear();
         return true;
     }
-    if (!capabilities_.inputForwarding)
-        return false;
     if (message.type == "key_down" || message.type == "key_up")
     {
+        if (!capabilities_.inputForwarding)
+            return false;
         const bool down = message.type == "key_down";
         const auto scancode = message.body.value("scancode", 0);
         const auto keycode = message.body.value("keycode", 0);
@@ -438,6 +442,8 @@ bool EditorSessionService::handle_input_request(const editor_session::Message &m
     }
     if (message.type == "mouse_move")
     {
+        if (!capabilities_.inputForwarding)
+            return false;
         const auto x = message.body.value("x", 0.0f);
         const auto y = message.body.value("y", 0.0f);
         SDL_Event event{};
@@ -451,6 +457,8 @@ bool EditorSessionService::handle_input_request(const editor_session::Message &m
     }
     if (message.type == "mouse_button")
     {
+        if (!capabilities_.inputForwarding)
+            return false;
         const auto button = message.body.value("button", 1);
         const auto down = message.body.value("down", true);
         const auto x = message.body.value("x", 0.0f);
@@ -466,7 +474,7 @@ bool EditorSessionService::handle_input_request(const editor_session::Message &m
         SDL_PushEvent(&event);
         return true;
     }
-    return false;
+    return std::nullopt;
 }
 
 bool EditorSessionService::accept_request(editor_session::Message message, std::uint64_t runtimeSerial,
@@ -547,9 +555,8 @@ bool EditorSessionService::accept_request(editor_session::Message message, std::
         frameSlotSequences_[slotIndex] = 0;
         return true;
     }
-    if (message.type == "key_down" || message.type == "key_up" || message.type == "mouse_move" ||
-        message.type == "mouse_button" || message.type == "release_all_inputs")
-        return handle_input_request(message, window);
+    if (const auto inputResult = try_handle_input_request(message, window))
+        return *inputResult;
     if (message.type == "list_objects")
         return handle_list_objects(message, runtimeSerial);
     if (message.type == "inspect_object")
@@ -559,42 +566,27 @@ bool EditorSessionService::accept_request(editor_session::Message message, std::
     return false;
 }
 
-void EditorSessionService::capture_frame(std::uint64_t runtimeSerial, ::SDL_Renderer *renderer,
-                                         int width, int height) noexcept
+std::optional<std::size_t> EditorSessionService::try_acquire_frame_slot(
+    std::chrono::steady_clock::time_point now) const noexcept
 {
-    if (!captureVisible_ || !capabilities_.frameStream || failed_ || stopRequested_ || renderer == nullptr)
-        return;
-    const auto now = std::chrono::steady_clock::now();
     if (lastFrameCapture_ != std::chrono::steady_clock::time_point{} &&
         now - lastFrameCapture_ < MinimumCaptureInterval)
-        return;
+        return std::nullopt;
     if (outgoing_.size() >= editor_session::MaximumQueuedMessages - ReservedFrameMessages ||
         outgoing_.bytes() >= editor_session::MaximumQueuedBytes - ReservedFrameBytes - 512)
-        return;
+        return std::nullopt;
 
-    std::size_t slotIndex = frameSlotBusy_.size();
     for (std::size_t index = 0; index < frameSlotBusy_.size(); ++index)
-        if (!frameSlotBusy_[index])
-        {
-            slotIndex = index;
-            break;
-        }
-    if (slotIndex == frameSlotBusy_.size())
-        return;
-
-    struct SlotGuard
     {
-        bool &busy;
-        bool active = true;
-        ~SlotGuard() noexcept
-        {
-            if (active)
-                busy = false;
-        }
-    };
-    frameSlotBusy_[slotIndex] = true;
-    SlotGuard slotGuard{frameSlotBusy_[slotIndex]};
+        if (!frameSlotBusy_[index])
+            return index;
+    }
+    return std::nullopt;
+}
 
+bool EditorSessionService::readback_frame_to_slot(std::uint64_t runtimeSerial, ::SDL_Renderer *renderer,
+                                                  int width, int height, std::size_t slotIndex) noexcept
+{
     int outputWidth = 0;
     int outputHeight = 0;
     if (width != static_cast<int>(FrameWidth) || height != static_cast<int>(FrameHeight) ||
@@ -602,12 +594,12 @@ void EditorSessionService::capture_frame(std::uint64_t runtimeSerial, ::SDL_Rend
         outputWidth != static_cast<int>(FrameWidth) || outputHeight != static_cast<int>(FrameHeight))
     {
         fail("session renderer output is not exactly 640x360", runtimeSerial);
-        return;
+        return false;
     }
     if (mappingAddress_ == nullptr || mappingBytes_ != FrameMappingBytes || nextFrameSequence_ == 0)
     {
         fail("session frame mapping or sequence is unavailable", runtimeSerial);
-        return;
+        return false;
     }
 
     using SurfacePtr = std::unique_ptr<SDL_Surface, decltype(&SDL_DestroySurface)>;
@@ -616,12 +608,12 @@ void EditorSessionService::capture_frame(std::uint64_t runtimeSerial, ::SDL_Rend
         readback->pixels == nullptr)
     {
         fail(std::string("session frame readback failed: ") + SDL_GetError(), runtimeSerial);
-        return;
+        return false;
     }
     if (!SDL_LockSurface(readback.get()))
     {
         fail(std::string("session frame readback could not be locked: ") + SDL_GetError(), runtimeSerial);
-        return;
+        return false;
     }
 
     auto *destination = static_cast<std::byte *>(mappingAddress_) + slotIndex * FrameSlotBytes;
@@ -644,10 +636,15 @@ void EditorSessionService::capture_frame(std::uint64_t runtimeSerial, ::SDL_Rend
     if (!converted)
     {
         fail("session readback could not be converted to bounded RGBA8 pixels", runtimeSerial);
-        return;
+        return false;
     }
     std::atomic_thread_fence(std::memory_order_release);
+    return true;
+}
 
+void EditorSessionService::publish_frame_ready(std::uint64_t runtimeSerial, std::size_t slotIndex,
+                                               std::chrono::steady_clock::time_point now) noexcept
+{
     const std::uint64_t frameSequence = nextFrameSequence_;
     const bool queued = enqueue_event(
         "frame_ready",
@@ -656,14 +653,35 @@ void EditorSessionService::capture_frame(std::uint64_t runtimeSerial, ::SDL_Rend
                        {"stride", FrameStride}, {"format", "rgba8"}},
         runtimeSerial, false);
     if (!queued)
+    {
+        frameSlotBusy_[slotIndex] = false;
         return;
+    }
 
-    slotGuard.active = false;
     frameSlotSequences_[slotIndex] = frameSequence;
     nextFrameSequence_ =
         frameSequence == std::numeric_limits<std::uint64_t>::max() ? 0 : frameSequence + 1;
     lastFrameCapture_ = now;
     flush_events();
+}
+
+void EditorSessionService::capture_frame(std::uint64_t runtimeSerial, ::SDL_Renderer *renderer,
+                                         int width, int height) noexcept
+{
+    if (!captureVisible_ || !capabilities_.frameStream || failed_ || stopRequested_ || renderer == nullptr)
+        return;
+    const auto now = std::chrono::steady_clock::now();
+    const auto slotIndex = try_acquire_frame_slot(now);
+    if (!slotIndex)
+        return;
+
+    frameSlotBusy_[*slotIndex] = true;
+    if (!readback_frame_to_slot(runtimeSerial, renderer, width, height, *slotIndex))
+    {
+        frameSlotBusy_[*slotIndex] = false;
+        return;
+    }
+    publish_frame_ready(runtimeSerial, *slotIndex, now);
 }
 
 bool EditorSessionService::enqueue_event(std::string type, nlohmann::json body,

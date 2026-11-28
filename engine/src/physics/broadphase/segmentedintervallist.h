@@ -106,8 +106,8 @@ class SegmentedIntervalList
 
     void repairProjectionFromIndexInternal(platformator_detail::ProjectionProxy *projection, LocalSortArray *chunk,
                                            size_t arrayIndex);
-    void swap(platformator_detail::ProjectionProxy *leftRadiusProjection, size_t leftRadiusProjectionIndex,
-              platformator_detail::ProjectionProxy *rightRadiusProjection, size_t rightRadiusProjectionIndex);
+    void swap(platformator_detail::ProjectionProxy *leftProxy, size_t leftProxyIndex,
+              platformator_detail::ProjectionProxy *rightProxy, size_t rightProxyIndex);
 
     LocalSortArray *allocateEmptyChunk();
     LocalSortArray *allocateSplitChunk(LocalSortArray *other);

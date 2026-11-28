@@ -7,16 +7,16 @@
 namespace fs = std::filesystem;
 namespace
 {
-std::string separators(std::string path)
+std::string normalizeSeparators(std::string path)
 {
     std::replace(path.begin(), path.end(), '\\', '/');
     return path;
 }
-bool logical(const fs::path &path)
+bool isLogicalAssetPath(const fs::path &path)
 {
     return !path.empty() && *path.begin() == "assets";
 }
-bool beneath(const fs::path &root, const fs::path &path)
+bool isPathBeneathRoot(const fs::path &root, const fs::path &path)
 {
     return std::mismatch(root.begin(), root.end(), path.begin(), path.end()).first == root.end();
 }
@@ -48,8 +48,9 @@ std::string PathManager::canonicalizeAssetPath(const std::string &raw) const
 {
     if (raw.empty())
         return {};
-    const fs::path path(separators(raw));
-    if (path.is_absolute() || !logical(path) || path == "assets" || path.filename().empty() || path.filename() == ".")
+    const fs::path path(normalizeSeparators(raw));
+    if (path.is_absolute() || !isLogicalAssetPath(path) || path == "assets" || path.filename().empty() ||
+        path.filename() == ".")
         throw std::invalid_argument("Asset paths must use assets/...: " + raw);
     for (const auto &component : path)
         if (component == "..")
@@ -63,7 +64,7 @@ std::string PathManager::canonicalizeAssetPath(const std::string &raw) const
     {
         throw std::runtime_error("Cannot resolve asset request '" + raw + "': " + error.what());
     }
-    if (!beneath(root, candidate))
+    if (!isPathBeneathRoot(root, candidate))
         throw std::invalid_argument("Asset path escapes configured root: " + raw);
     return (fs::path("assets") / candidate.lexically_relative(root)).generic_string();
 }
@@ -72,10 +73,10 @@ fs::path PathManager::resolveScenePath(const std::string &raw) const
 {
     if (raw.empty())
         throw std::invalid_argument("Scene path is empty");
-    const fs::path path(separators(raw));
+    const fs::path path(normalizeSeparators(raw));
     if (path.is_absolute())
         return path.lexically_normal();
-    if (logical(path))
+    if (isLogicalAssetPath(path))
     {
         const auto canonical = fs::path(canonicalizeAssetPath(raw));
         return root / canonical.lexically_relative("assets");

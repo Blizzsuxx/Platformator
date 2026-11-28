@@ -66,6 +66,51 @@ bool read_optional_bool(const nlohmann::json &source, const char *key, bool &val
     value = found->get<bool>();
     return true;
 }
+
+Message parse_message_envelope(const char *payload, std::size_t payloadBytes, Direction direction,
+                               std::size_t frameBytes)
+{
+    const auto document = nlohmann::json::parse(payload, payload + payloadBytes);
+    if (!document.is_object())
+        throw std::runtime_error("message envelope must be a JSON object");
+
+    Message message;
+    const auto version = document.find("protocol_version");
+    const auto nonce = document.find("nonce");
+    const auto generation = document.find("play_generation");
+    const auto sequence = document.find("sequence");
+    const auto type = document.find("type");
+    const auto body = document.find("body");
+    if (version == document.end() || !version->is_number_unsigned() ||
+        nonce == document.end() || !nonce->is_string() ||
+        generation == document.end() || !generation->is_number_unsigned() ||
+        sequence == document.end() || !sequence->is_number_unsigned() ||
+        type == document.end() || !type->is_string() ||
+        body == document.end() || !body->is_object())
+        throw std::runtime_error("message envelope is missing a field or has an invalid field type");
+
+    message.protocolVersion = version->get<std::uint32_t>();
+    message.nonce = nonce->get<std::string>();
+    message.playGeneration = generation->get<std::uint64_t>();
+    message.sequence = sequence->get<std::uint64_t>();
+    message.type = type->get<std::string>();
+    message.body = *body;
+    if (direction == Direction::Event)
+    {
+        const auto serial = document.find("runtime_serial");
+        if (serial == document.end() || !serial->is_number_unsigned())
+            throw std::runtime_error("runtime event is missing its runtime serial");
+        message.runtimeSerial = serial->get<std::uint64_t>();
+    }
+    else if (document.contains("runtime_serial"))
+        throw std::runtime_error("request cannot contain a runtime serial");
+
+    std::string validationError;
+    if (!validate_message(message, direction, validationError))
+        throw std::runtime_error(validationError);
+    message.frameBytes = frameBytes;
+    return message;
+}
 } // namespace
 
 std::vector<std::uint8_t> encode_frame(const Message &message, Direction direction,
@@ -142,44 +187,7 @@ DecodeResult StreamDecoder::feed(std::span<const std::uint8_t> bytes)
         {
             const char *payload = reinterpret_cast<const char *>(frame_.data() + FrameHeaderBytes);
             const std::size_t payloadBytes = expectedFrameBytes_ - FrameHeaderBytes;
-            const auto document = nlohmann::json::parse(payload, payload + payloadBytes);
-            if (!document.is_object())
-                throw std::runtime_error("message envelope must be a JSON object");
-
-            Message message;
-            const auto version = document.find("protocol_version");
-            const auto nonce = document.find("nonce");
-            const auto generation = document.find("play_generation");
-            const auto sequence = document.find("sequence");
-            const auto type = document.find("type");
-            const auto body = document.find("body");
-            if (version == document.end() || !version->is_number_unsigned() ||
-                nonce == document.end() || !nonce->is_string() ||
-                generation == document.end() || !generation->is_number_unsigned() ||
-                sequence == document.end() || !sequence->is_number_unsigned() ||
-                type == document.end() || !type->is_string() ||
-                body == document.end() || !body->is_object())
-                throw std::runtime_error("message envelope is missing a field or has an invalid field type");
-            message.protocolVersion = version->get<std::uint32_t>();
-            message.nonce = nonce->get<std::string>();
-            message.playGeneration = generation->get<std::uint64_t>();
-            message.sequence = sequence->get<std::uint64_t>();
-            message.type = type->get<std::string>();
-            message.body = *body;
-            if (direction_ == Direction::Event)
-            {
-                const auto serial = document.find("runtime_serial");
-                if (serial == document.end() || !serial->is_number_unsigned())
-                    throw std::runtime_error("runtime event is missing its runtime serial");
-                message.runtimeSerial = serial->get<std::uint64_t>();
-            }
-            else if (document.contains("runtime_serial"))
-                throw std::runtime_error("request cannot contain a runtime serial");
-            std::string validationError;
-            if (!validate_message(message, direction_, validationError))
-                throw std::runtime_error(validationError);
-            message.frameBytes = expectedFrameBytes_;
-            result.messages.push_back(std::move(message));
+            result.messages.push_back(parse_message_envelope(payload, payloadBytes, direction_, expectedFrameBytes_));
         }
         catch (const std::exception &error)
         {

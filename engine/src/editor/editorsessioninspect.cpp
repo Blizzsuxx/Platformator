@@ -23,9 +23,13 @@ namespace platformator
 namespace
 {
 constexpr std::size_t MaximumInspectionObjects = 4096;
+constexpr std::size_t MaximumHierarchyDepth = 256;
 constexpr std::size_t MaximumHierarchyPageItems = 64;
-constexpr std::size_t MaximumHierarchyNameBytes = 128;
+constexpr std::size_t MaximumIdentifierBytes = 128;
+constexpr std::size_t MaximumPathBytes = 256;
+constexpr std::size_t MaximumReasonBytes = 256;
 constexpr std::size_t MaximumInspectedBehaviors = 8;
+constexpr platformator::ScriptInspectionLimits DefaultScriptInspectionLimits{24, MaximumIdentifierBytes, 8, 4096};
 
 using metadata_detail::bounded_utf8_prefix;
 
@@ -59,6 +63,17 @@ nlohmann::json handle_json(platformator::ObjectHandle handle, platformator_detai
 nlohmann::json safe_number(double value)
 {
     return std::isfinite(value) ? nlohmann::json(value) : nlohmann::json(nullptr);
+}
+
+nlohmann::json vec2_json(const Eigen::Vector2f &value)
+{
+    return {{"x", safe_number(value.x())}, {"y", safe_number(value.y())}};
+}
+
+nlohmann::json rect_json(const SDL_FRect &rect)
+{
+    return {{"x", safe_number(rect.x)}, {"y", safe_number(rect.y)},
+            {"w", safe_number(rect.w)}, {"h", safe_number(rect.h)}};
 }
 
 bool read_unsigned(const nlohmann::json &value, std::uint64_t &result)
@@ -127,7 +142,7 @@ bool build_hierarchy_snapshot(platformator::Runtime &runtime,
             error = "runtime hierarchy contains a stale or repeated child";
             return false;
         }
-        if (current.depth > 256)
+        if (current.depth > MaximumHierarchyDepth)
         {
             error = "runtime hierarchy exceeds the 256 level inspection bound";
             return false;
@@ -139,7 +154,7 @@ bool build_hierarchy_snapshot(platformator::Runtime &runtime,
             return false;
         }
         bool nameTruncated = false;
-        std::string name = bounded_utf8_prefix(object->getName(), MaximumHierarchyNameBytes, nameTruncated);
+        std::string name = bounded_utf8_prefix(object->getName(), MaximumIdentifierBytes, nameTruncated);
         snapshot.push_back(EntryT{handle, current.parent, object->getId(), std::move(name), nameTruncated,
                                   object->getActive(), current.hasParent, current.depth, current.siblingIndex});
 
@@ -174,7 +189,6 @@ nlohmann::json hierarchy_entry_json(const EntryT &entry)
 
 nlohmann::json script_component_snapshot(const ScriptComponent &component)
 {
-    constexpr platformator::ScriptInspectionLimits limits{24, 128, 8, 4096};
     nlohmann::json behaviors = nlohmann::json::array();
     const auto &instances = component.getBehaviors();
     const std::size_t count = std::min(instances.size(), MaximumInspectedBehaviors);
@@ -191,19 +205,20 @@ nlohmann::json script_component_snapshot(const ScriptComponent &component)
         {
             const std::string typeName = behavior->getTypeName();
             bool typeTruncated = false;
-            const std::string displayType = bounded_utf8_prefix(typeName, 128, typeTruncated);
-            const auto inspected = platformator::inspectRegisteredScriptFields(typeName, *behavior, limits);
+            const std::string displayType = bounded_utf8_prefix(typeName, MaximumIdentifierBytes, typeTruncated);
+            const auto inspected =
+                platformator::inspectRegisteredScriptFields(typeName, *behavior, DefaultScriptInspectionLimits);
             nlohmann::json fields = nlohmann::json::array();
             for (const auto &field : inspected.fields)
             {
                 bool nameTruncated = false;
                 bool reasonTruncated = false;
-                fields.push_back({{"name", bounded_utf8_prefix(field.name, 128, nameTruncated)},
+                fields.push_back({{"name", bounded_utf8_prefix(field.name, MaximumIdentifierBytes, nameTruncated)},
                                   {"kind", field.kind}, {"available", field.available},
                                   {"truncated", field.truncated || nameTruncated},
                                   {"value", field.value},
-                                  {"unavailable_reason", bounded_utf8_prefix(field.unavailableReason, 256,
-                                                                       reasonTruncated)}});
+                                  {"unavailable_reason",
+                                   bounded_utf8_prefix(field.unavailableReason, MaximumReasonBytes, reasonTruncated)}});
             }
             if (!inspected.providerAvailable)
             {
@@ -212,12 +227,13 @@ nlohmann::json script_component_snapshot(const ScriptComponent &component)
                     for (const auto &declared : descriptor->fields)
                     {
                         bool nameTruncated = false;
-                        fields.push_back({{"name", bounded_utf8_prefix(declared.name, 128, nameTruncated)},
-                                          {"kind", script_field_kind_name(declared.kind)},
-                                          {"available", false},
-                                          {"truncated", nameTruncated},
-                                          {"value", nullptr},
-                                          {"unavailable_reason", "no generated read-only accessor"}});
+                        fields.push_back(
+                            {{"name", bounded_utf8_prefix(declared.name, MaximumIdentifierBytes, nameTruncated)},
+                             {"kind", script_field_kind_name(declared.kind)},
+                             {"available", false},
+                             {"truncated", nameTruncated},
+                             {"value", nullptr},
+                             {"unavailable_reason", "no generated read-only accessor"}});
                     }
                 }
             }
@@ -230,9 +246,9 @@ nlohmann::json script_component_snapshot(const ScriptComponent &component)
         catch (const std::exception &exception)
         {
             bool reasonTruncated = false;
-            behaviors.push_back({{"provider_available", false},
-                                 {"unavailable_reason", bounded_utf8_prefix(exception.what(), 256,
-                                                                      reasonTruncated)}});
+            behaviors.push_back(
+                {{"provider_available", false},
+                 {"unavailable_reason", bounded_utf8_prefix(exception.what(), MaximumReasonBytes, reasonTruncated)}});
         }
         catch (...)
         {
@@ -243,127 +259,125 @@ nlohmann::json script_component_snapshot(const ScriptComponent &component)
     return {{"behaviors", std::move(behaviors)}, {"omitted_behavior_count", instances.size() - count}};
 }
 
+nlohmann::json animator_snapshot(const Animator &value)
+{
+    bool clipNameTruncated = false;
+    const std::string clipPath = value.getCurrentClip() ? value.getCurrentClip()->getFilePath() : std::string{};
+    return {{"playing", value.getIsPlaying()}, {"paused", value.getIsPaused()},
+            {"frame_index", value.getCurrentFrameIndex()},
+            {"playback_speed", safe_number(value.getPlaybackSpeed())},
+            {"clip_name", bounded_utf8_prefix(clipPath, MaximumIdentifierBytes, clipNameTruncated)},
+            {"clip_name_truncated", clipNameTruncated}};
+}
+
+nlohmann::json audio_snapshot(const Audio &value)
+{
+    bool pathTruncated = false;
+    return {{"file_path", bounded_utf8_prefix(value.getFilePath(), MaximumPathBytes, pathTruncated)},
+            {"path_truncated", pathTruncated}, {"auto_play", value.getAutoPlay()},
+            {"gain", safe_number(value.getGain())}, {"loop_count", safe_number(value.getLoopCount())},
+            {"playing", value.isPlaying()}, {"paused", value.isPaused()}};
+}
+
+nlohmann::json camera_snapshot(const Camera &value)
+{
+    return {{"width", safe_number(value.getWidth())},
+            {"height", safe_number(value.getHeight())},
+            {"rect", rect_json(value.getCamera())}};
+}
+
+nlohmann::json collider_snapshot(const Collider &value, platformator_detail::ObjectKind &outKind)
+{
+    nlohmann::json properties = {{"trigger", value.getIsTrigger()},
+                                 {"collision_group", value.getCollisionGroup()},
+                                 {"collision_mask", value.getCollisionMask()},
+                                 {"offset", vec2_json(value.getOffset())}};
+    if (value.getColliderType() == ColliderType::BoxCollider)
+    {
+        const auto &box = static_cast<const BoxCollider &>(value);
+        outKind = platformator_detail::ObjectKind::BoxCollider;
+        properties["width"] = safe_number(box.getWidthWithoutScale());
+        properties["height"] = safe_number(box.getHeightWithoutScale());
+    }
+    else
+    {
+        const auto &circle = static_cast<const CircleCollider &>(value);
+        outKind = platformator_detail::ObjectKind::CircleCollider;
+        properties["radius"] = safe_number(circle.getRadiusWithoutScale());
+    }
+    return properties;
+}
+
+nlohmann::json rigidbody_snapshot(const Rigidbody &value)
+{
+    return {{"velocity", vec2_json(value.getVelocity())},
+            {"force", vec2_json(value.getForce())},
+            {"mass", safe_number(value.getMass())},
+            {"angular_velocity", safe_number(value.getAngularVelocity())},
+            {"torque", safe_number(value.getTorque())},
+            {"friction", safe_number(value.getFriction())},
+            {"restitution", safe_number(value.getRestitution())},
+            {"body_type", static_cast<int>(value.getBodyType())},
+            {"gravity", value.getGravity()}, {"sleeping", value.getIsSleeping()}};
+}
+
+nlohmann::json sprite_snapshot(const Sprite &value)
+{
+    bool pathTruncated = false;
+    const auto *texture = value.getTextureWrapper();
+    nlohmann::json properties = {
+        {"width", safe_number(value.getWidthWithoutScale())},
+        {"height", safe_number(value.getHeightWithoutScale())},
+        {"flip", static_cast<int>(value.getFlip())},
+        {"asset_path", texture ? nlohmann::json(bounded_utf8_prefix(texture->getFilePath(), MaximumPathBytes,
+                                                                    pathTruncated))
+                               : nlohmann::json(nullptr)},
+        {"path_truncated", pathTruncated}};
+    if (value.hasSourceRect())
+    {
+        properties["source_rect"] = rect_json(*value.getSourceRect());
+    }
+    return properties;
+}
+
 nlohmann::json component_snapshot(Component &component)
 {
     using platformator_detail::ObjectKind;
     ObjectKind kind = ObjectKind::Component;
-    const char *typeName = "unknown";
     nlohmann::json properties = nlohmann::json::object();
     switch (component.getType())
     {
     case ANIMATOR:
-    {
-        auto &value = static_cast<Animator &>(component);
         kind = ObjectKind::Animator;
-        typeName = "animator";
-        bool clipNameTruncated = false;
-        const std::string clipPath = value.getCurrentClip() ? value.getCurrentClip()->getFilePath() : std::string{};
-        properties = {{"playing", value.getIsPlaying()}, {"paused", value.getIsPaused()},
-                      {"frame_index", value.getCurrentFrameIndex()},
-                      {"playback_speed", safe_number(value.getPlaybackSpeed())},
-                      {"clip_name", bounded_utf8_prefix(clipPath, 128, clipNameTruncated)},
-                      {"clip_name_truncated", clipNameTruncated}};
+        properties = animator_snapshot(static_cast<const Animator &>(component));
         break;
-    }
     case AUDIO:
-    {
-        auto &value = static_cast<Audio &>(component);
         kind = ObjectKind::Audio;
-        typeName = "audio";
-        bool pathTruncated = false;
-        properties = {{"file_path", bounded_utf8_prefix(value.getFilePath(), 256, pathTruncated)},
-                      {"path_truncated", pathTruncated}, {"auto_play", value.getAutoPlay()},
-                      {"gain", safe_number(value.getGain())},
-                      {"loop_count", safe_number(value.getLoopCount())},
-                      {"playing", value.isPlaying()}, {"paused", value.isPaused()}};
+        properties = audio_snapshot(static_cast<const Audio &>(component));
         break;
-    }
     case CAMERA:
-    {
-        auto &value = static_cast<Camera &>(component);
         kind = ObjectKind::Camera;
-        typeName = "camera";
-        const auto rect = value.getCamera();
-        properties = {{"width", safe_number(value.getWidth())},
-                      {"height", safe_number(value.getHeight())},
-                      {"rect", {{"x", safe_number(rect.x)}, {"y", safe_number(rect.y)},
-                                 {"w", safe_number(rect.w)}, {"h", safe_number(rect.h)}}}};
+        properties = camera_snapshot(static_cast<const Camera &>(component));
         break;
-    }
     case COLLIDER:
-    {
-        auto &value = static_cast<Collider &>(component);
-        const auto offset = value.getOffset();
-        properties = {{"trigger", value.getIsTrigger()}, {"collision_group", value.getCollisionGroup()},
-                      {"collision_mask", value.getCollisionMask()},
-                      {"offset", {{"x", safe_number(offset.x())}, {"y", safe_number(offset.y())}}}};
-        if (value.getColliderType() == ColliderType::BoxCollider)
-        {
-            auto &box = static_cast<BoxCollider &>(component);
-            kind = ObjectKind::BoxCollider;
-            typeName = "box_collider";
-            properties["width"] = safe_number(box.getWidthWithoutScale());
-            properties["height"] = safe_number(box.getHeightWithoutScale());
-        }
-        else
-        {
-            auto &circle = static_cast<CircleCollider &>(component);
-            kind = ObjectKind::CircleCollider;
-            typeName = "circle_collider";
-            properties["radius"] = safe_number(circle.getRadiusWithoutScale());
-        }
+        properties = collider_snapshot(static_cast<const Collider &>(component), kind);
         break;
-    }
     case RIGID_BODY:
-    {
-        auto &value = static_cast<Rigidbody &>(component);
         kind = ObjectKind::Rigidbody;
-        typeName = "rigidbody";
-        const auto velocity = value.getVelocity();
-        const auto force = value.getForce();
-        properties = {{"velocity", {{"x", safe_number(velocity.x())}, {"y", safe_number(velocity.y())}}},
-                      {"force", {{"x", safe_number(force.x())}, {"y", safe_number(force.y())}}},
-                      {"mass", safe_number(value.getMass())},
-                      {"angular_velocity", safe_number(value.getAngularVelocity())},
-                      {"torque", safe_number(value.getTorque())},
-                      {"friction", safe_number(value.getFriction())},
-                      {"restitution", safe_number(value.getRestitution())},
-                      {"body_type", static_cast<int>(value.getBodyType())},
-                      {"gravity", value.getGravity()}, {"sleeping", value.getIsSleeping()}};
+        properties = rigidbody_snapshot(static_cast<const Rigidbody &>(component));
         break;
-    }
     case SCRIPT:
-    {
-        auto &value = static_cast<ScriptComponent &>(component);
         kind = ObjectKind::ScriptComponent;
-        typeName = "script_component";
-        properties = script_component_snapshot(value);
+        properties = script_component_snapshot(static_cast<const ScriptComponent &>(component));
         break;
-    }
     case SPRITE:
-    {
-        auto &value = static_cast<Sprite &>(component);
         kind = ObjectKind::Sprite;
-        typeName = "sprite";
-        bool pathTruncated = false;
-        const auto *texture = value.getTextureWrapper();
-        properties = {{"width", safe_number(value.getWidthWithoutScale())},
-                      {"height", safe_number(value.getHeightWithoutScale())},
-                      {"flip", static_cast<int>(value.getFlip())},
-                      {"asset_path", texture ? nlohmann::json(bounded_utf8_prefix(texture->getFilePath(),
-                                                        256, pathTruncated)) : nlohmann::json(nullptr)},
-                      {"path_truncated", pathTruncated}};
-        if (value.hasSourceRect())
-        {
-            const auto *source = value.getSourceRect();
-            properties["source_rect"] = {{"x", safe_number(source->x)}, {"y", safe_number(source->y)},
-                                          {"w", safe_number(source->w)}, {"h", safe_number(source->h)}};
-        }
+        properties = sprite_snapshot(static_cast<const Sprite &>(component));
         break;
-    }
     case COMPONENT_TYPE_COUNT:
         break;
     }
+    const char *typeName = kind == ObjectKind::Component ? "unknown" : object_kind_name(kind);
     return {{"handle", handle_json(component.getHandle(), kind)}, {"file_id", component.getId()},
             {"type", typeName}, {"properties", std::move(properties)}};
 }
@@ -590,13 +604,13 @@ bool EditorSessionService::handle_inspect_object(const editor_session::Message &
     details["runtime_serial"] = runtimeSerial;
     details["handle"] = handle_json(handle, platformator_detail::ObjectKind::GameObject);
     details["file_id"] = object->getId();
-    details["name"] = bounded_utf8_prefix(object->getName(), MaximumHierarchyNameBytes, nameTruncated);
+    details["name"] = bounded_utf8_prefix(object->getName(), MaximumIdentifierBytes, nameTruncated);
     details["name_truncated"] = nameTruncated;
-    details["tag"] = bounded_utf8_prefix(object->getTag(), MaximumHierarchyNameBytes, tagTruncated);
+    details["tag"] = bounded_utf8_prefix(object->getTag(), MaximumIdentifierBytes, tagTruncated);
     details["tag_truncated"] = tagTruncated;
     details["active"] = object->getActive();
-    details["position"] = {{"x", safe_number(position.x())}, {"y", safe_number(position.y())}};
-    details["scale"] = {{"x", safe_number(scale.x())}, {"y", safe_number(scale.y())}};
+    details["position"] = vec2_json(position);
+    details["scale"] = vec2_json(scale);
     details["rotation"] = safe_number(object->getRotation());
     details["parent"] = std::move(parent);
     details["children"] = std::move(children);

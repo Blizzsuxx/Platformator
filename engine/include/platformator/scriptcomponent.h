@@ -57,10 +57,13 @@ class ScriptComponent : public Component
         resolvedPendingCount = pendingBehaviors.size();
     }
     void startPendingBehaviors(platformator::ReferenceResolver &resolver);
+    template <typename PhaseFn> void dispatchBehaviorPhase(uint8_t phaseMask, PhaseFn &&invoke);
     std::vector<Behavior *> behaviors;
     std::vector<Behavior *> pendingBehaviors;
     size_t resolvedPendingCount = 0;
     size_t pendingStartIndex = SIZE_MAX; // Global script startup queue.
+    // Registration sentinel: 0 while registered in GameManager systems, SIZE_MAX otherwise.
+    // Scripts are tracked by the per-phase update lists, so no dense index is needed.
     size_t gameManagerIndex;
     size_t fixedUpdateListIndex = SIZE_MAX;
     size_t updateListIndex = SIZE_MAX;

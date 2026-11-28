@@ -243,7 +243,17 @@ bool PlaySession::start_process(ProcessRequest request,
                         : std::move(completion.error);
                 state_ = PlaySessionState::Stopping;
             }
-            else if (state_ != PlaySessionState::Stopping)
+            else if (state_ == PlaySessionState::Stopping)
+            {
+                if (!lastError_.empty())
+                {
+                    // The session channel can close before the process exit becomes observable.
+                    if (!processStopRequested_ && completion.terminatingSignal != 0)
+                        lastError_ += " (child terminated by signal " + std::to_string(completion.terminatingSignal) + ")";
+                    state_ = PlaySessionState::Failed;
+                }
+            }
+            else
             {
                 std::string message = "session child exited before Stop";
                 if (!completion.error.empty())

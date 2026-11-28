@@ -1407,6 +1407,15 @@ void testAnimatorComponentPlayback()
 
     try
     {
+        TextureWrapper *frameATexture = gameManager.loadTexture(canonicalAssetPathForTest(frameAPath));
+        TextureWrapper *frameBTexture = gameManager.loadTexture(canonicalAssetPathForTest(frameBPath));
+        require(frameATexture != nullptr && frameBTexture != nullptr,
+                "Animator regression failed to load the test frame textures.");
+
+        const std::vector<AnimationFrame> blinkFrames = {AnimationFrame(frameATexture, 0.1f),
+                                                         AnimationFrame(frameBTexture, 0.1f)};
+        AnimationClip blinkAnimationClip(blinkFrames, true);
+
         SceneScope sceneScope(gameManager);
         GameObject *animatedObject = gameManager.createGameObject()
                                          ->setName("Animated Sprite")
@@ -1418,15 +1427,6 @@ void testAnimatorComponentPlayback()
         Sprite *sprite = animatedObject->getComponent<Sprite>();
         require(animator != nullptr, "Animator regression failed to create the animator component.");
         require(sprite != nullptr, "Animator regression failed to create the sprite component.");
-
-        TextureWrapper *frameATexture = gameManager.loadTexture(canonicalAssetPathForTest(frameAPath));
-        TextureWrapper *frameBTexture = gameManager.loadTexture(canonicalAssetPathForTest(frameBPath));
-        require(frameATexture != nullptr && frameBTexture != nullptr,
-                "Animator regression failed to load the test frame textures.");
-
-        const std::vector<AnimationFrame> blinkFrames = {AnimationFrame(frameATexture, 0.1f),
-                                                         AnimationFrame(frameBTexture, 0.1f)};
-        const AnimationClip blinkAnimationClip(blinkFrames, true);
 
         require(animator->play(&blinkAnimationClip), "Animator regression failed to start the test animation clip.");
         require(sprite->getTextureWrapper() != nullptr &&
@@ -1480,6 +1480,19 @@ void testAnimatorAdvancedPlayback()
 
     try
     {
+        TextureWrapper *idleTexture = gameManager.loadTexture(canonicalAssetPathForTest(frameAPath));
+        TextureWrapper *sheetTexture = gameManager.loadTexture(canonicalAssetPathForTest(sheetPath));
+        require(idleTexture != nullptr && sheetTexture != nullptr,
+                "Advanced animator regression failed to load the clip textures.");
+
+        const std::vector<AnimationFrame> idleFrames = {AnimationFrame(idleTexture, 1.0f)};
+
+        const std::vector<AnimationFrame> stripFrames = {
+            AnimationFrame(sheetTexture, SDL_FRect{0.0f, 0.0f, 4.0f, 4.0f}, 0.05f),
+            AnimationFrame(sheetTexture, SDL_FRect{4.0f, 0.0f, 4.0f, 4.0f}, 0.05f)};
+        AnimationClip stripAnimationClip(stripFrames, false);
+        AnimationClip idleAnimationClip(idleFrames, true);
+
         SceneScope sceneScope(gameManager);
         GameObject *animatedObject = gameManager.createGameObject()
                                          ->setName("Advanced Animated Sprite")
@@ -1491,19 +1504,6 @@ void testAnimatorAdvancedPlayback()
         Sprite *sprite = animatedObject->getComponent<Sprite>();
         require(animator != nullptr, "Advanced animator regression failed to create the animator component.");
         require(sprite != nullptr, "Advanced animator regression failed to create the sprite component.");
-
-        TextureWrapper *idleTexture = gameManager.loadTexture(canonicalAssetPathForTest(frameAPath));
-        TextureWrapper *sheetTexture = gameManager.loadTexture(canonicalAssetPathForTest(sheetPath));
-        require(idleTexture != nullptr && sheetTexture != nullptr,
-                "Advanced animator regression failed to load the clip textures.");
-
-        const std::vector<AnimationFrame> idleFrames = {AnimationFrame(idleTexture, 1.0f)};
-
-        const std::vector<AnimationFrame> stripFrames = {
-            AnimationFrame(sheetTexture, SDL_FRect{0.0f, 0.0f, 4.0f, 4.0f}, 0.05f),
-            AnimationFrame(sheetTexture, SDL_FRect{4.0f, 0.0f, 4.0f, 4.0f}, 0.05f)};
-        const AnimationClip stripAnimationClip(stripFrames, false);
-        const AnimationClip idleAnimationClip(idleFrames, true);
 
         require(animator->play(&stripAnimationClip), "Advanced animator regression failed to start one-shot playback.");
 

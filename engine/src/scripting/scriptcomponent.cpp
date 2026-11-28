@@ -103,34 +103,30 @@ void ScriptComponent::startPendingBehaviors(platformator::ReferenceResolver &res
     resolvedPendingCount = resolvedPendingCount > processed ? resolvedPendingCount - processed : 0;
 }
 
-void ScriptComponent::update(double timeDelta)
+template <typename PhaseFn> void ScriptComponent::dispatchBehaviorPhase(uint8_t phaseMask, PhaseFn &&invoke)
 {
+    // Dispatch only the behaviors present at the start of this phase.
     const size_t count = behaviors.size();
     for (size_t i = 0; i < count && canDispatch(); ++i)
     {
-        if ((behaviors[i]->detectedUpdateMask & BEHAVIOR_UPDATE_FRAME) != 0)
-            behaviors[i]->update(timeDelta);
+        if ((behaviors[i]->detectedUpdateMask & phaseMask) != 0)
+            invoke(*behaviors[i]);
     }
+}
+
+void ScriptComponent::update(double timeDelta)
+{
+    dispatchBehaviorPhase(BEHAVIOR_UPDATE_FRAME, [timeDelta](Behavior &b) { b.update(timeDelta); });
 }
 
 void ScriptComponent::fixedUpdate(double timeDelta)
 {
-    const size_t count = behaviors.size();
-    for (size_t i = 0; i < count && canDispatch(); ++i)
-    {
-        if ((behaviors[i]->detectedUpdateMask & BEHAVIOR_UPDATE_FIXED) != 0)
-            behaviors[i]->fixedUpdate(timeDelta);
-    }
+    dispatchBehaviorPhase(BEHAVIOR_UPDATE_FIXED, [timeDelta](Behavior &b) { b.fixedUpdate(timeDelta); });
 }
 
 void ScriptComponent::lateUpdate(double timeDelta)
 {
-    const size_t count = behaviors.size();
-    for (size_t i = 0; i < count && canDispatch(); ++i)
-    {
-        if ((behaviors[i]->detectedUpdateMask & BEHAVIOR_UPDATE_LATE) != 0)
-            behaviors[i]->lateUpdate(timeDelta);
-    }
+    dispatchBehaviorPhase(BEHAVIOR_UPDATE_LATE, [timeDelta](Behavior &b) { b.lateUpdate(timeDelta); });
 }
 
 void ScriptComponent::setGameObject(GameObject *gameObject)

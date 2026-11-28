@@ -78,49 +78,80 @@ class Grid
     }
 
   private:
+    struct FlushScratch
+    {
+        std::vector<PairDelta> pairDeltas;
+        std::vector<Collider *> responseDirtyColliders;
+        std::vector<std::vector<Collider *>> structuralWorkChunks;
+        std::vector<std::vector<ColliderPair *>> pairQueueChunks;
+        std::vector<std::pair<size_t, size_t>> pairQueueRanges;
+        std::vector<size_t> pairQueueOffsets;
+
+        void clear() noexcept
+        {
+            pairDeltas.clear();
+            responseDirtyColliders.clear();
+            for (auto &chunk : structuralWorkChunks)
+                chunk.clear();
+            for (auto &chunk : pairQueueChunks)
+                chunk.clear();
+            pairQueueRanges.clear();
+            pairQueueOffsets.clear();
+        }
+    };
+
+    // Deferred flush pipeline stages
     void flushPendingWork();
+    size_t preparePendingColliders(bool hasWorkers);
+    void applyStructuralColliderOps(size_t prepChunkCount);
+    void reclaimEmptyCellsAndMaybeResize();
+    void queueNarrowPhasePairsSerial();
+    void queueNarrowPhasePairsParallel(bool useUniformChunks, size_t totalAdjacentPairs);
     void flushDirtyCells(size_t operationWeight);
+
+    // Cell sizing & bounds
     static float selectQuantizedCellSize(const std::vector<Collider *> &colliders);
     void rebuildGridForCellSize(float newCellSize);
     static bool rangeFitsCellCache(const GridCellRange &range) noexcept;
     void expandActiveCellBounds(const GridCellRange &range) noexcept;
     void recomputeActiveCellBounds() const noexcept;
+
+    // Collider cell membership
     void addColliderInternal(Collider *collider);
     void syncColliderInternal(Collider *collider);
     void removeColliderInternal(Collider *collider);
     bool removeGridCellIfEmpty(GridCell *cell);
+
+    // Pair tracking & narrow-phase queueing
     void dequeuePairFromNarrowPhase(ColliderPair *pair);
     void queuePairForNarrowPhase(ColliderPair *pair);
     void queuePairsForCollider(Collider *collider);
     const std::vector<ColliderPair *> *getTouchingPairs(Collider *collider) const;
+    void recordPairDelta(Collider *colliderA, Collider *colliderB, int delta);
+    void applyCollectedPairDeltas();
+    void applyPairWitnessDelta(Collider *colliderA, Collider *colliderB, int delta);
+
+    // Cell lookup & internal queues
     GridCell *findCell(const GridCellKey &key);
     const GridCell *findCell(const GridCellKey &key) const;
     GridCell &getOrCreateCell(const GridCellKey &key);
     void queueForEmptyCheck(GridCell *cell);
     void queueForOperations(GridCell *cell);
-    void recordPairDelta(Collider *colliderA, Collider *colliderB, int delta);
-    void applyCollectedPairDeltas();
-    void applyPairWitnessDelta(Collider *colliderA, Collider *colliderB, int delta);
     bool queueCollider(Collider *collider);
-    PhysicsManager *owner;
-    std::vector<PairDelta> pairDeltaScratch;
+    std::vector<PairDelta> &getLocalPairDeltaSink()
+    {
+        return activePairDeltaCollector.localPairDeltas.local();
+    }
 
+    PhysicsManager *owner;
     CellMap cells;
     FlatCandidatePairPool candidateCollisions;
     std::vector<ColliderPair *> pendingNarrowPhasePairs;
     std::vector<GridCell *> potentiallyEmptyCells;
     std::vector<GridCell *> cellsWithOperations;
     std::vector<Collider *> pendingColliderOperations;
-    std::vector<Collider *> responseDirtyColliders;
-    std::vector<std::vector<Collider *>> structuralWorkChunkScratch;
-    std::vector<std::vector<ColliderPair *>> pairQueueChunkScratch;
-    std::vector<std::pair<size_t, size_t>> pairQueueChunkRanges;
-    std::vector<size_t> pairQueueChunkOffsets;
+    FlushScratch scratch;
     PairDeltaCollector activePairDeltaCollector;
-    std::vector<PairDelta> &getLocalPairDeltaSink()
-    {
-        return activePairDeltaCollector.localPairDeltas.local();
-    }
     float cellSize;
     uint32_t resizeCooldown = 0;
     mutable GridCellRange activeCellBounds{};

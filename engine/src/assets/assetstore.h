@@ -70,6 +70,7 @@ class AssetStore
     };
 
     void requireIdleReloadBoundary() const;
+    void rebindReloadedClipFrameTextures(AnimationClip &replacement, const nlohmann::json &preparedDocument);
     std::unique_ptr<TextureWrapper> wrapTexture(SDL_Texture *rawTexture, const std::string &filePath,
                                                 const std::string &canonicalPath) const;
     template <typename Resource, typename BuildFn>

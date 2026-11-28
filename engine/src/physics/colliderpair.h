@@ -11,6 +11,8 @@ class ColliderPair
 
   public:
     static constexpr uint32_t INVALID_INDEX = UINT32_MAX;
+    static constexpr int32_t INVALID_ISLAND_ID = -1;
+    static constexpr uint8_t UNCOLORED = 0xFFu;
 
     ColliderPair(Collider *a, Collider *b);
     ~ColliderPair();
@@ -102,10 +104,10 @@ class ColliderPair
     uint32_t objectBStateVersion;
     uint32_t narrowPhaseQueueIndex;
     uint32_t contactIndex = INVALID_INDEX;
-    int32_t solverIslandId = -1;
+    int32_t solverIslandId = INVALID_ISLAND_ID;
     uint32_t kinematicSolverIndex = INVALID_INDEX;
     uint32_t solverIslandContactIndex = INVALID_INDEX;
-    uint8_t solverColor = 0xFFu;
+    uint8_t solverColor = UNCOLORED;
     bool hasCollision = false;
     bool resultHadContact = false;
 #if PLATFORMATOR_ENABLE_WORK_PROBES
@@ -120,5 +122,5 @@ class ColliderPair
     uint32_t adjacencyIndexA;
     uint32_t adjacencyIndexB;
     int32_t witnessCount;
-    uint32_t solverColorSlot = UINT32_MAX;
+    uint32_t solverColorSlot = INVALID_INDEX;
 };

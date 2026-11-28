@@ -20,16 +20,17 @@ template <typename T> class ObjectReference
 
   public:
     ObjectReference() = default;
-    platformator::ObjectHandle getHandle() const
-    {
-        return handle;
-    }
     explicit ObjectReference(T *object)
     {
         set(object);
     }
     explicit ObjectReference(int id) : objectId(id)
     {
+    }
+
+    platformator::ObjectHandle getHandle() const
+    {
+        return handle;
     }
     T *get() const
     {
@@ -44,6 +45,7 @@ template <typename T> class ObjectReference
         auto *object = get();
         return object ? std::optional<int>(object->getId()) : std::nullopt;
     }
+
     void set(T *object)
     {
         handle = object ? object->getHandle() : platformator::ObjectHandle{};
@@ -59,6 +61,7 @@ template <typename T> class ObjectReference
         handle = {};
         objectId.reset();
     }
+
     T *resolve()
     {
         auto *runtime = platformator::Runtime::tryGetCurrent();
@@ -77,12 +80,6 @@ template <typename T> class ObjectReference
         if (typed)
             handle = typed->getHandle();
         return static_cast<T *>(typed);
-    }
-    T &operator*() const
-    {
-        auto *object = get();
-        assert(object);
-        return *object;
     }
     T *resolve(platformator::ReferenceResolver &resolver)
     {
@@ -105,6 +102,13 @@ template <typename T> class ObjectReference
         handle = target->getHandle();
         objectId = target->getId();
         return static_cast<T *>(target);
+    }
+
+    T &operator*() const
+    {
+        auto *object = get();
+        assert(object);
+        return *object;
     }
     T *operator->() const
     {

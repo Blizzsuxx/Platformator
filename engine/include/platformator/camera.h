@@ -21,30 +21,30 @@ class EditorPreviewAccess;
 class Camera : public Component
 {
 public:
-	Camera();
-	Camera(GameObject *gameObject);
-	Camera(GameObject *gameObject, float x, float y, float w, float h);
-	Camera(GameObject *gameObject, float w, float h);
-	~Camera() override = default;
-	Component *clone() const override;
+    Camera();
+    Camera(GameObject *gameObject);
+    Camera(GameObject *gameObject, float x, float y, float w, float h);
+    Camera(GameObject *gameObject, float w, float h);
+    ~Camera() override = default;
+    Component *clone() const override;
 
-	void render(Sprite *sprite, SDL_Renderer *renderer, int outputWidth, int outputHeight);
-	Eigen::Vector2f worldToScreenPoint(const Eigen::Vector2f &worldPoint, int outputWidth, int outputHeight) const;
+    void render(Sprite *sprite, SDL_Renderer *renderer, int outputWidth, int outputHeight);
+    Eigen::Vector2f worldToScreenPoint(const Eigen::Vector2f &worldPoint, int outputWidth, int outputHeight) const;
 
-	SDL_FRect getCamera() const;
-	float getHeight() const;
-	float getWidth() const;
+    SDL_FRect getCamera() const;
+    float getHeight() const;
+    float getWidth() const;
 
-	void setCamera(const SDL_FRect &camera);
-	void setHeight(float height);
-	void setWidth(float width);
+    void setCamera(const SDL_FRect &camera);
+    void setHeight(float height);
+    void setWidth(float width);
 
 private:
     friend class SDLWindow;
     friend class platformator_editor_detail::EditorPreviewAccess;
 
-	float width;
-	float height;
+    float width;
+    float height;
 
     platformator_detail::SpriteRenderView prepareRenderView(int outputWidth, int outputHeight,
                                                              bool cullingEligible) const;
@@ -54,14 +54,14 @@ private:
     void prepareSpriteGeometry(Sprite *sprite, const platformator_detail::SpriteRenderView &view,
                                SDL_FRect &destination, float &angleDegrees) const;
 
-	float getScaleX(int outputWidth) const;
-	float getScaleY(int outputHeight) const;
+    float getScaleX(int outputWidth) const;
+    float getScaleY(int outputHeight) const;
 };
 
 template <>
 struct ComponentTypeFor<Camera>
 {
-	static constexpr ComponentType value = ComponentType::CAMERA;
+    static constexpr ComponentType value = ComponentType::CAMERA;
 };
 
 void to_json(nlohmann::json &j, const Camera &camera);

@@ -115,19 +115,29 @@ class GameManager
         return phase == Phase::Idle;
     }
 
+    // ------------------------------------------------------------------------
+    // Object Queries & Subsystem Access
+    // ------------------------------------------------------------------------
     BaseObject *resolveHandle(platformator::ObjectHandle handle, platformator_detail::ObjectKind kind) const;
-
+    BaseObject *getObjectById(int id) const;
     GameObject *getGameObject(const std::string &name);
+    std::vector<GameObject *> collectRootObjects() const;
     GameObject *createGameObject();
     void destroyGameObject(GameObject *gameObject);
     SDLWindow *getWindow() const;
     AudioManager *getAudioManager() const;
 
+    // ------------------------------------------------------------------------
+    // Simulation Loop & Stepping
+    // ------------------------------------------------------------------------
     void loop(const std::function<bool(SDLWindow &)> &ownerThreadService = {},
               const std::function<void(std::uint64_t)> &afterSimulationStep = {});
     void runSimulationStep(double timeDelta, const std::function<void(double)> &customCallback = {});
     bool simulateAndRenderFrame(double timeDelta, const std::function<void(double)> &customCallback = {});
 
+    // ------------------------------------------------------------------------
+    // Assets & Scenes
+    // ------------------------------------------------------------------------
     platformator_detail::AssetStore &assetStore() noexcept
     {
         return assets;
@@ -145,8 +155,6 @@ class GameManager
     void loadScene(const Scene &scene);
     void saveScene(const Scene &scene);
 
-    BaseObject *getObjectById(int id) const;
-
   private:
     struct SceneRequest
     {
@@ -154,6 +162,9 @@ class GameManager
         std::optional<std::string> path;
     };
 
+    // ------------------------------------------------------------------------
+    // Runtime State
+    // ------------------------------------------------------------------------
     Phase phase = Phase::Idle;
     std::thread::id mainThread = std::this_thread::get_id();
     platformator_detail::ObjectRegistry registry;
@@ -166,11 +177,13 @@ class GameManager
     bool preparingScene = false;
     int64_t nextFileId = 0;
 
+    // Owned subsystems
     std::unique_ptr<SDLWindow> window;
     std::unique_ptr<AudioManager> audioManager;
     std::unique_ptr<PhysicsManager> physicsManager;
     platformator_detail::AssetStore assets;
 
+    // Registered objects & per-phase dispatch lists
     std::vector<GameObject *> gameObjects;
     std::vector<Animator *> animatorComponents;
     std::vector<ScriptComponent *> fixedUpdateScripts;
@@ -178,6 +191,7 @@ class GameManager
     std::vector<ScriptComponent *> lateUpdateScripts;
     platformator_detail::FlatIdMap idToObjectMap;
 
+    // Deferred mutation queues (drained by commitMutations)
     std::vector<Component *> reconciliations;
     std::vector<Component *> reconciliationDrain;
     std::vector<Component *> retiredComponents;
@@ -204,6 +218,9 @@ class GameManager
     void commitSceneTransition(SceneRequest selected);
     void reconcilePending(std::exception_ptr &error);
     void drainRetirements(std::exception_ptr &error);
+    bool hasRetiredScripts() const;
+    void deliverRetirementDestructionCallbacks(std::exception_ptr &error);
+    void deleteRetiredEntities();
     void runDestructionCallbacks(ScriptComponent *script, std::exception_ptr &error);
 
     // Component subsystem registration

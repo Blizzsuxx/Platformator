@@ -82,7 +82,7 @@ void hierarchy(bool childFirst, bool shutdown)
             object->addComponent<BoxCollider>(20, 20)
                 ->addComponent<ScriptComponent>()
                 ->getComponent<ScriptComponent>()
-                ->addBehavior(new Teardown([&](GameObject *owner) {
+                ->addBehavior(new Teardown([parent, child, &rejected, &calls](GameObject *owner) {
                     require(owner->getComponent<BoxCollider>()->getWidth() == 20,
                             "Attached components remain readable during teardown");
                     checkRejections(owner, owner == parent ? child : parent, rejected);

@@ -71,6 +71,10 @@ class AABB
   private:
     using PairKey = platformator_detail::CanonicalColliderPairKey;
 
+    // Run X and Y axis operations concurrently when allowed, temporarily clearing the thread-bound
+    // delta sink so TBB task stealing cannot alias two workers onto the same TLS delta buffer.
+    template <typename FnX, typename FnY> void runAxesInParallelOrSerial(bool parallel, FnX &&fnX, FnY &&fnY);
+
     void repairAxis(SegmentedIntervalList &list, platformator_detail::ProjectionAxisBinding &axisBinding);
     bool tryClearAllRemoved(const std::vector<Collider *> &colliders, std::vector<ColliderBinding *> &outMatched);
     void recordDelta(Collider *colliderA, Collider *colliderB, int delta);

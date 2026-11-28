@@ -71,7 +71,7 @@ class EditorSessionService
                               ::SDLWindow *window);
     bool handle_pause_state_request(const editor_session::Message &message, std::uint64_t runtimeSerial,
                                     ::SDLWindow *window, bool pause);
-    bool handle_input_request(const editor_session::Message &message, ::SDLWindow *window);
+    std::optional<bool> try_handle_input_request(const editor_session::Message &message, ::SDLWindow *window);
     bool handle_list_objects(const editor_session::Message &message, std::uint64_t runtimeSerial);
     bool handle_inspect_object(const editor_session::Message &message, std::uint64_t runtimeSerial);
     bool enqueue_inspection_event(std::string type, nlohmann::json body, std::uint64_t runtimeSerial);
@@ -82,6 +82,11 @@ class EditorSessionService
                                   Runtime *&outRuntime, bool &outOk);
     void reset_hierarchy_snapshot() noexcept;
     bool pump_impl(std::uint64_t runtimeSerial, ::SDLWindow *window);
+    std::optional<std::size_t> try_acquire_frame_slot(std::chrono::steady_clock::time_point now) const noexcept;
+    bool readback_frame_to_slot(std::uint64_t runtimeSerial, ::SDL_Renderer *renderer, int width, int height,
+                                std::size_t slotIndex) noexcept;
+    void publish_frame_ready(std::uint64_t runtimeSerial, std::size_t slotIndex,
+                             std::chrono::steady_clock::time_point now) noexcept;
     void capture_frame(std::uint64_t runtimeSerial, ::SDL_Renderer *renderer,
                        int width, int height) noexcept;
     bool enqueue_event(std::string type, nlohmann::json body,

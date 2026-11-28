@@ -50,6 +50,7 @@ class DebugDraw
     void addCircleColliderDebugObject(const CircleCollider &collider);
     void addGridCellDebugObject(const GridCellKey &cellKey);
     void addCollisionDebugObject(const Collision &collision);
+    void collectPhysicsDebugObjects();
     void setSettings(const DebugSettings &debugSettings);
 
     void clearDebugObjects();
@@ -120,6 +121,9 @@ class DebugDraw
     {
     }
     void addCollisionDebugObject(const Collision &)
+    {
+    }
+    void collectPhysicsDebugObjects()
     {
     }
     void setSettings(const DebugSettings &)

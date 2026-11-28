@@ -188,7 +188,7 @@ struct StartOrder : test_support::Behavior
 void scriptStartupQueue()
 {
     std::vector<int> trace;
-    Counts deferred;
+    Counts deferred, interrupted;
     platformator::Runtime runtime;
     auto *first = runtime.createGameObject()->addComponent<ScriptComponent>()->getComponent<ScriptComponent>();
     auto *second = runtime.createGameObject()->addComponent<ScriptComponent>()->getComponent<ScriptComponent>();
@@ -209,7 +209,6 @@ void scriptStartupQueue()
     require(deferred.starts == 1 && deferred.updates == 1, "Activation queues only remaining pending work");
     require(first->getPendingBehaviors().empty() && second->getPendingBehaviors().empty(),
             "Completed scripts leave no unattempted prefix behind");
-    Counts interrupted;
     auto *interruptedOwner = runtime.createGameObject()->addComponent<ScriptComponent>();
     auto *interruptedScript = interruptedOwner->getComponent<ScriptComponent>();
     interruptedScript->addBehavior(new Action(Phase::Start, [&] { interruptedOwner->setActive(false); }));
